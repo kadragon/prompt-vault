@@ -14,6 +14,9 @@ build/
 .DS_Store
 *.log
 
+# Playwright MCP scratch (snapshots, console logs — fixture capture only)
+.playwright-mcp/
+
 # Harness scratch (delegation evidence, session tmp)
 .claude/tmp/
 

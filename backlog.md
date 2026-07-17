@@ -4,26 +4,19 @@ Design: `docs/design/chatgpt-conversation-backup.md`. v1 tickets below are verti
 dependency order; blocked items stay invisible to `next-tasks` until their `*(blocked by: ...)*`
 marker is removed by hand once the blocking ticket lands.
 
-## 3 — Core model & ChatGPT adapter
-
-> Goal: extract a full conversation from the live page into the normalized model.
-> Done-when: `Conversation`/`Message` types defined; ChatGPT adapter with centralized selectors auto-scrolls to load virtualized messages, extracts in order, and fails loud (visible error) on empty/malformed output; fixture tests pass.
-
-- [ ] [FEAT] Conversation/Message model (src/core) + ChatGPT adapter (selectors, auto-scroll full load, fail-loud) with HTML fixture tests
-
 ## 4 — Markdown export
 
 > Goal: first real user value — download the current conversation as Markdown.
 > Done-when: `src/export/markdown.ts` is a pure Conversation→string preserving role/order/fenced code blocks/lists/bold-italic/links (images as links, tables best-effort), deterministic; the button's Markdown action saves `chatgpt-{safe-title}-{yyyymmdd}.md` locally.
 
-- [ ] [FEAT] Markdown exporter + wire button Markdown action to local download *(blocked by: 3-core-adapter)*
+- [ ] [FEAT] Markdown exporter + wire button Markdown action to local download
 
 ## 5 — PDF export
 
 > Goal: download the current conversation as a selectable-text PDF, with no print dialog (bulk-ready).
 > Done-when: `src/export/pdf.ts` builds a pdfmake document definition from the model and downloads a PDF directly; code blocks render as monospace; Korean (CJK) glyphs render via an embedded font; the button's PDF action works.
 
-- [ ] [FEAT] pdfmake PDF exporter (CJK font) + wire button PDF action to direct download *(blocked by: 3-core-adapter)*
+- [ ] [FEAT] pdfmake PDF exporter (CJK font) + wire button PDF action to direct download
 
 ## Tooling & static analysis
 

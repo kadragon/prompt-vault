@@ -1,21 +1,12 @@
-// Supported ChatGPT hosts. Exact hostnames only — a suffix match would let a
-// look-alike domain (e.g. chatgpt.com.attacker.example) pass.
-const SUPPORTED_HOSTS = new Set(['chatgpt.com', 'chat.openai.com']);
+// The content-script mount gate for "should the Download button be shown?".
+// The host/path knowledge is ChatGPT-specific, so it lives in the ChatGPT adapter
+// (src/adapters/chatgpt/matches.ts) as the single source of truth; this re-export
+// keeps the content-layer name and dependency direction (content → adapter).
 
-// A ChatGPT conversation lives at /c/<id> (optionally trailing-slashed).
-const CONVERSATION_PATH = /^\/c\/[^/]+\/?$/;
+import { matches } from '../adapters/chatgpt/matches';
 
 /**
- * True only for a ChatGPT conversation page: a supported host with a `/c/<id>`
- * path. This is the single source of truth for "should the Download button be
- * shown?", so both the initial mount and SPA-navigation re-checks agree.
+ * True only for a ChatGPT conversation page. Single source of truth for both the
+ * initial button mount and SPA-navigation re-checks, and for adapter selection.
  */
-export function isConversationPage(url: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  return SUPPORTED_HOSTS.has(parsed.hostname) && CONVERSATION_PATH.test(parsed.pathname);
-}
+export const isConversationPage = matches;
