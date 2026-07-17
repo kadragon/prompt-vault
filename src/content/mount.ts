@@ -20,13 +20,22 @@ export const CONTAINER_ID = 'prompt-vault-download-buttons';
 type Format = 'md' | 'pdf';
 interface FormatSpec {
   format: Format;
+  /** Short label; shown only on the self-styled overlay fallback (native is icon-only). */
   label: string;
   ariaLabel: string;
+  /** Builds the format's glyph for the icon-only native buttons. */
+  icon: (doc: Document) => SVGElement;
 }
 const FORMATS: ReadonlyArray<FormatSpec> = [
-  { format: 'md', label: DOWNLOAD_MD_LABEL, ariaLabel: DOWNLOAD_MD_ARIA_LABEL },
-  { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL },
+  { format: 'md', label: DOWNLOAD_MD_LABEL, ariaLabel: DOWNLOAD_MD_ARIA_LABEL, icon: markdownIcon },
+  { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL, icon: pdfIcon },
 ];
+
+// Stylesheet injected once to hide native header controls the export buttons
+// supersede (the adapter's `toolbarHiddenSelectors`). A stylesheet — not inline
+// `display:none` — so the rule keeps applying to freshly-rendered elements when
+// ChatGPT's SPA re-renders the header, with no JS re-hiding needed.
+export const HIDDEN_STYLE_ID = 'prompt-vault-hidden-styles';
 
 // Placement is stamped on the container so `syncButtons` can tell a native mount
 // from a fallback overlay and upgrade the latter once the header bar appears.
@@ -40,47 +49,76 @@ let exportInFlight = false;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// A download glyph (arrow into a tray) mirroring the icon-and-label shape of the
-// native Share button, drawn with `currentColor` so it inherits the header's text
-// color in both light and dark themes.
-function downloadIcon(doc: Document): SVGElement {
+// Format glyphs for the icon-only native buttons. Both are line icons drawn with
+// `currentColor` and a stroke, matching ChatGPT's own header icons so they inherit
+// the header's text color in both light and dark themes. Each format gets a distinct,
+// self-explanatory shape; the exact meaning is announced via the button's title
+// tooltip and aria-label.
+type IconChild = { tag: 'rect' | 'path'; attrs: Record<string, string> };
+
+function makeIcon(doc: Document, children: ReadonlyArray<IconChild>): SVGElement {
   const svg = doc.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('width', '18');
-  svg.setAttribute('height', '18');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-  svg.setAttribute('aria-hidden', 'true');
-  const path = doc.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', 'M12 3v12m0 0 4-4m-4 4-4-4M5 21h14');
-  svg.appendChild(path);
+  const attrs: Record<string, string> = {
+    width: '18',
+    height: '18',
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    'stroke-width': '2',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+    'aria-hidden': 'true',
+  };
+  for (const [k, v] of Object.entries(attrs)) svg.setAttribute(k, v);
+  for (const { tag, attrs: childAttrs } of children) {
+    const el = doc.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(childAttrs)) el.setAttribute(k, v);
+    svg.appendChild(el);
+  }
   return svg;
+}
+
+// Markdown: the "M + downward chevron" mark inside a rounded badge (the Markdown logo
+// silhouette).
+function markdownIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'rect', attrs: { x: '3', y: '6', width: '18', height: '12', rx: '2' } },
+    { tag: 'path', attrs: { d: 'M7 15V9l2.5 3L12 9v6' } },
+    { tag: 'path', attrs: { d: 'M16 9v5' } },
+    { tag: 'path', attrs: { d: 'M14 12l2 2 2-2' } },
+  ]);
+}
+
+// PDF: a document page with a folded corner and text lines.
+function pdfIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'path', attrs: { d: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z' } },
+    { tag: 'path', attrs: { d: 'M14 3v5h5' } },
+    { tag: 'path', attrs: { d: 'M9 13h6' } },
+    { tag: 'path', attrs: { d: 'M9 17h6' } },
+    { tag: 'path', attrs: { d: 'M9 9h1' } },
+  ]);
 }
 
 function createButton(
   doc: Document,
   container: HTMLDivElement,
   placement: 'native' | 'overlay',
-  { format, label, ariaLabel }: FormatSpec,
+  { format, label, ariaLabel, icon }: FormatSpec,
   buttonClass: string | undefined,
 ): HTMLButtonElement {
   const button = doc.createElement('button');
   button.type = 'button';
   button.setAttribute('aria-label', ariaLabel);
   if (placement === 'native') {
-    // Blend in: wear the provider's own button classes (supplied by the adapter so
-    // this content layer stays provider-agnostic) and mirror the Share button's
-    // inner icon+label layout with generic flex utilities.
+    // Blend in: wear the provider's own icon-button classes (supplied by the adapter
+    // so this content layer stays provider-agnostic) and show the format glyph only,
+    // matching ChatGPT's square icon controls. The meaning is carried by the tooltip
+    // title and aria-label rather than a visible text label.
     if (buttonClass) button.className = buttonClass;
     button.style.cursor = 'pointer';
-    const inner = doc.createElement('div');
-    inner.className = 'flex items-center justify-center gap-1.5';
-    inner.appendChild(downloadIcon(doc));
-    inner.appendChild(doc.createTextNode(label));
-    button.appendChild(inner);
+    button.title = ariaLabel;
+    button.appendChild(icon(doc));
   } else {
     // Fallback overlay: fully self-styled so it stays legible even if ChatGPT's CSS
     // never applies.
@@ -192,9 +230,37 @@ function downloadTextFile(filename: string, text: string, mimeType: string): voi
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-/** Remove the buttons if mounted. */
+/**
+ * Inject (or update) the stylesheet that hides native controls the export buttons
+ * supersede. Idempotent: reuses the single `<style>` element and only rewrites it
+ * when the selector set changes. With no selectors, any existing rule is removed.
+ */
+function applyHiddenStyles(doc: Document, selectors: readonly string[] | undefined): void {
+  const existing = doc.getElementById(HIDDEN_STYLE_ID);
+  if (!selectors || selectors.length === 0) {
+    existing?.remove();
+    return;
+  }
+  const css = `${selectors.join(',')}{display:none!important}`;
+  if (existing) {
+    if (existing.textContent !== css) existing.textContent = css;
+    return;
+  }
+  const style = doc.createElement('style');
+  style.id = HIDDEN_STYLE_ID;
+  style.textContent = css;
+  (doc.head ?? doc.documentElement).appendChild(style);
+}
+
+/** Restore any natively-hidden controls by dropping the injected stylesheet. */
+function removeHiddenStyles(doc: Document): void {
+  doc.getElementById(HIDDEN_STYLE_ID)?.remove();
+}
+
+/** Remove the buttons if mounted, and un-hide any controls they had superseded. */
 export function removeButtons(doc: Document): void {
   doc.getElementById(CONTAINER_ID)?.remove();
+  removeHiddenStyles(doc);
 }
 
 export interface SyncOptions {
@@ -241,7 +307,12 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
 
   if (mount) {
     mount.prepend(createButtons(doc, 'native', adapter?.toolbarButtonClass));
+    // Hide the native controls the icon buttons take over (e.g. Share). Persistent
+    // stylesheet, so it keeps applying across SPA header re-renders.
+    applyHiddenStyles(doc, adapter?.toolbarHiddenSelectors);
   } else if (allowOverlayFallback) {
+    // No native header to blend into — the overlay sits apart and hides nothing.
+    removeHiddenStyles(doc);
     doc.body.appendChild(createButtons(doc, 'overlay'));
   }
 }

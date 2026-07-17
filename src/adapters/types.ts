@@ -36,4 +36,14 @@ export interface ConversationAdapter {
    * Optional — omit to leave the native buttons unstyled but functional.
    */
   readonly toolbarButtonClass?: string;
+
+  /**
+   * CSS selectors for native header controls the export buttons supersede and that
+   * should be hidden while they are mounted (e.g. the provider's own Share button,
+   * made redundant by the injected download controls). The content layer hides them
+   * with a single injected stylesheet, so hiding survives the SPA re-rendering the
+   * header. Provider-owned so the shared content layer carries no site-specific
+   * selectors. Optional — omit to hide nothing.
+   */
+  readonly toolbarHiddenSelectors?: readonly string[];
 }

@@ -29,8 +29,24 @@ describe('syncButtons', () => {
     expect(container).not.toBeNull();
     expect(container?.parentElement?.id).toBe(HEADER_ID);
     expect(container?.querySelectorAll('button').length).toBe(2);
-    // Native buttons wear the ChatGPT adapter's supplied class so they blend with Share.
-    expect(container?.querySelector('button')?.className).toContain('btn');
+    // Native buttons wear the ChatGPT adapter's icon-button class so they blend with
+    // the header's native square icon controls.
+    expect(container?.querySelector('button')?.className).toContain('rounded-lg');
+  });
+
+  it('hides the native Share button while mounted and restores it on leave', () => {
+    const doc = docWithHeader();
+    syncButtons(doc, CONV_URL);
+
+    const style = doc.getElementById('prompt-vault-hidden-styles');
+    expect(style).not.toBeNull();
+    expect(style?.textContent).toContain('share-chat-button');
+    // The Share element itself stays in the DOM (hidden via CSS), so ChatGPT's own
+    // re-renders keep working; our stylesheet keeps it invisible.
+    expect(doc.querySelector('[data-testid="share-chat-button"]')).not.toBeNull();
+
+    syncButtons(doc, NON_CONV_URL);
+    expect(doc.getElementById('prompt-vault-hidden-styles')).toBeNull();
   });
 
   it('is idempotent — repeated calls do not duplicate the buttons', () => {
@@ -113,5 +129,18 @@ describe('createButtons', () => {
     expect(buttons[0].className).toBe('btn btn-ghost');
     expect(buttons[0].getAttribute('aria-label')).toBe('Download conversation as Markdown');
     expect(buttons[1].getAttribute('aria-label')).toBe('Download conversation as PDF');
+  });
+
+  it('renders icon-only native buttons with a tooltip title and no visible text label', () => {
+    const container = createButtons(bareDoc(), 'native', 'icon-btn');
+    const buttons = container.querySelectorAll('button');
+
+    for (const button of buttons) {
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.textContent).toBe('');
+    }
+    // Title (hover tooltip) carries the meaning the visible label used to.
+    expect(buttons[0].getAttribute('title')).toBe('Download conversation as Markdown');
+    expect(buttons[1].getAttribute('title')).toBe('Download conversation as PDF');
   });
 });
