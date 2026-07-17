@@ -1,6 +1,7 @@
 import type { Conversation, Message, Role } from '../../core/conversation';
+import type { SidebarConversation } from '../../core/sidebar';
 import { ExtractionError } from '../../core/errors';
-import type { ConversationAdapter } from '../types';
+import type { ConversationAdapter, OpenConversationOptions } from '../types';
 import { htmlToMarkdown } from './html-to-markdown';
 import { matches } from './matches';
 import { selectors } from './selectors';
@@ -33,6 +34,15 @@ export interface AutoScrollOptions {
 const TOOLBAR_BUTTON_CLASS =
   'text-token-text-primary hover:bg-token-surface-hover flex h-9 w-9 items-center justify-center rounded-lg';
 
+// Bulk navigation tuning. After a sidebar link is clicked, ChatGPT swaps the route
+// instantly but renders the new conversation's turns a beat later (measured ~1s on a
+// warm session); the old turns are unmounted first, so a readiness check that only
+// waits for "any message present" could momentarily read the outgoing conversation.
+// `openConversation` therefore waits for the message set to actually change. The
+// timeout is generous so a cold/slow load still resolves rather than falsely failing.
+const OPEN_POLL_MS = 150;
+const OPEN_TIMEOUT_MS = 15000;
+
 export const chatgptAdapter: ConversationAdapter = {
   provider: PROVIDER,
   matches,
@@ -40,6 +50,8 @@ export const chatgptAdapter: ConversationAdapter = {
   toolbarMount,
   toolbarButtonClass: TOOLBAR_BUTTON_CLASS,
   toolbarAnchor,
+  listConversations,
+  openConversation,
 };
 
 /**
@@ -61,6 +73,118 @@ function toolbarMount(root: ParentNode = document): Element | null {
  */
 function toolbarAnchor(root: ParentNode = document): Element | null {
   return root.querySelector(selectors.shareButton);
+}
+
+/**
+ * Enumerate the history sidebar's conversation links into the lightweight sidebar
+ * model, in display order. Scoped to `#history` so project/GPT chats (under
+ * `/g/…/c/…`) and the composer are excluded. Deduped by path id because the active
+ * chat's link can carry a `?messageId=…` query (a second link to the same id); the
+ * full title comes from the link's `aria-label` (untruncated), falling back to its
+ * text. Pure DOM read — returns `[]` when the sidebar has not rendered.
+ */
+function listConversations(root: ParentNode = document): SidebarConversation[] {
+  const history = root.querySelector(selectors.sidebarHistory);
+  if (!history) return [];
+
+  const origin = documentOrigin(root);
+  const seen = new Set<string>();
+  const conversations: SidebarConversation[] = [];
+  for (const anchor of history.querySelectorAll(selectors.sidebarConversationLink)) {
+    const href = anchor.getAttribute('href');
+    if (!href) continue;
+    const { id, url } = resolveConversationHref(href, origin);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const title = (anchor.getAttribute('aria-label') ?? anchor.textContent ?? '').trim();
+    conversations.push({ id, title: title || 'ChatGPT conversation', url });
+  }
+  return conversations;
+}
+
+/** Split a `/c/<id>` sidebar href into its stable path id and a query-free absolute URL. */
+function resolveConversationHref(href: string, origin: string): { id: string; url: string } {
+  try {
+    const parsed = new URL(href, origin);
+    const match = parsed.pathname.match(/\/c\/([^/?#]+)/);
+    return { id: match ? match[1] : '', url: origin + parsed.pathname };
+  } catch {
+    return { id: '', url: '' };
+  }
+}
+
+function documentOrigin(root: ParentNode): string {
+  const origin = ownerDocument(root)?.defaultView?.location?.origin;
+  // Fixture documents load at about:blank (`origin === 'null'`); fall back to the
+  // real host so enumerated URLs are still absolute and openable.
+  return origin && origin !== 'null' ? origin : 'https://chatgpt.com';
+}
+
+/**
+ * Client-side navigate to a sidebar conversation and resolve once its turns render.
+ * Clicks the in-sidebar link so ChatGPT's router swaps content in place (assigning
+ * `location` would full-reload and kill the bulk run). Fail-loud (AGENTS.md #4): if
+ * the link is not in the (possibly virtualized) sidebar, or the conversation does not
+ * render within the timeout, throw so the bulk driver records the miss instead of
+ * re-extracting the previous chat. Already-open target → resolve immediately.
+ */
+async function openConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const targetPath = new URL(url, location.origin).pathname;
+
+  // Already showing the target with content: it's the right conversation, no nav.
+  if (location.pathname === targetPath && hasRenderedMessages()) return;
+
+  const anchor = findSidebarAnchor(targetPath);
+  if (!anchor) {
+    throw new ExtractionError(
+      'Could not open a selected conversation: its link was not found in the sidebar ' +
+        '(the history list may need scrolling into view). It was skipped.',
+    );
+  }
+
+  // Snapshot the current turns so we can tell the new conversation has actually
+  // swapped in — the outgoing turns are briefly still mounted right after the click.
+  const beforeSignature = messageSignature();
+  anchor.click();
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (location.pathname === targetPath && hasRenderedMessages() && messageSignature() !== beforeSignature) {
+      return;
+    }
+  }
+  throw new ExtractionError(
+    'Timed out opening a selected conversation. It may be loading slowly; it was skipped.',
+  );
+}
+
+/** The `#history` link whose path matches `targetPath`, or null if not currently rendered. */
+function findSidebarAnchor(targetPath: string): HTMLAnchorElement | null {
+  const history = document.querySelector(selectors.sidebarHistory);
+  if (!history) return null;
+  for (const anchor of history.querySelectorAll<HTMLAnchorElement>(selectors.sidebarConversationLink)) {
+    const href = anchor.getAttribute('href');
+    if (href && new URL(href, location.origin).pathname === targetPath) return anchor;
+  }
+  return null;
+}
+
+function hasRenderedMessages(): boolean {
+  return document.querySelector(selectors.message) !== null;
+}
+
+/**
+ * A cheap fingerprint of the rendered turn set (count + first turn id). Changes when
+ * ChatGPT swaps conversations, so `openConversation` can distinguish the newly loaded
+ * chat from the outgoing one without diffing the whole DOM. Turn ids are globally
+ * unique, so a different first id means a different conversation.
+ */
+function messageSignature(): string {
+  const nodes = document.querySelectorAll(selectors.message);
+  const firstId = nodes[0]?.getAttribute(selectors.messageIdAttr) ?? '';
+  return `${nodes.length}:${firstId}`;
 }
 
 async function extract(root: ParentNode = document): Promise<Conversation> {

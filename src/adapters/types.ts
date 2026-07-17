@@ -1,4 +1,5 @@
 import type { Conversation } from '../core/conversation';
+import type { SidebarConversation } from '../core/sidebar';
 
 // The contract every provider implements (docs/architecture.md). A new provider is
 // a new directory under src/adapters/{provider}/ exporting one of these, plus a
@@ -46,4 +47,35 @@ export interface ConversationAdapter {
    * selector. Optional — omit to always mount at the front of the bar.
    */
   toolbarAnchor?(root?: ParentNode): Element | null;
+
+  /**
+   * Enumerate the conversations listed in the provider's history sidebar into the
+   * lightweight `SidebarConversation` model, in display order. Pure DOM read — no
+   * messages are scraped here (that is `extract`'s job, after `openConversation`
+   * navigates to each). Returns `[]` when the sidebar is not in the DOM. Powers the
+   * bulk-export selection UI. Defaults to the live `document`; tests pass a parsed
+   * fixture root. Optional: a provider without a known sidebar omits it, and the bulk
+   * feature is simply unavailable there.
+   */
+  listConversations?(root?: ParentNode): SidebarConversation[];
+
+  /**
+   * Client-side navigate to `url` (one of `listConversations`' entries) WITHOUT a
+   * full page reload — so the content script and its in-flight bulk run survive —
+   * and resolve once the target conversation has rendered. Throws `ExtractionError`
+   * (fail-loud, AGENTS.md #4) when the conversation cannot be reached within the
+   * timeout, so the bulk driver records the miss instead of extracting the wrong
+   * (still-showing) chat. Inherently live-DOM; `opts` exposes the polling knobs so
+   * the wait is tunable. Optional and paired with `listConversations` — a provider
+   * that lists must also open.
+   */
+  openConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
+}
+
+/** Polling knobs for `openConversation`'s wait-for-render loop. */
+export interface OpenConversationOptions {
+  /** Milliseconds between readiness polls. */
+  pollMs?: number;
+  /** Give up (fail-loud) after this many milliseconds without the conversation rendering. */
+  timeoutMs?: number;
 }
