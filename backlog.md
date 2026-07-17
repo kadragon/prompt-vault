@@ -4,13 +4,6 @@ Design: `docs/design/chatgpt-conversation-backup.md`. v1 tickets below are verti
 dependency order; blocked items stay invisible to `next-tasks` until their `*(blocked by: ...)*`
 marker is removed by hand once the blocking ticket lands.
 
-## 2 — Privacy invariant gate
-
-> Goal: mechanically enforce local-only (golden principle) before export/adapter code exists, so all later code is checked.
-> Done-when: an automated test/grep gate fails if any `fetch`/`XMLHttpRequest`/`sendBeacon` to an external origin appears in `src/adapters`, `src/export`, or `src/content`.
-
-- [ ] [CONSTRAINT] Add no-external-network test/grep gate over src/adapters|export|content
-
 ## 3 — Core model & ChatGPT adapter
 
 > Goal: extract a full conversation from the live page into the normalized model.
