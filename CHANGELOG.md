@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] Bulk download — export core slice — headless `saveConversation(conversation, format, now, doc?)` and a provider-agnostic sequential `bulkExport` orchestrator (per-item fail-loud into a `{ total, succeeded, failed[] }` summary, throttled between saves); `runExport` now delegates its produce+save step to the shared saver. The design's "forward hook" for bulk export; live sidebar enumeration + navigation remain a deferred, login-session-only follow-up (2026-07-17)
+
 - [done] Markdown export serialization edge-case fixes — `<div>`/`<section>` wrapper block children in `<li>` no longer flatten onto the marker line (and a wrapper whose first block child is a nested list no longer collides markers); emphasis/strikethrough delimiters straddling an inline wrapper (`_<span>x</span>_`) now escape via cross-boundary flanking classification, without over-escaping an intraword `_` next to inline markup (2026-07-17)
 
 - [done] Blend download buttons into the ChatGPT header — the `MD`/`PDF` buttons now mount inside ChatGPT's native header action bar (styled like the Share button, auto light/dark) instead of a fixed overlay that covered Share; falls back to a non-overlapping bottom-right overlay if the header is absent (2026-07-17)
