@@ -200,13 +200,12 @@ function serializeTable(table: Element): string {
   return lines.join('\n');
 }
 
-// A table cell is inline-only in Markdown: flatten to a single line and escape
-// `|` so cell content cannot break the grid.
+// A table cell is inline-only in Markdown: flatten to a single line. A literal
+// `|` from a text node is already escaped at the source by escapeMarkdownText
+// (backslash-first), so no cell-level pipe escaping — which could not see a
+// preceding backslash — is needed here.
 function serializeTableCell(cell: Element): string {
-  return serializeInline(cell)
-    .replace(/\n+/g, ' ')
-    .replace(/\|/g, '\\|')
-    .trim();
+  return serializeInline(cell).replace(/\n+/g, ' ').trim();
 }
 
 function serializeCodeBlock(pre: Element): string {

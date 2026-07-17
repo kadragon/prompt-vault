@@ -8,7 +8,10 @@
 //
 // Scope:
 //   - inline anywhere: backslash (escaped FIRST so the backslashes added below
-//     are not themselves re-doubled), backtick, `[`, `]`
+//     are not themselves re-doubled), backtick, `[`, `]`, and `|` (a GFM table
+//     cell delimiter — escaping it here, at the text-node source where backslash
+//     is already escaped first, keeps table cells intact without a second,
+//     backslash-unaware escaping pass downstream)
 //   - emphasis/strikethrough runs `*`, `_`, `~` — escaped per CommonMark
 //     *flanking* rules so real formatting is preserved while `snake_case` (an
 //     intraword `_`) and non-flanking delimiters are left alone. `*`/`~` runs
@@ -43,13 +46,15 @@ export function escapeMarkdownText(text: string, atLineStart = false): string {
 
 // Single left-to-right scan over the ORIGINAL text so the backslashes we add
 // never perturb the neighbor lookups used for flanking classification. Escapes
-// `\`, `` ` ``, `[`, `]` unconditionally and `*`/`_`/`~` runs when flanking.
+// `\`, `` ` ``, `[`, `]`, `|` unconditionally and `*`/`_`/`~` runs when flanking.
+// Backslash is handled by the same branch, so it is always escaped as it is
+// read — no separate char is ever escaped ahead of its own backslash.
 function escapeInline(text: string): string {
   let out = '';
   let i = 0;
   while (i < text.length) {
     const ch = text[i];
-    if (ch === '\\' || ch === '`' || ch === '[' || ch === ']') {
+    if (ch === '\\' || ch === '`' || ch === '[' || ch === ']' || ch === '|') {
       out += `\\${ch}`;
       i++;
       continue;

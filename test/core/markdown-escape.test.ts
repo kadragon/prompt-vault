@@ -23,6 +23,15 @@ describe('escapeMarkdownText', () => {
     it('escapes backtick, open and close brackets anywhere', () => {
       expect(escapeMarkdownText('see [1] and `x`')).toBe('see \\[1\\] and \\`x\\`');
     });
+
+    it('escapes a pipe (GFM table cell delimiter) at the source', () => {
+      expect(escapeMarkdownText('a | b')).toBe('a \\| b');
+    });
+
+    it('escapes a pipe after a backslash without double-escaping the backslash', () => {
+      // `a\|b`: backslash escaped first, then the pipe — renders literal `a\|b`.
+      expect(escapeMarkdownText('a\\|b')).toBe('a\\\\\\|b');
+    });
   });
 
   describe('emphasis and strikethrough (flanking)', () => {
