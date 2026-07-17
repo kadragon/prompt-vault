@@ -19,7 +19,8 @@ const ROLE_HEADING: Record<Role, string> = {
 
 /** Compose a Conversation into one Markdown document. Deterministic. */
 export function toMarkdown(conversation: Conversation): string {
-  const blocks: string[] = [`# ${escapeMarkdownText(stripNewlines(conversation.title))}`];
+  // The title is the content of a `# ` heading line, so escape it as line-start text.
+  const blocks: string[] = [`# ${escapeMarkdownText(stripNewlines(conversation.title), true)}`];
   for (const message of conversation.messages) {
     blocks.push(`${ROLE_HEADING[message.role]}\n\n${message.content.trim()}`);
   }

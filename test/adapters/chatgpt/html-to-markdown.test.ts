@@ -78,8 +78,26 @@ describe('htmlToMarkdown', () => {
     expect(md('<p>&gt; not a quote</p>')).toBe('\\> not a quote');
     expect(md('<p>- not a bullet</p>')).toBe('\\- not a bullet');
     expect(md('<p>* not a bullet</p>')).toBe('\\* not a bullet');
+    expect(md('<p>+ not a bullet</p>')).toBe('\\+ not a bullet');
     expect(md('<p>1. not a list</p>')).toBe('1\\. not a list');
     expect(md('<p>2) not a list</p>')).toBe('2\\) not a list');
+  });
+
+  it('does not escape a decimal as an ordered-list marker', () => {
+    // `1.23` is a number, not a list marker (no space after the dot).
+    expect(md('<p>1.23 is a float</p>')).toBe('1.23 is a float');
+    expect(md('<p>1.foo bar</p>')).toBe('1.foo bar');
+  });
+
+  it('does not over-escape a leading marker in a mid-paragraph text node', () => {
+    // Text after an inline element is not at a line start, so its leading `-`
+    // must not be treated as a bullet.
+    expect(md('<p>This is <strong>bold</strong> - and not a bullet</p>')).toBe(
+      'This is **bold** - and not a bullet',
+    );
+    expect(md('<p>See <a href="http://example.com">link</a> - or not</p>')).toBe(
+      'See [link](http://example.com) - or not',
+    );
   });
 
   it('escapes inline link/code characters in text', () => {
