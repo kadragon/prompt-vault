@@ -1,7 +1,9 @@
 // Central store for user-facing UI strings. Keeping them in one module makes an
 // i18n message catalog a later drop-in rather than a rewrite (conventions.md).
 
-export const DOWNLOAD_BUTTON_LABEL = 'Download';
+// Labels for the two format buttons (Markdown / PDF) injected top-right.
+export const DOWNLOAD_MD_LABEL = 'MD';
+export const DOWNLOAD_PDF_LABEL = 'PDF';
 
 // Shown (fail-loud) when the page is not a recognized conversation the extension
 // can export.

@@ -2,54 +2,72 @@ import { pickAdapter } from '../adapters';
 import { ExtractionError } from '../core/errors';
 import { markdownFilename, toMarkdown } from '../export/markdown';
 import {
-  DOWNLOAD_BUTTON_LABEL,
+  DOWNLOAD_MD_LABEL,
+  DOWNLOAD_PDF_LABEL,
   EXPORT_FAILED_MESSAGE,
   EXPORT_NO_ADAPTER_MESSAGE,
 } from '../strings';
 import { isConversationPage } from './page';
 
-// Stable id so the button is mounted at most once and can be located for removal.
-const BUTTON_ID = 'prompt-vault-download-button';
+// Stable id on the button container so it is mounted at most once and can be
+// located for removal.
+const CONTAINER_ID = 'prompt-vault-download-buttons';
 
 // How often to re-check the URL for SPA navigation (see watchNavigation).
 const NAV_POLL_MS = 500;
 
-function createButton(): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.id = BUTTON_ID;
-  button.type = 'button';
-  button.textContent = DOWNLOAD_BUTTON_LABEL;
-  Object.assign(button.style, {
+// Export formats offered by the toolbar, in display order.
+type Format = 'md' | 'pdf';
+const FORMATS: ReadonlyArray<{ format: Format; label: string }> = [
+  { format: 'md', label: DOWNLOAD_MD_LABEL },
+  { format: 'pdf', label: DOWNLOAD_PDF_LABEL },
+];
+
+function createButtons(): HTMLDivElement {
+  const container = document.createElement('div');
+  container.id = CONTAINER_ID;
+  Object.assign(container.style, {
     position: 'fixed',
     top: '12px',
     right: '12px',
     zIndex: '2147483647',
-    padding: '6px 12px',
-    fontSize: '13px',
-    fontFamily: 'inherit',
-    color: '#ffffff',
-    background: '#10a37f',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+    display: 'flex',
+    gap: '6px',
   });
-  button.addEventListener('click', () => {
-    void runExport(button);
-  });
-  return button;
+  for (const { format, label } of FORMATS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    Object.assign(button.style, {
+      padding: '6px 12px',
+      fontSize: '13px',
+      fontFamily: 'inherit',
+      color: '#ffffff',
+      background: '#10a37f',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+    });
+    button.addEventListener('click', () => {
+      void runExport(container, format);
+    });
+    container.appendChild(button);
+  }
+  return container;
 }
 
 /**
- * Extract the current conversation and download it as Markdown, entirely
+ * Extract the current conversation and download it in `format`, entirely
  * locally. Fail-loud (AGENTS.md #4): any extraction/export problem surfaces a
  * visible alert and no file is written — never a silent or empty download.
- * Disables the button while running so a second click cannot start a concurrent
- * export.
+ * Disables both buttons while running so a second click cannot start a
+ * concurrent export.
  */
-async function runExport(button: HTMLButtonElement): Promise<void> {
-  if (button.disabled) return;
-  button.disabled = true;
+async function runExport(container: HTMLDivElement, format: Format): Promise<void> {
+  const buttons = container.querySelectorAll('button');
+  if ([...buttons].some((b) => b.disabled)) return;
+  buttons.forEach((b) => (b.disabled = true));
   try {
     const adapter = pickAdapter(location.href);
     if (!adapter) {
@@ -57,15 +75,21 @@ async function runExport(button: HTMLButtonElement): Promise<void> {
       return;
     }
     const conversation = await adapter.extract();
-    const markdown = toMarkdown(conversation);
-    const filename = markdownFilename(conversation, new Date());
-    downloadTextFile(filename, markdown, 'text/markdown');
+    const now = new Date();
+    if (format === 'md') {
+      downloadTextFile(markdownFilename(conversation, now), toMarkdown(conversation), 'text/markdown');
+    } else {
+      // pdfmake + the embedded CJK font are heavy; load them only on demand so an
+      // ordinary page visit never pays for them (@crxjs code-splits this import).
+      const { downloadPdf } = await import('./pdf-download');
+      await downloadPdf(conversation, now);
+    }
   } catch (error) {
     // ExtractionError carries a user-actionable message; anything else is
     // unexpected and gets the generic fallback.
     alert(error instanceof ExtractionError ? error.message : EXPORT_FAILED_MESSAGE);
   } finally {
-    button.disabled = false;
+    buttons.forEach((b) => (b.disabled = false));
   }
 }
 
@@ -88,14 +112,14 @@ function downloadTextFile(filename: string, text: string, mimeType: string): voi
 }
 
 /**
- * Mount the button on a conversation page, remove it elsewhere. Idempotent:
+ * Mount the buttons on a conversation page, remove them elsewhere. Idempotent:
  * safe to call repeatedly (initial load, every SPA navigation).
  */
 function syncButton(): void {
-  const existing = document.getElementById(BUTTON_ID);
+  const existing = document.getElementById(CONTAINER_ID);
   if (isConversationPage(location.href)) {
     if (!existing) {
-      document.body.appendChild(createButton());
+      document.body.appendChild(createButtons());
     }
   } else if (existing) {
     existing.remove();

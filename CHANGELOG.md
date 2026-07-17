@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] PDF export — PDF button saves the conversation as a selectable-text PDF (embedded Jetendard CJK monospace font, direct download, no print dialog) (2026-07-17)
+
 - [done] Markdown export — Download button saves the conversation as a local `.md` file (2026-07-17)
 
 - [done] Core Conversation model & ChatGPT adapter (centralized selectors, auto-scroll, HTML→Markdown, fail-loud) with fixture tests (2026-07-17)
