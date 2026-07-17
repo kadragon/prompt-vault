@@ -28,7 +28,19 @@ export const chatgptAdapter: ConversationAdapter = {
   provider: PROVIDER,
   matches,
   extract,
+  toolbarMount,
 };
+
+/**
+ * The header pill holding ChatGPT's native Share / conversation-options controls —
+ * the injection point for the export buttons. All ChatGPT DOM knowledge lives in
+ * this adapter (docs/conventions.md), so the content layer asks for the mount point
+ * instead of hardcoding a selector. Null when the header has not rendered yet or the
+ * markup changed; the caller then falls back to a non-overlapping overlay.
+ */
+function toolbarMount(root: ParentNode = document): Element | null {
+  return root.querySelector(selectors.headerActions);
+}
 
 async function extract(root: ParentNode = document): Promise<Conversation> {
   // Auto-scroll only makes sense against the live document; fixture roots are

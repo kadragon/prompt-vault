@@ -24,4 +24,13 @@ export const selectors = {
    * absent, extraction falls back to whatever is already in the DOM.
    */
   scrollContainer: '[data-scroll-root]',
+
+  /**
+   * The header action bar holding ChatGPT's native controls (Share, conversation
+   * options) — a translucent-surface pill in the top-right of a conversation. The
+   * export buttons are injected here so they sit inline with Share instead of a
+   * fixed overlay covering it. Verified against the captured fixtures (2026-07-17);
+   * re-verify against the live page if the buttons stop mounting.
+   */
+  headerActions: '#conversation-header-actions',
 } as const;
