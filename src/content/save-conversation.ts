@@ -6,11 +6,13 @@
 // +save logic lives in exactly one place.
 
 import type { Conversation } from '../core/conversation';
+import { htmlFilename, toHtml } from '../export/html';
+import { jsonFilename, toJson } from '../export/json';
 import { markdownFilename, toMarkdown } from '../export/markdown';
 
 // Export formats offered by every caller, in display order. Shared so the UI layer
 // and the bulk orchestrator agree on one type.
-export type ExportFormat = 'md' | 'pdf';
+export type ExportFormat = 'md' | 'pdf' | 'json' | 'html';
 
 /**
  * Produce and download `conversation` in `format`, entirely locally. `now` is passed
@@ -25,14 +27,37 @@ export async function saveConversation(
   now: Date,
   doc: Document = document,
 ): Promise<void> {
-  if (format === 'md') {
-    downloadTextFile(doc, markdownFilename(conversation, now), toMarkdown(conversation), 'text/markdown');
+  if (format === 'pdf') {
+    // pdfmake + the embedded CJK font are heavy; load them only on demand so an
+    // ordinary page visit never pays for them (@crxjs code-splits this import).
+    const { downloadPdf } = await import('./pdf-download');
+    await downloadPdf(conversation, now);
     return;
   }
-  // pdfmake + the embedded CJK font are heavy; load them only on demand so an
-  // ordinary page visit never pays for them (@crxjs code-splits this import).
-  const { downloadPdf } = await import('./pdf-download');
-  await downloadPdf(conversation, now);
+  // The text formats are lightweight (no heavy deps), so render + download eagerly.
+  const { filename, text, mimeType } = renderTextExport(conversation, format, now);
+  downloadTextFile(doc, filename, text, mimeType);
+}
+
+/**
+ * Render a text-based export (everything except PDF) into its filename, body, and
+ * MIME type. Exhaustive over the text `ExportFormat`s — a new format is a compile
+ * error here (`format` narrows to `never` in the fallthrough) rather than a silent
+ * miss.
+ */
+function renderTextExport(
+  conversation: Conversation,
+  format: Exclude<ExportFormat, 'pdf'>,
+  now: Date,
+): { filename: string; text: string; mimeType: string } {
+  switch (format) {
+    case 'md':
+      return { filename: markdownFilename(conversation, now), text: toMarkdown(conversation), mimeType: 'text/markdown' };
+    case 'json':
+      return { filename: jsonFilename(conversation, now), text: toJson(conversation), mimeType: 'application/json' };
+    case 'html':
+      return { filename: htmlFilename(conversation, now), text: toHtml(conversation), mimeType: 'text/html' };
+  }
 }
 
 /**
