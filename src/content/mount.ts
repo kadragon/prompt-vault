@@ -150,7 +150,9 @@ export function createButtons(
   container.id = CONTAINER_ID;
   container.setAttribute(PLACEMENT_ATTR, placement);
   if (placement === 'native') {
-    container.className = 'flex items-center';
+    // `gap-0.5` keeps the two icon buttons from abutting so their hover highlights
+    // don't touch — matching the spacing of ChatGPT's own header controls.
+    container.className = 'flex items-center gap-0.5';
   } else {
     Object.assign(container.style, {
       position: 'fixed',
@@ -249,6 +251,8 @@ export interface SyncOptions {
  *   so the feature still works and never covers Share.
  * - A fallback overlay already mounted but the header bar has since appeared → swap
  *   the overlay out for the native placement so it blends after a late header render.
+ * - Native buttons already mounted → re-assert their position, since the Share anchor
+ *   may have rendered (or moved) after our first mount in a staged SPA header render.
  * - Otherwise already correctly placed → nothing.
  *
  * Re-injection: when ChatGPT's SPA re-renders the header it drops our node, so the
@@ -262,25 +266,43 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
 
   const adapter = pickAdapter(href);
   const mount = adapter?.toolbarMount?.(doc) ?? null;
+  const anchor = mount ? adapter?.toolbarAnchor?.(mount) ?? null : null;
 
   const existing = doc.getElementById(CONTAINER_ID);
   if (existing) {
     const isOverlay = existing.getAttribute(PLACEMENT_ATTR) === 'overlay';
-    // Keep it unless we can upgrade a fallback overlay to the now-available native bar.
-    if (!(isOverlay && mount)) return;
-    existing.remove();
+    if (isOverlay && mount) {
+      // Upgrade the fallback overlay to the now-available native bar.
+      existing.remove();
+    } else {
+      // Already natively placed: re-assert the position in case the Share anchor
+      // rendered after our first mount (staged SPA header render), so the buttons
+      // don't get stranded away from Share's left. No-op when already correct.
+      if (!isOverlay && mount) positionBeforeAnchor(existing, mount, anchor);
+      return;
+    }
   }
 
   if (mount) {
-    const buttons = createButtons(doc, 'native', adapter?.toolbarButtonClass);
-    // Sit immediately to the left of the native Share button (beside it, not
-    // replacing it). Insert ahead of whichever direct child of the bar contains the
-    // anchor; fall back to the front of the bar if Share is absent.
-    const beforeChild = directChildContaining(mount, adapter?.toolbarAnchor?.(mount) ?? null);
-    if (beforeChild) mount.insertBefore(buttons, beforeChild);
-    else mount.prepend(buttons);
+    positionBeforeAnchor(createButtons(doc, 'native', adapter?.toolbarButtonClass), mount, anchor);
   } else if (allowOverlayFallback) {
     doc.body.appendChild(createButtons(doc, 'overlay'));
+  }
+}
+
+/**
+ * Place `container` immediately to the left of the Share `anchor` inside `mount`
+ * (before whichever direct child of the bar contains the anchor), or at the front of
+ * the bar when the anchor is absent. Idempotent: moves the node only when it is not
+ * already in the right spot, so it doubles as both the initial insert and a
+ * re-assert on later ticks.
+ */
+function positionBeforeAnchor(container: HTMLElement, mount: Element, anchor: Element | null): void {
+  const before = directChildContaining(mount, anchor);
+  if (before) {
+    if (container.nextElementSibling !== before) mount.insertBefore(container, before);
+  } else if (mount.firstElementChild !== container) {
+    mount.prepend(container);
   }
 }
 

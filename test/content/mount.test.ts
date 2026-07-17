@@ -56,6 +56,25 @@ describe('syncButtons', () => {
     expect(container?.previousElementSibling).toBeNull(); // first child of the bar
   });
 
+  it('repositions to the left of Share when the anchor renders after the first mount', () => {
+    // Staged SPA render: the header bar exists but Share has not rendered yet.
+    const window = new Window();
+    window.document.write(`<body><header><div id="${HEADER_ID}"></div></header></body>`);
+    const doc = window.document as unknown as Document;
+    syncButtons(doc, CONV_URL); // mounts at the front (no anchor yet)
+
+    // Share renders late, inserted before our already-mounted container.
+    const header = doc.getElementById(HEADER_ID)!;
+    const share = doc.createElement('button');
+    share.setAttribute('data-testid', 'share-chat-button');
+    header.prepend(share);
+    expect(doc.getElementById(CONTAINER_ID)?.previousElementSibling).toBe(share); // now wrongly right of Share
+
+    syncButtons(doc, CONV_URL); // re-assert: must move left of Share
+    expect(doc.getElementById(CONTAINER_ID)?.nextElementSibling).toBe(share);
+    expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1); // moved, not duplicated
+  });
+
   it('is idempotent — repeated calls do not duplicate the buttons', () => {
     const doc = docWithHeader();
     syncButtons(doc, CONV_URL);
