@@ -35,10 +35,9 @@ export const selectors = {
   headerActions: '#conversation-header-actions',
 
   /**
-   * ChatGPT's native Share button inside the header action bar. The export buttons
-   * take over this slot, so it is hidden while they are mounted (the injected
-   * download controls make the native Share redundant here). Matched by its stable
-   * `data-testid`; verified against the captured fixtures (2026-07-17).
+   * ChatGPT's native Share button inside the header action bar. It is the anchor the
+   * export buttons are placed to the left of (beside it, not replacing it). Matched
+   * by its stable `data-testid`; verified against the captured fixtures (2026-07-17).
    */
   shareButton: '[data-testid="share-chat-button"]',
 } as const;

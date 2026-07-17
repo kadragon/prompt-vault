@@ -38,12 +38,12 @@ export interface ConversationAdapter {
   readonly toolbarButtonClass?: string;
 
   /**
-   * CSS selectors for native header controls the export buttons supersede and that
-   * should be hidden while they are mounted (e.g. the provider's own Share button,
-   * made redundant by the injected download controls). The content layer hides them
-   * with a single injected stylesheet, so hiding survives the SPA re-rendering the
-   * header. Provider-owned so the shared content layer carries no site-specific
-   * selectors. Optional — omit to hide nothing.
+   * A native control inside `toolbarMount` that the export buttons should be inserted
+   * immediately before (e.g. the provider's Share button), so they sit to its left
+   * without replacing it. The content layer inserts ahead of whichever direct child
+   * of the mount contains this element, falling back to the front of the bar when it
+   * is absent. Provider-owned so the shared content layer carries no site-specific
+   * selector. Optional — omit to always mount at the front of the bar.
    */
-  readonly toolbarHiddenSelectors?: readonly string[];
+  toolbarAnchor?(root?: ParentNode): Element | null;
 }

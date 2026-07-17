@@ -31,12 +31,6 @@ const FORMATS: ReadonlyArray<FormatSpec> = [
   { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL, icon: pdfIcon },
 ];
 
-// Stylesheet injected once to hide native header controls the export buttons
-// supersede (the adapter's `toolbarHiddenSelectors`). A stylesheet — not inline
-// `display:none` — so the rule keeps applying to freshly-rendered elements when
-// ChatGPT's SPA re-renders the header, with no JS re-hiding needed.
-export const HIDDEN_STYLE_ID = 'prompt-vault-hidden-styles';
-
 // Placement is stamped on the container so `syncButtons` can tell a native mount
 // from a fallback overlay and upgrade the latter once the header bar appears.
 const PLACEMENT_ATTR = 'data-prompt-vault-placement';
@@ -230,37 +224,9 @@ function downloadTextFile(filename: string, text: string, mimeType: string): voi
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-/**
- * Inject (or update) the stylesheet that hides native controls the export buttons
- * supersede. Idempotent: reuses the single `<style>` element and only rewrites it
- * when the selector set changes. With no selectors, any existing rule is removed.
- */
-function applyHiddenStyles(doc: Document, selectors: readonly string[] | undefined): void {
-  const existing = doc.getElementById(HIDDEN_STYLE_ID);
-  if (!selectors || selectors.length === 0) {
-    existing?.remove();
-    return;
-  }
-  const css = `${selectors.join(',')}{display:none!important}`;
-  if (existing) {
-    if (existing.textContent !== css) existing.textContent = css;
-    return;
-  }
-  const style = doc.createElement('style');
-  style.id = HIDDEN_STYLE_ID;
-  style.textContent = css;
-  (doc.head ?? doc.documentElement).appendChild(style);
-}
-
-/** Restore any natively-hidden controls by dropping the injected stylesheet. */
-function removeHiddenStyles(doc: Document): void {
-  doc.getElementById(HIDDEN_STYLE_ID)?.remove();
-}
-
-/** Remove the buttons if mounted, and un-hide any controls they had superseded. */
+/** Remove the buttons if mounted. */
 export function removeButtons(doc: Document): void {
   doc.getElementById(CONTAINER_ID)?.remove();
-  removeHiddenStyles(doc);
 }
 
 export interface SyncOptions {
@@ -306,13 +272,27 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
   }
 
   if (mount) {
-    mount.prepend(createButtons(doc, 'native', adapter?.toolbarButtonClass));
-    // Hide the native controls the icon buttons take over (e.g. Share). Persistent
-    // stylesheet, so it keeps applying across SPA header re-renders.
-    applyHiddenStyles(doc, adapter?.toolbarHiddenSelectors);
+    const buttons = createButtons(doc, 'native', adapter?.toolbarButtonClass);
+    // Sit immediately to the left of the native Share button (beside it, not
+    // replacing it). Insert ahead of whichever direct child of the bar contains the
+    // anchor; fall back to the front of the bar if Share is absent.
+    const beforeChild = directChildContaining(mount, adapter?.toolbarAnchor?.(mount) ?? null);
+    if (beforeChild) mount.insertBefore(buttons, beforeChild);
+    else mount.prepend(buttons);
   } else if (allowOverlayFallback) {
-    // No native header to blend into — the overlay sits apart and hides nothing.
-    removeHiddenStyles(doc);
     doc.body.appendChild(createButtons(doc, 'overlay'));
   }
+}
+
+/**
+ * The direct child of `parent` that is (or contains) `node`, or null if `node` is
+ * absent or not within `parent`. Lets us insert before a control even when it is
+ * nested a few levels below the header bar.
+ */
+function directChildContaining(parent: Element, node: Element | null): Element | null {
+  let current: Element | null = node;
+  while (current && current.parentElement !== parent) {
+    current = current.parentElement;
+  }
+  return current;
 }

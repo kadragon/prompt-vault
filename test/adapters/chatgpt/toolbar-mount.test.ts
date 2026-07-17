@@ -36,3 +36,15 @@ describe('chatgptAdapter.toolbarMount', () => {
     expect(mount).toBeNull();
   });
 });
+
+describe('chatgptAdapter.toolbarAnchor', () => {
+  it('resolves to the native Share button (the export buttons mount to its left)', () => {
+    const anchor = chatgptAdapter.toolbarAnchor?.(loadFixture('short.html')) ?? null;
+    expect(anchor?.getAttribute('data-testid')).toBe('share-chat-button');
+  });
+
+  it('returns null when the Share button is absent', () => {
+    const anchor = chatgptAdapter.toolbarAnchor?.(bareDoc('<main>no header here</main>')) ?? null;
+    expect(anchor).toBeNull();
+  });
+});

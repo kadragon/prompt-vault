@@ -39,9 +39,7 @@ export const chatgptAdapter: ConversationAdapter = {
   extract,
   toolbarMount,
   toolbarButtonClass: TOOLBAR_BUTTON_CLASS,
-  // The icon buttons take over the Share slot, so hide ChatGPT's native Share button
-  // while they are mounted (see docs — the export controls make it redundant here).
-  toolbarHiddenSelectors: [selectors.shareButton],
+  toolbarAnchor,
 };
 
 /**
@@ -53,6 +51,16 @@ export const chatgptAdapter: ConversationAdapter = {
  */
 function toolbarMount(root: ParentNode = document): Element | null {
   return root.querySelector(selectors.headerActions);
+}
+
+/**
+ * The native Share button — the export buttons are placed immediately to its left,
+ * beside it rather than replacing it. Null when Share has not rendered; the content
+ * layer then mounts at the front of the header bar. DOM knowledge stays in the
+ * adapter (docs/conventions.md).
+ */
+function toolbarAnchor(root: ParentNode = document): Element | null {
+  return root.querySelector(selectors.shareButton);
 }
 
 async function extract(root: ParentNode = document): Promise<Conversation> {

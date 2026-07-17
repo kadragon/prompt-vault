@@ -34,19 +34,26 @@ describe('syncButtons', () => {
     expect(container?.querySelector('button')?.className).toContain('rounded-lg');
   });
 
-  it('hides the native Share button while mounted and restores it on leave', () => {
+  it('places the buttons immediately to the left of the native Share button, leaving it in place', () => {
     const doc = docWithHeader();
     syncButtons(doc, CONV_URL);
 
-    const style = doc.getElementById('prompt-vault-hidden-styles');
-    expect(style).not.toBeNull();
-    expect(style?.textContent).toContain('share-chat-button');
-    // The Share element itself stays in the DOM (hidden via CSS), so ChatGPT's own
-    // re-renders keep working; our stylesheet keeps it invisible.
-    expect(doc.querySelector('[data-testid="share-chat-button"]')).not.toBeNull();
+    const share = doc.querySelector('[data-testid="share-chat-button"]');
+    const container = doc.getElementById(CONTAINER_ID);
+    // Share is untouched (not replaced or hidden), and our container sits right before it.
+    expect(share).not.toBeNull();
+    expect(container?.nextElementSibling).toBe(share);
+  });
 
-    syncButtons(doc, NON_CONV_URL);
-    expect(doc.getElementById('prompt-vault-hidden-styles')).toBeNull();
+  it('mounts at the front of the bar when the Share anchor is absent', () => {
+    const window = new Window();
+    window.document.write(`<body><header><div id="${HEADER_ID}"><button id="other"></button></div></header></body>`);
+    const doc = window.document as unknown as Document;
+    syncButtons(doc, CONV_URL);
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container?.parentElement?.id).toBe(HEADER_ID);
+    expect(container?.previousElementSibling).toBeNull(); // first child of the bar
   });
 
   it('is idempotent — repeated calls do not duplicate the buttons', () => {
