@@ -31,7 +31,6 @@ marker is removed by hand once the blocking ticket lands.
 > regex tripwire, and catch extension-specific and type-level defects in CI.
 
 - [ ] [HARNESS] Add `addons-linter` (web-ext lint) as a CI step — validates the MV3 manifest and flags extension-unsafe patterns (`eval`, remote scripts, over-broad permissions).
-- [ ] [HARNESS] Upgrade eslint from `recommended` to `recommendedTypeChecked` (type-aware lint: floating promises, unsafe `any`); wire `parserOptions.project` and confirm `npm run lint` stays green.
 
 ## Next (roadmap — not v1)
 
