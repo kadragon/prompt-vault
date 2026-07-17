@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { Window } from 'happy-dom';
-import { CONTAINER_ID, createButtons, syncButtons } from '../../src/content/mount';
+import { CONTAINER_ID, createButtons, setToolbarSettings, syncButtons } from '../../src/content/mount';
+import { DEFAULT_SETTINGS } from '../../src/settings/store';
+
+// setToolbarSettings mutates module state; reset to the all-on default after every test so
+// the filtering cases below never leak into the syncButtons tests that assume a full toolbar.
+afterEach(() => setToolbarSettings(DEFAULT_SETTINGS));
 
 const CONV_URL = 'https://chatgpt.com/c/abc-123';
 const NON_CONV_URL = 'https://chatgpt.com/';
@@ -175,5 +180,38 @@ describe('createButtons', () => {
     expect(buttons[2].getAttribute('title')).toBe('Download conversation as JSON');
     expect(buttons[3].getAttribute('title')).toBe('Download conversation as HTML');
     expect(buttons[4].getAttribute('title')).toBe('Export multiple conversations');
+  });
+
+  it('renders only the enabled format buttons plus the bulk button', () => {
+    setToolbarSettings({ formats: { md: true, pdf: false, json: false, html: false }, bulk: true });
+    const buttons = createButtons(bareDoc(), 'native', 'icon-btn').querySelectorAll('button');
+
+    // Just the Markdown download + the bulk action.
+    expect(buttons.length).toBe(2);
+    expect(buttons[0].getAttribute('aria-label')).toBe('Download conversation as Markdown');
+    expect(buttons[1].getAttribute('aria-label')).toBe('Export multiple conversations');
+  });
+
+  it('omits the bulk button when the bulk icon is disabled', () => {
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false });
+    const buttons = createButtons(bareDoc(), 'native', 'icon-btn').querySelectorAll('button');
+
+    // All four format downloads, no bulk.
+    expect(buttons.length).toBe(4);
+    expect(Array.from(buttons).some((b) => b.getAttribute('aria-label') === 'Export multiple conversations')).toBe(
+      false,
+    );
+  });
+});
+
+describe('setToolbarSettings', () => {
+  it('reports whether the value actually changed so the caller can skip a needless re-mount', () => {
+    // Baseline is the all-on default (restored by afterEach). Re-applying it is a no-op.
+    expect(setToolbarSettings(DEFAULT_SETTINGS)).toBe(false);
+
+    const custom = { formats: { md: true, pdf: false, json: true, html: true }, bulk: true };
+    expect(setToolbarSettings(custom)).toBe(true); // differs from default → changed
+    expect(setToolbarSettings({ formats: { ...custom.formats }, bulk: custom.bulk })).toBe(false); // equal value → no change
+    expect(setToolbarSettings({ ...custom, bulk: false })).toBe(true); // bulk flip → changed
   });
 });

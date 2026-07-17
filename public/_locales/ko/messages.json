@@ -123,5 +123,33 @@
         "content": "$1"
       }
     }
+  },
+  "optionsTitle": {
+    "message": "prompt-vault 설정",
+    "description": "Browser-tab title of the options page."
+  },
+  "optionsHeading": {
+    "message": "툴바 아이콘",
+    "description": "Visible heading of the options page."
+  },
+  "optionsFormatsLabel": {
+    "message": "표시할 내보내기 형식 아이콘",
+    "description": "Label above the format checklist on the options page."
+  },
+  "optionsBulkLabel": {
+    "message": "일괄 내보내기 아이콘 표시",
+    "description": "Label for the bulk-icon toggle on the options page."
+  },
+  "optionsSavedNote": {
+    "message": "저장됨.",
+    "description": "Transient confirmation shown after a setting change is saved."
+  },
+  "optionsSaveFailedNote": {
+    "message": "저장하지 못했습니다. 다시 시도해 주세요.",
+    "description": "Shown when persisting a setting change to storage fails."
+  },
+  "optionsMinFormatNote": {
+    "message": "최소 한 개의 내보내기 형식은 켜져 있어야 합니다.",
+    "description": "Shown when the user tries to uncheck the last remaining format."
   }
 }

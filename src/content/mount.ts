@@ -20,6 +20,30 @@ import {
 } from '../strings';
 import { assertConversationNonEmpty } from './guard';
 import { isConversationPage } from './page';
+import { DEFAULT_SETTINGS, FORMAT_KEYS, type ToolbarSettings } from '../settings/store';
+
+// Which toolbar controls to render. Defaults to everything-on so the toolbar matches the
+// pre-settings behavior until the async load completes (src/content/index.ts swaps in the
+// user's stored value and re-mounts). Kept as module state — not a `createButtons` argument
+// — because `syncButtons` is called from the navigation poll with no place to thread it.
+let cachedSettings: ToolbarSettings = DEFAULT_SETTINGS;
+
+/** Value-equality on the toolbar settings, so a no-op update can skip a needless re-mount. */
+function settingsEqual(a: ToolbarSettings, b: ToolbarSettings): boolean {
+  return a.bulk === b.bulk && FORMAT_KEYS.every((key) => a.formats[key] === b.formats[key]);
+}
+
+/**
+ * Update the settings the toolbar renders from. Returns whether the value actually changed,
+ * so the caller can skip the removeButtons+re-mount churn when it didn't — which avoids a
+ * visible flash of the default buttons on load for the common case where the stored settings
+ * equal the all-on default. Callers re-mount to apply only on a real change.
+ */
+export function setToolbarSettings(settings: ToolbarSettings): boolean {
+  const changed = !settingsEqual(cachedSettings, settings);
+  cachedSettings = settings;
+  return changed;
+}
 
 // Stable id on the button container so it is mounted at most once and can be
 // located for removal / re-injection.
@@ -207,19 +231,25 @@ export function createButtons(
       gap: '6px',
     });
   }
-  for (const spec of FORMATS) {
+  // Render only the formats the user kept enabled (all of them by default). At least one
+  // is always enabled — the store's sanitize() guarantees it — so this never yields an
+  // export-less toolbar.
+  for (const spec of FORMATS.filter((spec) => cachedSettings.formats[spec.format])) {
     const buttonSpec: ButtonSpec = { ...spec, onClick: () => void runExport(container, spec.format) };
     container.appendChild(createButton(doc, placement, buttonSpec, buttonClass));
   }
   // The bulk action sits after the per-format buttons: it opens a selection panel
   // instead of downloading the current conversation, so it carries its own handler.
-  const bulkSpec: ButtonSpec = {
-    label: DOWNLOAD_BULK_LABEL,
-    ariaLabel: DOWNLOAD_BULK_ARIA_LABEL,
-    icon: bulkIcon,
-    onClick: () => openBulkExport(doc),
-  };
-  container.appendChild(createButton(doc, placement, bulkSpec, buttonClass));
+  // Shown only when the user keeps the bulk icon enabled.
+  if (cachedSettings.bulk) {
+    const bulkSpec: ButtonSpec = {
+      label: DOWNLOAD_BULK_LABEL,
+      ariaLabel: DOWNLOAD_BULK_ARIA_LABEL,
+      icon: bulkIcon,
+      onClick: () => openBulkExport(doc),
+    };
+    container.appendChild(createButton(doc, placement, bulkSpec, buttonClass));
+  }
   return container;
 }
 

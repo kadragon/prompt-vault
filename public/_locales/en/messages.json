@@ -123,5 +123,33 @@
         "content": "$1"
       }
     }
+  },
+  "optionsTitle": {
+    "message": "prompt-vault settings",
+    "description": "Browser-tab title of the options page."
+  },
+  "optionsHeading": {
+    "message": "Toolbar icons",
+    "description": "Visible heading of the options page."
+  },
+  "optionsFormatsLabel": {
+    "message": "Show these export format icons",
+    "description": "Label above the format checklist on the options page."
+  },
+  "optionsBulkLabel": {
+    "message": "Show the bulk-export icon",
+    "description": "Label for the bulk-icon toggle on the options page."
+  },
+  "optionsSavedNote": {
+    "message": "Saved.",
+    "description": "Transient confirmation shown after a setting change is saved."
+  },
+  "optionsSaveFailedNote": {
+    "message": "Could not save. Please try again.",
+    "description": "Shown when persisting a setting change to storage fails."
+  },
+  "optionsMinFormatNote": {
+    "message": "At least one export format must stay enabled.",
+    "description": "Shown when the user tries to uncheck the last remaining format."
   }
 }
