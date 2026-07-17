@@ -1,4 +1,11 @@
-import { DOWNLOAD_BUTTON_LABEL } from '../strings';
+import { pickAdapter } from '../adapters';
+import { ExtractionError } from '../core/errors';
+import { markdownFilename, toMarkdown } from '../export/markdown';
+import {
+  DOWNLOAD_BUTTON_LABEL,
+  EXPORT_FAILED_MESSAGE,
+  EXPORT_NO_ADAPTER_MESSAGE,
+} from '../strings';
 import { isConversationPage } from './page';
 
 // Stable id so the button is mounted at most once and can be located for removal.
@@ -27,11 +34,58 @@ function createButton(): HTMLButtonElement {
     cursor: 'pointer',
     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
   });
-  // Stub: the real Markdown/PDF export is wired up in later tickets.
   button.addEventListener('click', () => {
-    console.info('[prompt-vault] Download stub — export not yet implemented.');
+    void runExport(button);
   });
   return button;
+}
+
+/**
+ * Extract the current conversation and download it as Markdown, entirely
+ * locally. Fail-loud (AGENTS.md #4): any extraction/export problem surfaces a
+ * visible alert and no file is written — never a silent or empty download.
+ * Disables the button while running so a second click cannot start a concurrent
+ * export.
+ */
+async function runExport(button: HTMLButtonElement): Promise<void> {
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const adapter = pickAdapter(location.href);
+    if (!adapter) {
+      alert(EXPORT_NO_ADAPTER_MESSAGE);
+      return;
+    }
+    const conversation = await adapter.extract();
+    const markdown = toMarkdown(conversation);
+    const filename = markdownFilename(conversation, new Date());
+    downloadTextFile(filename, markdown, 'text/markdown');
+  } catch (error) {
+    // ExtractionError carries a user-actionable message; anything else is
+    // unexpected and gets the generic fallback.
+    alert(error instanceof ExtractionError ? error.message : EXPORT_FAILED_MESSAGE);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/**
+ * Trigger a local file download from an in-memory string via an object URL and a
+ * transient `<a download>`. No network request (Golden Principle #1). The object
+ * URL is revoked afterward so the blob is not leaked.
+ */
+function downloadTextFile(filename: string, text: string, mimeType: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: mimeType }));
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 /**

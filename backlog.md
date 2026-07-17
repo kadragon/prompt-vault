@@ -4,13 +4,6 @@ Design: `docs/design/chatgpt-conversation-backup.md`. v1 tickets below are verti
 dependency order; blocked items stay invisible to `next-tasks` until their `*(blocked by: ...)*`
 marker is removed by hand once the blocking ticket lands.
 
-## 4 — Markdown export
-
-> Goal: first real user value — download the current conversation as Markdown.
-> Done-when: `src/export/markdown.ts` is a pure Conversation→string preserving role/order/fenced code blocks/lists/bold-italic/links (images as links, tables best-effort), deterministic; the button's Markdown action saves `chatgpt-{safe-title}-{yyyymmdd}.md` locally.
-
-- [ ] [FEAT] Markdown exporter + wire button Markdown action to local download
-
 ## 5 — PDF export
 
 > Goal: download the current conversation as a selectable-text PDF, with no print dialog (bulk-ready).
