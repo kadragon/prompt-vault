@@ -71,21 +71,20 @@ async function runExport(button: HTMLButtonElement): Promise<void> {
 
 /**
  * Trigger a local file download from an in-memory string via an object URL and a
- * transient `<a download>`. No network request (Golden Principle #1). The object
- * URL is revoked afterward so the blob is not leaked.
+ * transient `<a download>`. No network request (Golden Principle #1). Revocation
+ * is deferred to a later task: the browser dispatches the download asynchronously
+ * after `click()`, so revoking the object URL in the same tick can cancel an
+ * in-flight or large download.
  */
 function downloadTextFile(filename: string, text: string, mimeType: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: mimeType }));
-  try {
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /**
