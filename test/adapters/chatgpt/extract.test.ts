@@ -55,4 +55,21 @@ describe('chatgptAdapter.extract', () => {
   it('fails loud when no messages are present', async () => {
     await expect(extractFixture('empty.html')).rejects.toBeInstanceOf(ExtractionError);
   });
+
+  it('fails loud when a role-bearing turn is empty/malformed (dropped)', async () => {
+    // One good user turn plus an assistant turn whose content is empty — extraction
+    // must not silently return just the user turn.
+    const window = new Window();
+    window.document.write(
+      '<!DOCTYPE html><html><head><title>T</title></head><body>' +
+        '<div data-message-author-role="user" data-message-id="u1">' +
+        '<div class="whitespace-pre-wrap">hi</div></div>' +
+        '<div data-message-author-role="assistant" data-message-id="a1">' +
+        '<div class="markdown"></div></div>' +
+        '</body></html>',
+    );
+    await expect(
+      chatgptAdapter.extract(window.document as unknown as Document),
+    ).rejects.toBeInstanceOf(ExtractionError);
+  });
 });

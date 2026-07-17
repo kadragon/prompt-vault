@@ -18,8 +18,10 @@ export const selectors = {
 
   /**
    * Scroll viewport that virtualizes the message list. ChatGPT lazy-renders older
-   * turns as you scroll up, so auto-scroll targets this element. Best-effort: if
+   * turns as you scroll up, so auto-scroll targets this element. It is an ancestor
+   * of `<main>` (verified against the captured fixtures — the messages all live
+   * inside it), marked with a stable `data-scroll-root` attribute. Best-effort: if
    * absent, extraction falls back to whatever is already in the DOM.
    */
-  scrollContainer: 'main [class*="overflow-y"]',
+  scrollContainer: '[data-scroll-root]',
 } as const;

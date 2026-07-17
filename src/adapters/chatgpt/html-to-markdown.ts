@@ -84,9 +84,10 @@ function serializeCodeBlock(pre: Element): string {
   const code = pre.querySelector('code');
   const body = (code?.textContent ?? pre.textContent ?? '').replace(/\n+$/, '');
   const lang = codeLanguage(pre);
-  // Use a fence long enough to not collide with backticks inside the code.
-  const longestRun = Math.max(0, ...(body.match(/`+/g) ?? []).map((m) => m.length));
-  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  // Use a fence long enough to not collide with backticks inside the code. Reduce
+  // rather than spread: a huge code block can contain tens of thousands of backtick
+  // runs, and `Math.max(...arr)` would overflow the call-stack arg limit.
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun(body) + 1));
   return `${fence}${lang}\n${body}\n${fence}`;
 }
 
@@ -157,18 +158,24 @@ function serializeInlineElement(el: Element): string {
 // and padding with a space when the content starts/ends with a backtick, per
 // CommonMark — so code containing backticks stays valid Markdown.
 function inlineCode(text: string): string {
-  const longestRun = Math.max(0, ...(text.match(/`+/g) ?? []).map((m) => m.length));
+  const longestRun = longestBacktickRun(text);
   const fence = '`'.repeat(longestRun + 1);
   const pad = longestRun > 0 ? ' ' : '';
   return `${fence}${pad}${text}${pad}${fence}`;
 }
 
+// Longest run of consecutive backticks in `text`. Uses reduce (not a spread into
+// Math.max) so arbitrarily large inputs can't blow the call-stack argument limit.
+function longestBacktickRun(text: string): number {
+  return (text.match(/`+/g) ?? []).reduce((max, run) => Math.max(max, run.length), 0);
+}
+
+// True if the element contains any block-level element at any depth — not just as
+// a direct child. ChatGPT often wraps a paragraph or list in intermediate <div>s,
+// so a direct-children-only check would miss the block structure and flatten it
+// into one inline run.
 function hasBlockChild(el: Element): boolean {
-  return Array.from(el.children).some((c) =>
-    ['p', 'ul', 'ol', 'pre', 'blockquote', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(
-      c.tagName.toLowerCase(),
-    ),
-  );
+  return el.querySelector('p, ul, ol, pre, blockquote, hr, h1, h2, h3, h4, h5, h6') !== null;
 }
 
 // Collapse runs of insignificant whitespace (including the newlines the pretty-

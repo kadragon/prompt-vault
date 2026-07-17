@@ -8,11 +8,21 @@ import { selectors } from './selectors';
 const PROVIDER = 'chatgpt';
 
 // Auto-scroll tuning. ChatGPT virtualizes the message list and lazy-renders older
-// turns as you scroll toward the top, so we scroll up repeatedly until the set of
-// rendered messages stops growing (stable) — or we hit the step cap (fail-loud).
+// turns as you scroll toward the top, so we scroll up repeatedly until the rendered
+// message count stops growing (stable). Completion is judged purely by count
+// stability — never by scrollTop, which the user or the browser can leave non-zero.
+// The absolute cap is only an anti-runaway backstop: as long as new turns keep
+// appearing we keep going, so a genuinely long conversation is not cut short.
 const SCROLL_STEP_DELAY_MS = 150;
-const SCROLL_MAX_STEPS = 60;
 const SCROLL_STABLE_ROUNDS = 3;
+const SCROLL_ABSOLUTE_MAX_STEPS = 400;
+
+/** Overridable knobs so the loop can be unit-tested without real timers/DOM. */
+export interface AutoScrollOptions {
+  stepDelayMs?: number;
+  stableRounds?: number;
+  maxSteps?: number;
+}
 
 export const chatgptAdapter: ConversationAdapter = {
   provider: PROVIDER,
@@ -27,13 +37,24 @@ async function extract(root: ParentNode = document): Promise<Conversation> {
     await autoScrollToLoad(root as Document);
   }
 
-  const messageEls = Array.from(root.querySelectorAll(selectors.message));
-  const messages = messageEls.map(toMessage).filter((m): m is Message => m !== null);
+  // Only nodes carrying a recognized author role are real conversation turns.
+  const roleNodes = Array.from(root.querySelectorAll(selectors.message)).filter(hasKnownRole);
+  const messages = roleNodes.map(toMessage).filter((m): m is Message => m !== null);
 
   if (messages.length === 0) {
     throw new ExtractionError(
       'No messages found on the page. The conversation may not have loaded, or ChatGPT’s ' +
         'markup changed — extraction selectors need updating.',
+    );
+  }
+
+  // A turn was present in the DOM but produced no content (empty/malformed, e.g. a
+  // response still streaming). Fail loud rather than export a conversation that is
+  // silently missing turns (AGENTS.md #4).
+  if (messages.length < roleNodes.length) {
+    throw new ExtractionError(
+      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
+        'still be loading — wait for it to finish, then try again.',
     );
   }
 
@@ -45,11 +66,14 @@ async function extract(root: ParentNode = document): Promise<Conversation> {
   };
 }
 
+function hasKnownRole(el: Element): boolean {
+  const role = el.getAttribute(selectors.authorRoleAttr);
+  return role === 'user' || role === 'assistant' || role === 'system';
+}
+
 /** Map one message DOM node to a normalized Message, or null if it has no content. */
 function toMessage(el: Element): Message | null {
-  const role = el.getAttribute(selectors.authorRoleAttr) as Role | null;
-  if (role !== 'user' && role !== 'assistant' && role !== 'system') return null;
-
+  const role = el.getAttribute(selectors.authorRoleAttr) as Role;
   const content = role === 'assistant' ? assistantContent(el) : userContent(el);
   if (!content.trim()) return null;
 
@@ -92,38 +116,43 @@ function ownerDocument(root: ParentNode): Document | null {
 }
 
 /**
- * Scroll the message viewport to the top in bounded steps to force ChatGPT to
- * render lazily-loaded older turns, stopping once the rendered-message count is
- * stable across a few rounds. A scroll that never stabilizes within the step cap
- * is treated as a fail-loud condition (AGENTS.md #4) rather than a silent partial.
+ * Scroll the message viewport to the top repeatedly to force ChatGPT to render
+ * lazily-loaded older turns, stopping once the rendered-message count holds steady
+ * for a few rounds (i.e. no more older turns appear). Progress resets the stall
+ * counter, so an arbitrarily long conversation keeps loading as long as new turns
+ * keep arriving. Only the absolute step cap — reached solely if turns never stop
+ * appearing — is a fail-loud condition (AGENTS.md #4); completion is judged by
+ * count stability alone, never by `scrollTop` (which the user or browser may leave
+ * non-zero), so a fully-loaded conversation never falsely fails.
  */
-async function autoScrollToLoad(doc: Document): Promise<void> {
+export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions = {}): Promise<void> {
+  const {
+    stepDelayMs = SCROLL_STEP_DELAY_MS,
+    stableRounds = SCROLL_STABLE_ROUNDS,
+    maxSteps = SCROLL_ABSOLUTE_MAX_STEPS,
+  } = options;
+
   const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
   if (!container) return; // Best-effort: extract whatever is already present.
 
   let lastCount = -1;
-  let stableRounds = 0;
-  for (let step = 0; step < SCROLL_MAX_STEPS; step++) {
+  let stalls = 0;
+  for (let step = 0; step < maxSteps; step++) {
     const count = doc.querySelectorAll(selectors.message).length;
-    const atTop = container.scrollTop === 0;
-    if (count === lastCount) {
-      stableRounds++;
-      // Fully loaded: the rendered-message count held steady while pinned at the
-      // top, so there are no more lazy older turns to pull in.
-      if (stableRounds >= SCROLL_STABLE_ROUNDS && atTop) return;
+    if (count > lastCount) {
+      stalls = 0; // Progress: more older turns rendered — keep going.
     } else {
-      stableRounds = 0;
+      stalls++;
+      if (stalls >= stableRounds) return; // No new turns for a while → fully loaded.
     }
     lastCount = count;
     container.scrollTop = 0;
-    await delay(SCROLL_STEP_DELAY_MS);
+    await delay(stepDelayMs);
   }
 
-  // Hit the step cap without the count ever stabilizing at the top: older turns
-  // are still loading, so we cannot guarantee the full history. Fail loud rather
-  // than return a silent partial (AGENTS.md #4). Note scrollTop is not a reliable
-  // signal here — it is forced to 0 every iteration — so completion is decided by
-  // count-stability above, and reaching this line means we never got there.
+  // Reached the absolute cap while turns were still appearing every few rounds: the
+  // conversation is longer than we can safely load in one pass. Fail loud rather
+  // than return a silent partial.
   throw new ExtractionError(
     'Timed out loading the full conversation while scrolling. The conversation may be ' +
       'unusually long; try again, or report if this persists.',
