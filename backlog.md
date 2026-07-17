@@ -1,20 +1,52 @@
 # Backlog
 
-High-level roadmap. Detailed sprint-sized tickets are generated from the approved design doc via
-`to-tickets`; refine these into concrete `- [ ]` items in dependency order before implementing.
+Design: `docs/design/chatgpt-conversation-backup.md`. v1 tickets below are vertical slices in
+dependency order; blocked items stay invisible to `next-tasks` until their `*(blocked by: ...)*`
+marker is removed by hand once the blocking ticket lands.
 
-## Now
+## 1 — Scaffold & MV3 skeleton
 
-- [ ] ChatGPT conversation backup — inject a top-right Download button; export current conversation
-      as Markdown and PDF (first vertical slice)
+> Goal: a walking skeleton — the extension loads and shows a Download button on a ChatGPT conversation page.
+> Done-when: load-unpacked shows a non-intrusive Download button top-right only on `/c/<id>` pages; `npm run build`/`lint`/`test` all run.
 
-## Next
+- [ ] [FEAT] Vite+TS build + MV3 manifest (host_permissions chatgpt.com/chat.openai.com, `downloads`) + content script mounting a stub Download button top-right on conversation pages; Vitest + lint setup
+
+## 2 — Privacy invariant gate
+
+> Goal: mechanically enforce local-only (golden principle) before export/adapter code exists, so all later code is checked.
+> Done-when: an automated test/grep gate fails if any `fetch`/`XMLHttpRequest`/`sendBeacon` to an external origin appears in `src/adapters`, `src/export`, or `src/content`.
+
+- [ ] [CONSTRAINT] Add no-external-network test/grep gate over src/adapters|export|content *(blocked by: 1-scaffold)*
+
+## 3 — Core model & ChatGPT adapter
+
+> Goal: extract a full conversation from the live page into the normalized model.
+> Done-when: `Conversation`/`Message` types defined; ChatGPT adapter with centralized selectors auto-scrolls to load virtualized messages, extracts in order, and fails loud (visible error) on empty/malformed output; fixture tests pass.
+
+- [ ] [FEAT] Conversation/Message model (src/core) + ChatGPT adapter (selectors, auto-scroll full load, fail-loud) with HTML fixture tests *(blocked by: 1-scaffold)*
+
+## 4 — Markdown export
+
+> Goal: first real user value — download the current conversation as Markdown.
+> Done-when: `src/export/markdown.ts` is a pure Conversation→string preserving role/order/fenced code blocks/lists/bold-italic/links (images as links, tables best-effort), deterministic; the button's Markdown action saves `chatgpt-{safe-title}-{yyyymmdd}.md` locally.
+
+- [ ] [FEAT] Markdown exporter + wire button Markdown action to local download *(blocked by: 3-core-adapter)*
+
+## 5 — PDF export
+
+> Goal: download the current conversation as a selectable-text PDF, with no print dialog (bulk-ready).
+> Done-when: `src/export/pdf.ts` builds a pdfmake document definition from the model and downloads a PDF directly; code blocks render as monospace; Korean (CJK) glyphs render via an embedded font; the button's PDF action works.
+
+- [ ] [FEAT] pdfmake PDF exporter (CJK font) + wire button PDF action to direct download *(blocked by: 3-core-adapter)*
+
+## Next (roadmap — not v1)
 
 - [ ] Gemini adapter (reuse core model + exporters via ConversationAdapter)
 - [ ] Claude adapter (reuse core model + exporters via ConversationAdapter)
+- [ ] Bulk download — navigate across conversations, auto-save many (export layer already programmatic)
 
 ## Someday
 
-- [ ] Bulk export (all conversations)
 - [ ] Additional formats (JSON, HTML)
 - [ ] i18n (Korean UI strings)
+- [ ] Chrome Web Store submission (icons, listing, privacy policy, review)

@@ -1,3 +1,7 @@
+<!-- commit-guard: allow-main -->
+<!-- Solo repo: planning/harness commits go direct to main. Implementation still uses a
+     feature branch per the docs/workflows.md `code` cycle (Step 0). -->
+
 # prompt-vault Agent Rules
 
 Browser extension (Manifest V3) that backs up AI chat conversations to local files
