@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- [done] html-to-markdown serialization & escape fixes — block content in `<li>` (nested code/paragraphs/`<ol start>`/text-after-list), literal-backslash-first escaping, CommonMark-flanking emphasis/strikethrough escaping, and GFM `<table>` support (2026-07-17)
+
+- [done] Fail-loud empty-conversation guard — `runExport` throws `ExtractionError` (visible alert, no download) on a zero-message `Conversation`, defense-in-depth over adapter-level guards for both MD and PDF paths (2026-07-17)
+
 - [done] Markdown escaping — escape Markdown-significant characters in `html-to-markdown` text nodes and the `toMarkdown` title so literal text (`# not a heading`, `[1]`, `1.`) no longer round-trips into structure (2026-07-17)
 
 - [done] PDF export — PDF button saves the conversation as a selectable-text PDF (embedded Jetendard CJK monospace font, direct download, no print dialog) (2026-07-17)

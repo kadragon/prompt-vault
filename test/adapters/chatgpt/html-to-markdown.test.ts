@@ -112,4 +112,79 @@ describe('htmlToMarkdown', () => {
     expect(md('<p><code>ls</code></p>')).toBe('`ls`');
     expect(md('<ul><li>item</li></ul>')).toBe('- item');
   });
+
+  describe('list items with block content', () => {
+    it('renders a fenced code block nested in a list item as a real block', () => {
+      const html =
+        '<ul><li>text<pre><div>Python<button>copy</button></div>' +
+        '<code>x = 1</code></pre></li></ul>';
+      expect(md(html)).toBe('- text\n\n  ```python\n  x = 1\n  ```');
+    });
+
+    it('separates multiple paragraphs in one list item', () => {
+      expect(md('<ul><li><p>first para</p><p>second para</p></li></ul>')).toBe(
+        '- first para\n\n  second para',
+      );
+    });
+
+    it('honors <ol start="N">', () => {
+      expect(md('<ol start="3"><li>c</li><li>d</li></ol>')).toBe('3. c\n4. d');
+    });
+
+    it('keeps text following a nested list on its own continuation line', () => {
+      expect(md('<ul><li>parent<ul><li>child</li></ul>after</li></ul>')).toBe(
+        '- parent\n  - child\n\n  after',
+      );
+    });
+
+    it('indents a nested list to the full width of a wide ordered marker', () => {
+      // `10. ` is 4 chars wide, so the nested child needs 4 spaces (not a fixed 2)
+      // or CommonMark reads it as an outer list.
+      expect(md('<ol start="10"><li>parent<ul><li>child</li></ul></li></ol>')).toBe(
+        '10. parent\n    - child',
+      );
+    });
+
+    it('ignores a negative <ol start> (not a valid marker)', () => {
+      expect(md('<ol start="-5"><li>a</li></ol>')).toBe('1. a');
+    });
+  });
+
+  describe('tables', () => {
+    it('renders a GFM table with header, separator, and body rows', () => {
+      const html =
+        '<table><thead><tr><th>H1</th><th>H2</th></tr></thead>' +
+        '<tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table>';
+      expect(md(html)).toBe('| H1 | H2 |\n| --- | --- |\n| a | b |\n| c | d |');
+    });
+
+    it('escapes a pipe inside a cell and uses the first row as the header', () => {
+      expect(md('<table><tr><td>a|b</td><td>c</td></tr></table>')).toBe(
+        '| a\\|b | c |\n| --- | --- |',
+      );
+    });
+
+    it('serializes inline formatting inside a cell', () => {
+      expect(md('<table><tr><th>h</th></tr><tr><td><strong>x</strong></td></tr></table>')).toBe(
+        '| h |\n| --- |\n| **x** |',
+      );
+    });
+
+    it('widens the grid to the widest row instead of dropping cells', () => {
+      // A body row wider than the header must not silently lose its last cell.
+      expect(md('<table><tr><th>h</th></tr><tr><td>a</td><td>b</td></tr></table>')).toBe(
+        '| h |  |\n| --- | --- |\n| a | b |',
+      );
+    });
+
+    it('does not pull a nested table’s rows into the outer grid', () => {
+      const html =
+        '<table><tr><td>outer' +
+        '<table><tr><td>inner</td></tr></table>' +
+        '</td><td>x</td></tr></table>';
+      // Outer table has one row of two cells; the inner table's row does NOT
+      // leak into the outer grid (it is flattened inline within the cell).
+      expect(md(html)).toBe('| outerinner | x |\n| --- | --- |');
+    });
+  });
 });
