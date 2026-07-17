@@ -88,8 +88,8 @@ or malformed conversation, the UI surfaces a **visible error** — never a silen
 **Download mechanism** — Local only: build a `Blob`, save via `URL.createObjectURL` + an `<a download>`
 (or the `downloads` API). Filename `chatgpt-{safe-title}-{yyyymmdd}.{ext}` (sanitized title).
 
-**UI** — A non-intrusive Download button injected top-right in the conversation header, shown only on
-conversation pages (URL path `/c/<id>`). Clicking offers Markdown and PDF.
+**UI** — Two non-intrusive download buttons (`MD` and `PDF`) injected top-right, shown only on
+conversation pages (URL path `/c/<id>`); each button exports the current conversation in that format.
 
 ## Testing Decisions
 

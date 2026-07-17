@@ -65,6 +65,24 @@ describe('toPdfDocDefinition', () => {
     expect(proseTexts).toContain('after');
   });
 
+  it('matches a variable-length fence (adapter emits >3 backticks when the body contains a ``` run)', () => {
+    // The ChatGPT adapter's serializeCodeBlock uses a fence one backtick longer
+    // than the longest backtick run inside the body. A body containing ``` is
+    // therefore wrapped in a 4-backtick fence; the exporter must still recognize it.
+    const content = '````\n```\n````';
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content }] }));
+    const code = all.find((n) => n.style === 'code');
+    expect(code).toBeDefined();
+    expect(code?.text).toBe('```');
+  });
+
+  it('drops an empty fenced code block instead of emitting an empty boxed node', () => {
+    const content = 'text\n\n```\n\n```';
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content }] }));
+    expect(all.some((n) => n.style === 'code')).toBe(false);
+    expect(all.some((n) => n.text === 'text')).toBe(true);
+  });
+
   it('carries CJK text through into the document definition', () => {
     const all = nodes(conversation({ messages: [{ role: 'user', content: '안녕하세요 세계' }] }));
     expect(all.some((n) => n.text === '안녕하세요 세계')).toBe(true);

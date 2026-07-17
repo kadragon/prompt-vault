@@ -74,9 +74,10 @@ export function pdfFilename(conversation: Conversation, now: Date): string {
 function renderBody(body: string): Content[] {
   const nodes: Content[] = [];
   for (const segment of splitFencedCode(body)) {
+    if (segment.text.trim().length === 0) continue; // drop empty prose/code segments
     if (segment.code) {
       nodes.push({ text: segment.text, style: 'code' });
-    } else if (segment.text.trim().length > 0) {
+    } else {
       nodes.push({ text: segment.text.trim(), margin: [0, 2, 0, 2] });
     }
   }
@@ -88,10 +89,13 @@ interface Segment {
   code: boolean;
 }
 
-// A fenced code block: an opening ``` (optionally with a language label) on its
-// own line, arbitrary body, then a closing ``` on its own line. The body is
-// captured; the language label and the fences themselves are dropped.
-const FENCED_CODE = /^[ \t]*```[^\n]*\n([\s\S]*?)\n[ \t]*```[ \t]*$/gm;
+// A fenced code block: an opening fence of three-or-more backticks (optionally
+// with a language label) on its own line, arbitrary body, then a closing fence of
+// the SAME length on its own line. The adapter (html-to-markdown serializeCodeBlock)
+// emits a fence one backtick longer than the longest backtick run inside the body,
+// so the length varies; the `\2` backreference matches whatever length was opened.
+// Group 2 captures the body; the fences and language label are dropped.
+const FENCED_CODE = /^[ \t]*(`{3,})[^\n]*\n([\s\S]*?)\n[ \t]*\1[ \t]*$/gm;
 
 // Partition `body` into an ordered list of prose/code segments. Deterministic and
 // allocation-light; regex state is local so repeated calls are independent.
@@ -104,7 +108,7 @@ function splitFencedCode(body: string): Segment[] {
     if (match.index > lastIndex) {
       segments.push({ text: body.slice(lastIndex, match.index), code: false });
     }
-    segments.push({ text: match[1], code: true });
+    segments.push({ text: match[2], code: true });
     lastIndex = re.lastIndex;
   }
   if (lastIndex < body.length) {
