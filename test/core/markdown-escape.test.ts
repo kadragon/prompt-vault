@@ -71,6 +71,20 @@ describe('escapeMarkdownText', () => {
     it('still leaves an intraword underscore alone between CJK letters', () => {
       expect(escapeMarkdownText('한글_variable')).toBe('한글_variable');
     });
+
+    it('escapes an edge delimiter against a threaded neighbor char', () => {
+      // `_<span>literal</span>_`: each `_` is its own text node. Threading the
+      // real neighbor ('l') across the inline boundary makes both flank and escape,
+      // instead of the whitespace-sentinel default leaving them as emphasis.
+      expect(escapeMarkdownText('_', false, ' ', 'l')).toBe('\\_');
+      expect(escapeMarkdownText('_', false, 'l', ' ')).toBe('\\_');
+    });
+
+    it('leaves an edge delimiter alone when the threaded neighbor is whitespace', () => {
+      // Default sentinels (standalone edge) — no flanking, no escape. Regression
+      // guard: threading must not escape a genuinely non-flanking delimiter.
+      expect(escapeMarkdownText('_', false, ' ', ' ')).toBe('_');
+    });
   });
 
   describe('leading block markers (atLineStart)', () => {

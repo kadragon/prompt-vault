@@ -128,7 +128,10 @@ function serializeListItem(li: Element, marker: string, indent: string): string 
   for (const node of Array.from(li.childNodes)) {
     const el = node.nodeType === NODE_ELEMENT ? (node as Element) : null;
     const tag = el?.tagName.toLowerCase() ?? '';
-    if (el && LIST_BLOCK_TAGS.includes(tag)) {
+    // A wrapper (div/section) that is not itself a list-block tag but contains
+    // block descendants is routed through block serialization too, so its <p>/<pre>
+    // children survive as real blocks instead of flattening onto the marker line.
+    if (el && (LIST_BLOCK_TAGS.includes(tag) || hasBlockChild(el))) {
       flushInline();
       if (tag === 'ul' || tag === 'ol') {
         // Nested list aligns under the parent marker text (cont), so it already
@@ -246,12 +249,19 @@ function serializeInline(el: Element, skip?: Set<Element>): string {
 // inline run between block segments) without re-wrapping them in an element.
 function serializeInlineNodes(nodes: Node[], skip?: Set<Element>): string {
   let out = '';
-  for (const node of nodes) {
+  for (let idx = 0; idx < nodes.length; idx++) {
+    const node = nodes[idx];
     if (node.nodeType === NODE_TEXT) {
       // A text node is at a line start only when it is the first content emitted
       // in this inline run; a run after an inline element (`**bold** - x`) is
       // mid-line, so its leading marker must not be escaped as a block marker.
-      out += escapeMarkdownText(collapseWs(node.textContent ?? ''), out === '');
+      // Classify edge delimiters against their real neighbor across inline-element
+      // boundaries: `prevChar` is the last char already emitted, `nextChar` the
+      // first visible char of the following siblings (so both `_` in
+      // `_<span>literal</span>_` see a word char and escape).
+      const prevChar = out.length ? out[out.length - 1] : ' ';
+      const nextChar = firstVisibleChar(nodes, idx + 1, skip);
+      out += escapeMarkdownText(collapseWs(node.textContent ?? ''), out === '', prevChar, nextChar);
       continue;
     }
     if (node.nodeType !== NODE_ELEMENT) continue;
@@ -260,6 +270,21 @@ function serializeInlineNodes(nodes: Node[], skip?: Set<Element>): string {
     out += serializeInlineElement(child);
   }
   return out;
+}
+
+// First visible flow character at or after index `from` in `nodes`, skipping
+// `skip`-set elements, used to classify a delimiter at a text-node edge against
+// its real neighbor. A leading whitespace char collapses to `' '` (a whitespace
+// neighbor); `' '` is also returned when no further visible content follows.
+function firstVisibleChar(nodes: Node[], from: number, skip?: Set<Element>): string {
+  for (let k = from; k < nodes.length; k++) {
+    const n = nodes[k];
+    if (n.nodeType === NODE_ELEMENT && skip?.has(n as Element)) continue;
+    const text = n.textContent ?? '';
+    if (text.length === 0) continue;
+    return /\s/.test(text[0]) ? ' ' : text[0];
+  }
+  return ' ';
 }
 
 function serializeInlineElement(el: Element): string {

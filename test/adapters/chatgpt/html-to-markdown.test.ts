@@ -105,6 +105,13 @@ describe('htmlToMarkdown', () => {
     expect(md('<p>type `ls` to list</p>')).toBe('type \\`ls\\` to list');
   });
 
+  it('escapes literal emphasis delimiters straddling an inline element', () => {
+    // `_<span>literal</span>_`: the two underscores are separate text nodes. The
+    // neighbor char ('l') is threaded across the inline boundary so both flank and
+    // escape, instead of round-tripping into emphasis after export.
+    expect(md('<p>_<span>literal</span>_</p>')).toBe('\\_literal\\_');
+  });
+
   it('does not over-escape real HTML formatting', () => {
     // Serializer-generated markers (##, **, `, - ) must stay unescaped.
     expect(md('<h1>Title</h1>')).toBe('# Title');
@@ -125,6 +132,16 @@ describe('htmlToMarkdown', () => {
       expect(md('<ul><li><p>first para</p><p>second para</p></li></ul>')).toBe(
         '- first para\n\n  second para',
       );
+    });
+
+    it('unwraps a div/section wrapper so its block children survive', () => {
+      // A <div> around block content inside <li> is not a list-block tag, but it
+      // has block descendants → routed through block serialization instead of
+      // flattening its <p>/<pre> onto the marker line.
+      const html =
+        '<ul><li><div><p>first</p><p>second</p>' +
+        '<pre><code>x = 1</code></pre></div></li></ul>';
+      expect(md(html)).toBe('- first\n\n  second\n\n  ```\n  x = 1\n  ```');
     });
 
     it('honors <ol start="N">', () => {
