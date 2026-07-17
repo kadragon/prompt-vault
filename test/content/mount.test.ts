@@ -29,6 +29,8 @@ describe('syncButtons', () => {
     expect(container).not.toBeNull();
     expect(container?.parentElement?.id).toBe(HEADER_ID);
     expect(container?.querySelectorAll('button').length).toBe(2);
+    // Native buttons wear the ChatGPT adapter's supplied class so they blend with Share.
+    expect(container?.querySelector('button')?.className).toContain('btn');
   });
 
   it('is idempotent — repeated calls do not duplicate the buttons', () => {
@@ -82,15 +84,33 @@ describe('syncButtons', () => {
     expect(container?.style.bottom).toBe('12px');
     expect(container?.style.top).toBe('');
   });
+
+  it('upgrades an already-mounted overlay to the native header once it renders', () => {
+    // Header absent → overlay fallback mounts in the body.
+    const doc = bareDoc();
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+    expect(doc.getElementById(CONTAINER_ID)?.parentElement?.tagName).toBe('BODY');
+
+    // Header renders late; next sync should swap the overlay for the native placement.
+    const header = doc.createElement('div');
+    header.id = HEADER_ID;
+    doc.body.appendChild(header);
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container?.parentElement?.id).toBe(HEADER_ID);
+    expect(container?.style.position).toBe(''); // native container is not a fixed overlay
+    expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1); // overlay removed, not duplicated
+  });
 });
 
 describe('createButtons', () => {
-  it('builds native buttons that reuse ChatGPT classes and carry accessible names', () => {
-    const container = createButtons(bareDoc(), 'native');
+  it('applies the provider-supplied button class and accessible names to native buttons', () => {
+    const container = createButtons(bareDoc(), 'native', 'btn btn-ghost');
     const buttons = container.querySelectorAll('button');
 
     expect(buttons.length).toBe(2);
-    expect(buttons[0].className).toContain('btn');
+    expect(buttons[0].className).toBe('btn btn-ghost');
     expect(buttons[0].getAttribute('aria-label')).toBe('Download conversation as Markdown');
     expect(buttons[1].getAttribute('aria-label')).toBe('Download conversation as PDF');
   });

@@ -19,5 +19,4 @@
 ### Header-blend buttons follow-up
 
 - [ ] [VERIFY] Load-unpacked on a live logged-in ChatGPT conversation: confirm the `MD`/`PDF` buttons render inside `#conversation-header-actions` inline with (and no longer covering) the native Share button, match its size/hover in both light and dark themes, and re-appear correctly after SPA navigation between conversations. Deferred — needs a logged-in browser session; unit coverage stops at the DOM-injection structure (`test/content/mount.test.ts`), not live CSS blending.
-- [ ] [FIX] `syncButtons` never upgrades an already-mounted fallback overlay to the native header placement: if ChatGPT's header takes longer than `MOUNT_GRACE_TICKS` (~3s) to render and the bottom-right overlay is injected, it stays an overlay for the rest of that conversation until a full remove/re-add (navigate away and back). Re-evaluate placement when the native bar later appears. Low real-world risk given the 3s grace. *(from QA of feat/blend-download-buttons)*
 

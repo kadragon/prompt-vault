@@ -1,5 +1,5 @@
 import { isConversationPage } from './page';
-import { syncButtons } from './mount';
+import { removeButtons, syncButtons } from './mount';
 
 // How often to re-check the page for SPA navigation and header re-renders (see
 // watchNavigation).
@@ -13,8 +13,19 @@ const MOUNT_GRACE_TICKS = 6;
 
 // Consecutive ticks spent on a conversation page; drives the overlay-fallback grace.
 let convTicks = 0;
+// Last URL seen, to detect ChatGPT's history.pushState navigations (sidebar clicks),
+// which change the URL without a popstate. On a URL change we restart the grace and
+// drop the previous page's buttons so they re-mount cleanly into the new header —
+// otherwise convTicks stays past the grace and the brief empty-header gap during the
+// re-render spuriously triggers (and then sticks) the bottom-right overlay.
+let lastHref = location.href;
 
 function tick(): void {
+  if (location.href !== lastHref) {
+    lastHref = location.href;
+    convTicks = 0;
+    removeButtons(document);
+  }
   convTicks = isConversationPage(location.href) ? convTicks + 1 : 0;
   syncButtons(document, location.href, { allowOverlayFallback: convTicks >= MOUNT_GRACE_TICKS });
 }
@@ -28,10 +39,9 @@ function tick(): void {
  * node. `popstate` gives instant back/forward.
  */
 function watchNavigation(): void {
-  window.addEventListener('popstate', () => {
-    convTicks = 0;
-    tick();
-  });
+  // `tick` already detects the URL change and restarts the grace; popstate just makes
+  // back/forward feel instant instead of waiting for the next poll.
+  window.addEventListener('popstate', tick);
   setInterval(tick, NAV_POLL_MS);
 }
 

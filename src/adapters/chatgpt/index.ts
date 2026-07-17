@@ -24,11 +24,20 @@ export interface AutoScrollOptions {
   maxSteps?: number;
 }
 
+// ChatGPT's own header-button classes. Wearing them makes the export buttons match
+// the native Share button exactly (padding, hover, light/dark design tokens) so they
+// blend into the header bar. Owned by the adapter (not the content layer) to keep
+// provider CSS knowledge here; if ChatGPT renames these the buttons degrade to
+// unstyled-but-functional.
+const TOOLBAR_BUTTON_CLASS =
+  'btn btn-ghost rounded-lg text-token-text-primary hover:bg-token-surface-hover';
+
 export const chatgptAdapter: ConversationAdapter = {
   provider: PROVIDER,
   matches,
   extract,
   toolbarMount,
+  toolbarButtonClass: TOOLBAR_BUTTON_CLASS,
 };
 
 /**

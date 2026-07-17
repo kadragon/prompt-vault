@@ -28,14 +28,15 @@ const FORMATS: ReadonlyArray<FormatSpec> = [
   { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL },
 ];
 
-// ChatGPT's own header-button classes. Reusing them makes the export buttons match
-// the native Share button exactly (padding, hover, light/dark design tokens) so they
-// blend into the header bar instead of floating over it. If ChatGPT renames these,
-// the buttons degrade to unstyled-but-functional; the overlay fallback is separate
-// and unaffected. Provider-specific CSS class knowledge is acceptable here because
-// blending with the provider chrome is the whole point of this mount path.
-const NATIVE_BUTTON_CLASS =
-  'btn btn-ghost rounded-lg text-token-text-primary hover:bg-token-surface-hover';
+// Placement is stamped on the container so `syncButtons` can tell a native mount
+// from a fallback overlay and upgrade the latter once the header bar appears.
+const PLACEMENT_ATTR = 'data-prompt-vault-placement';
+
+// Blocks a second export while one is in flight. A module-level flag (not the
+// buttons' `disabled` state) so the guard survives the buttons being re-mounted
+// mid-export by an SPA header re-render — the fresh buttons default to enabled, but
+// their click still short-circuits here.
+let exportInFlight = false;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -64,14 +65,16 @@ function createButton(
   container: HTMLDivElement,
   placement: 'native' | 'overlay',
   { format, label, ariaLabel }: FormatSpec,
+  buttonClass: string | undefined,
 ): HTMLButtonElement {
   const button = doc.createElement('button');
   button.type = 'button';
   button.setAttribute('aria-label', ariaLabel);
   if (placement === 'native') {
-    // Blend in: reuse ChatGPT's button classes and mirror the Share button's inner
-    // icon+label layout.
-    button.className = NATIVE_BUTTON_CLASS;
+    // Blend in: wear the provider's own button classes (supplied by the adapter so
+    // this content layer stays provider-agnostic) and mirror the Share button's
+    // inner icon+label layout with generic flex utilities.
+    if (buttonClass) button.className = buttonClass;
     button.style.cursor = 'pointer';
     const inner = doc.createElement('div');
     inner.className = 'flex items-center justify-center gap-1.5';
@@ -106,9 +109,14 @@ function createButton(
  * when the header bar cannot be found — anchored bottom-right so it never covers the
  * top-right Share button.
  */
-export function createButtons(doc: Document, placement: 'native' | 'overlay'): HTMLDivElement {
+export function createButtons(
+  doc: Document,
+  placement: 'native' | 'overlay',
+  buttonClass?: string,
+): HTMLDivElement {
   const container = doc.createElement('div');
   container.id = CONTAINER_ID;
+  container.setAttribute(PLACEMENT_ATTR, placement);
   if (placement === 'native') {
     container.className = 'flex items-center';
   } else {
@@ -122,7 +130,7 @@ export function createButtons(doc: Document, placement: 'native' | 'overlay'): H
     });
   }
   for (const spec of FORMATS) {
-    container.appendChild(createButton(doc, container, placement, spec));
+    container.appendChild(createButton(doc, container, placement, spec, buttonClass));
   }
   return container;
 }
@@ -130,12 +138,14 @@ export function createButtons(doc: Document, placement: 'native' | 'overlay'): H
 /**
  * Extract the current conversation and download it in `format`, entirely locally.
  * Fail-loud (AGENTS.md #4): any extraction/export problem surfaces a visible alert
- * and no file is written — never a silent or empty download. Disables both buttons
- * while running so a second click cannot start a concurrent export.
+ * and no file is written — never a silent or empty download. A module-level in-flight
+ * guard (plus disabling the buttons for feedback) prevents a concurrent export even
+ * if the buttons are re-mounted mid-run by an SPA header re-render.
  */
 async function runExport(container: HTMLDivElement, format: Format): Promise<void> {
+  if (exportInFlight) return;
+  exportInFlight = true;
   const buttons = container.querySelectorAll('button');
-  if ([...buttons].some((b) => b.disabled)) return;
   buttons.forEach((b) => (b.disabled = true));
   try {
     const adapter = pickAdapter(location.href);
@@ -159,6 +169,7 @@ async function runExport(container: HTMLDivElement, format: Format): Promise<voi
     // unexpected and gets the generic fallback.
     alert(error instanceof ExtractionError ? error.message : EXPORT_FAILED_MESSAGE);
   } finally {
+    exportInFlight = false;
     buttons.forEach((b) => (b.disabled = false));
   }
 }
@@ -200,11 +211,13 @@ export interface SyncOptions {
  * Mount / refresh the export buttons for the current page. Idempotent — safe to
  * call on every navigation tick:
  * - Not a conversation page → remove any mounted buttons.
- * - Already mounted → nothing.
  * - Conversation page with the provider's header bar present → inject there so the
  *   buttons blend inline with the native Share control.
  * - Header bar absent AND `allowOverlayFallback` → inject a non-overlapping overlay
  *   so the feature still works and never covers Share.
+ * - A fallback overlay already mounted but the header bar has since appeared → swap
+ *   the overlay out for the native placement so it blends after a late header render.
+ * - Otherwise already correctly placed → nothing.
  *
  * Re-injection: when ChatGPT's SPA re-renders the header it drops our node, so the
  * `getElementById` check goes null and the next tick re-injects.
@@ -214,11 +227,20 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
     removeButtons(doc);
     return;
   }
-  if (doc.getElementById(CONTAINER_ID)) return;
 
-  const mount = pickAdapter(href)?.toolbarMount?.(doc) ?? null;
+  const adapter = pickAdapter(href);
+  const mount = adapter?.toolbarMount?.(doc) ?? null;
+
+  const existing = doc.getElementById(CONTAINER_ID);
+  if (existing) {
+    const isOverlay = existing.getAttribute(PLACEMENT_ATTR) === 'overlay';
+    // Keep it unless we can upgrade a fallback overlay to the now-available native bar.
+    if (!(isOverlay && mount)) return;
+    existing.remove();
+  }
+
   if (mount) {
-    mount.prepend(createButtons(doc, 'native'));
+    mount.prepend(createButtons(doc, 'native', adapter?.toolbarButtonClass));
   } else if (allowOverlayFallback) {
     doc.body.appendChild(createButtons(doc, 'overlay'));
   }

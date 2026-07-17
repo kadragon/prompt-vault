@@ -27,4 +27,13 @@ export interface ConversationAdapter {
    * omits it and always uses the overlay.
    */
   toolbarMount?(root?: ParentNode): Element | null;
+
+  /**
+   * Provider-owned CSS class string applied to each export button when it is mounted
+   * into the native header bar (see `toolbarMount`), so the buttons wear the
+   * provider's own chrome (matching its native controls, light/dark, hover). Kept in
+   * the adapter so the shared content layer carries no provider-specific styling.
+   * Optional — omit to leave the native buttons unstyled but functional.
+   */
+  readonly toolbarButtonClass?: string;
 }
