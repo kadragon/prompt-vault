@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Static fallback title for standards compliance; main.ts overrides it with the
+         localized OPTIONS_TITLE at runtime. -->
+    <title>prompt-vault settings</title>
     <style>
       body {
         margin: 0;
@@ -42,6 +45,20 @@
       }
       #note.error {
         color: #b00020;
+      }
+      /* options_ui embeds in chrome://extensions, which follows the OS/browser theme — style
+         dark mode so the page isn't a white block against a dark shell. */
+      @media (prefers-color-scheme: dark) {
+        body {
+          color: #ececec;
+          background: #1e1e1e;
+        }
+        fieldset {
+          border-color: #444;
+        }
+        #note.error {
+          color: #ff6b6b;
+        }
       }
     </style>
   </head>

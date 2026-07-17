@@ -203,3 +203,15 @@ describe('createButtons', () => {
     );
   });
 });
+
+describe('setToolbarSettings', () => {
+  it('reports whether the value actually changed so the caller can skip a needless re-mount', () => {
+    // Baseline is the all-on default (restored by afterEach). Re-applying it is a no-op.
+    expect(setToolbarSettings(DEFAULT_SETTINGS)).toBe(false);
+
+    const custom = { formats: { md: true, pdf: false, json: true, html: true }, bulk: true };
+    expect(setToolbarSettings(custom)).toBe(true); // differs from default → changed
+    expect(setToolbarSettings({ formats: { ...custom.formats }, bulk: custom.bulk })).toBe(false); // equal value → no change
+    expect(setToolbarSettings({ ...custom, bulk: false })).toBe(true); // bulk flip → changed
+  });
+});

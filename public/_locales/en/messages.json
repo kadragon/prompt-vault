@@ -144,6 +144,10 @@
     "message": "Saved.",
     "description": "Transient confirmation shown after a setting change is saved."
   },
+  "optionsSaveFailedNote": {
+    "message": "Could not save. Please try again.",
+    "description": "Shown when persisting a setting change to storage fails."
+  },
   "optionsMinFormatNote": {
     "message": "At least one export format must stay enabled.",
     "description": "Shown when the user tries to uncheck the last remaining format."

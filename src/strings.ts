@@ -83,5 +83,9 @@ export const OPTIONS_BULK_LABEL = m('optionsBulkLabel');
 // Transient confirmation shown after a change is saved.
 export const OPTIONS_SAVED_NOTE = m('optionsSavedNote');
 
+// Shown (fail-loud) when persisting a change to chrome.storage.sync fails, so the user is
+// not told a setting was saved when it was not.
+export const OPTIONS_SAVE_FAILED_NOTE = m('optionsSaveFailedNote');
+
 // Shown when the user tries to uncheck the last remaining format (at least one is required).
 export const OPTIONS_MIN_FORMAT_NOTE = m('optionsMinFormatNote');

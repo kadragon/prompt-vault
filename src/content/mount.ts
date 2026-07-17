@@ -20,7 +20,7 @@ import {
 } from '../strings';
 import { assertConversationNonEmpty } from './guard';
 import { isConversationPage } from './page';
-import { DEFAULT_SETTINGS, type ToolbarSettings } from '../settings/store';
+import { DEFAULT_SETTINGS, FORMAT_KEYS, type ToolbarSettings } from '../settings/store';
 
 // Which toolbar controls to render. Defaults to everything-on so the toolbar matches the
 // pre-settings behavior until the async load completes (src/content/index.ts swaps in the
@@ -28,9 +28,21 @@ import { DEFAULT_SETTINGS, type ToolbarSettings } from '../settings/store';
 // — because `syncButtons` is called from the navigation poll with no place to thread it.
 let cachedSettings: ToolbarSettings = DEFAULT_SETTINGS;
 
-/** Update the settings the toolbar renders from. Callers re-mount to apply (removeButtons + sync). */
-export function setToolbarSettings(settings: ToolbarSettings): void {
+/** Value-equality on the toolbar settings, so a no-op update can skip a needless re-mount. */
+function settingsEqual(a: ToolbarSettings, b: ToolbarSettings): boolean {
+  return a.bulk === b.bulk && FORMAT_KEYS.every((key) => a.formats[key] === b.formats[key]);
+}
+
+/**
+ * Update the settings the toolbar renders from. Returns whether the value actually changed,
+ * so the caller can skip the removeButtons+re-mount churn when it didn't — which avoids a
+ * visible flash of the default buttons on load for the common case where the stored settings
+ * equal the all-on default. Callers re-mount to apply only on a real change.
+ */
+export function setToolbarSettings(settings: ToolbarSettings): boolean {
+  const changed = !settingsEqual(cachedSettings, settings);
   cachedSettings = settings;
+  return changed;
 }
 
 // Stable id on the button container so it is mounted at most once and can be

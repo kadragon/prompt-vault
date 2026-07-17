@@ -48,10 +48,12 @@ function watchNavigation(): void {
 
 /**
  * Apply loaded/changed toolbar settings: swap the cached value the toolbar renders from,
- * then re-mount so the change takes effect immediately (removeButtons + a fresh tick).
+ * then re-mount so the change takes effect immediately (removeButtons + a fresh tick). The
+ * re-mount is skipped when the value did not actually change, so the common load path (stored
+ * settings == the all-on default already showing) causes no visible flash.
  */
 function applySettings(settings: ToolbarSettings): void {
-  setToolbarSettings(settings);
+  if (!setToolbarSettings(settings)) return;
   removeButtons(document);
   tick();
 }
@@ -59,8 +61,18 @@ function applySettings(settings: ToolbarSettings): void {
 watchNavigation();
 tick();
 
-// Load the user's toolbar settings and re-mount once they arrive (the first tick above
-// draws the all-on default until then). Then keep the toolbar in sync with live changes
-// from the options page. Failure to read storage is non-fatal — the default toolbar stays.
-loadSettings().then(applySettings).catch(() => undefined);
-subscribeSettings(applySettings);
+// Keep the toolbar in sync with the user's stored settings. Subscribe FIRST so a change made
+// while the initial read is still in flight is never missed; a `liveUpdate` latch then keeps
+// the (possibly stale) initial load from clobbering a newer live change that already applied.
+// The first tick above draws the all-on default until settings arrive; a storage read failure
+// is non-fatal — the default toolbar stays.
+let liveUpdateApplied = false;
+subscribeSettings((settings) => {
+  liveUpdateApplied = true;
+  applySettings(settings);
+});
+loadSettings()
+  .then((settings) => {
+    if (!liveUpdateApplied) applySettings(settings);
+  })
+  .catch(() => undefined);

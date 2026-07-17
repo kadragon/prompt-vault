@@ -5,7 +5,11 @@ import { DEFAULT_SETTINGS, type ToolbarSettings } from '../../src/settings/store
 
 // Build a parsed document with an #app mount and a spy `save`, render the form into it, and
 // return handles the tests drive. happy-dom gives real change events without a browser.
-function mount(settings: ToolbarSettings = DEFAULT_SETTINGS): {
+// `saveResult` lets a test make the injected save reject, to exercise the fail-loud note.
+function mount(
+  settings: ToolbarSettings = DEFAULT_SETTINGS,
+  saveResult: () => Promise<void> = () => Promise.resolve(),
+): {
   doc: Document;
   saved: ToolbarSettings[];
   box: (id: string) => HTMLInputElement;
@@ -17,7 +21,10 @@ function mount(settings: ToolbarSettings = DEFAULT_SETTINGS): {
   const doc = window.document as unknown as Document;
   const app = doc.getElementById('app')!;
   const saved: ToolbarSettings[] = [];
-  renderOptions(doc, app, settings, (s) => saved.push(s));
+  renderOptions(doc, app, settings, (s) => {
+    saved.push(s);
+    return saveResult();
+  });
 
   const box = (id: string): HTMLInputElement => doc.getElementById(id) as HTMLInputElement;
   const fireChange = (input: HTMLInputElement, checked: boolean): void => {
@@ -26,6 +33,9 @@ function mount(settings: ToolbarSettings = DEFAULT_SETTINGS): {
   };
   return { doc, saved, box, note: () => doc.getElementById('note')?.textContent ?? '', fireChange };
 }
+
+// The saved/failed note is set from a promise handler, so flush microtasks before asserting it.
+const flush = (): Promise<void> => Promise.resolve().then(() => undefined);
 
 describe('renderOptions', () => {
   it('renders a checkbox per format plus the bulk toggle, reflecting the current settings', () => {
@@ -67,5 +77,21 @@ describe('renderOptions', () => {
     expect(box('format-md').checked).toBe(true); // reverted
     expect(saved).toHaveLength(3); // no extra save
     expect(note()).toBe('At least one export format must stay enabled.');
+  });
+
+  it('shows the saved note only after the save resolves', async () => {
+    const { box, note, fireChange } = mount();
+    fireChange(box('format-pdf'), false);
+    // Note is set from the resolved-promise handler, so it is empty until microtasks flush.
+    expect(note()).toBe('');
+    await flush();
+    expect(note()).toBe('Saved.');
+  });
+
+  it('shows a fail-loud note (not "Saved.") when the save rejects', async () => {
+    const { box, note, fireChange } = mount(DEFAULT_SETTINGS, () => Promise.reject(new Error('quota')));
+    fireChange(box('format-pdf'), false);
+    await flush();
+    expect(note()).toBe('Could not save. Please try again.');
   });
 });

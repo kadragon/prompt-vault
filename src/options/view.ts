@@ -15,6 +15,7 @@ import {
   OPTIONS_FORMATS_LABEL,
   OPTIONS_HEADING,
   OPTIONS_MIN_FORMAT_NOTE,
+  OPTIONS_SAVE_FAILED_NOTE,
   OPTIONS_SAVED_NOTE,
   OPTIONS_TITLE,
 } from '../strings';
@@ -45,15 +46,18 @@ function labeledRow(doc: Document, input: HTMLInputElement, text: string): HTMLL
 
 /**
  * Render the settings form into `app`. Every change is persisted immediately via `save`
- * (passed a fresh snapshot, never the internal working copy). At least one export format
- * must stay enabled: unchecking the last one is rejected — the checkbox is reverted, a note
- * is shown, and `save` is NOT called — so the persisted value can never hide every format.
+ * (passed a fresh snapshot, never the internal working copy). The saved/failed note reflects
+ * the actual outcome of `save` — the "Saved." confirmation only appears once the promise
+ * resolves, and a fail-loud error note appears if it rejects (AGENTS.md #4), so the user is
+ * never told a setting persisted when it did not. At least one export format must stay
+ * enabled: unchecking the last one is rejected — the checkbox is reverted, a note is shown,
+ * and `save` is NOT called — so the persisted value can never hide every format.
  */
 export function renderOptions(
   doc: Document,
   app: HTMLElement,
   settings: ToolbarSettings,
-  save: (settings: ToolbarSettings) => void,
+  save: (settings: ToolbarSettings) => Promise<void>,
 ): void {
   doc.title = OPTIONS_TITLE;
 
@@ -78,8 +82,12 @@ export function renderOptions(
   };
 
   const persist = (): void => {
-    save({ formats: { ...current.formats }, bulk: current.bulk });
-    showNote(OPTIONS_SAVED_NOTE, false);
+    // Report success only after the write actually resolves; surface a fail-loud note if it
+    // rejects (e.g. sync write-quota exceeded) rather than a misleading "Saved.".
+    void save({ formats: { ...current.formats }, bulk: current.bulk }).then(
+      () => showNote(OPTIONS_SAVED_NOTE, false),
+      () => showNote(OPTIONS_SAVE_FAILED_NOTE, true),
+    );
   };
 
   for (const key of FORMAT_KEYS) {
