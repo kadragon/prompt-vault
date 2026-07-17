@@ -1,6 +1,6 @@
 import { pickAdapter } from '../adapters';
 import { ExtractionError } from '../core/errors';
-import { markdownFilename, toMarkdown } from '../export/markdown';
+import { saveConversation, type ExportFormat } from './save-conversation';
 import {
   DOWNLOAD_MD_ARIA_LABEL,
   DOWNLOAD_MD_LABEL,
@@ -16,10 +16,11 @@ import { isConversationPage } from './page';
 // located for removal / re-injection.
 export const CONTAINER_ID = 'prompt-vault-download-buttons';
 
-// Export formats offered by the toolbar, in display order.
-type Format = 'md' | 'pdf';
+// Export formats offered by the toolbar, in display order. The format union itself
+// is owned by the headless saver (src/content/save-conversation.ts) so the UI and the
+// bulk driver share one type.
 interface FormatSpec {
-  format: Format;
+  format: ExportFormat;
   /** Short label; shown only on the self-styled overlay fallback (native is icon-only). */
   label: string;
   ariaLabel: string;
@@ -176,7 +177,7 @@ export function createButtons(
  * guard (plus disabling the buttons for feedback) prevents a concurrent export even
  * if the buttons are re-mounted mid-run by an SPA header re-render.
  */
-async function runExport(container: HTMLDivElement, format: Format): Promise<void> {
+async function runExport(container: HTMLDivElement, format: ExportFormat): Promise<void> {
   if (exportInFlight) return;
   exportInFlight = true;
   const buttons = container.querySelectorAll('button');
@@ -189,15 +190,8 @@ async function runExport(container: HTMLDivElement, format: Format): Promise<voi
     }
     const conversation = await adapter.extract();
     assertConversationNonEmpty(conversation);
-    const now = new Date();
-    if (format === 'md') {
-      downloadTextFile(markdownFilename(conversation, now), toMarkdown(conversation), 'text/markdown');
-    } else {
-      // pdfmake + the embedded CJK font are heavy; load them only on demand so an
-      // ordinary page visit never pays for them (@crxjs code-splits this import).
-      const { downloadPdf } = await import('./pdf-download');
-      await downloadPdf(conversation, now);
-    }
+    // Produce+save lives in the headless saver so the bulk driver reuses it.
+    await saveConversation(conversation, format, new Date());
   } catch (error) {
     // ExtractionError carries a user-actionable message; anything else is
     // unexpected and gets the generic fallback.
@@ -206,24 +200,6 @@ async function runExport(container: HTMLDivElement, format: Format): Promise<voi
     exportInFlight = false;
     buttons.forEach((b) => (b.disabled = false));
   }
-}
-
-/**
- * Trigger a local file download from an in-memory string via an object URL and a
- * transient `<a download>`. No network request (Golden Principle #1). Revocation
- * is deferred to a later task: the browser dispatches the download asynchronously
- * after `click()`, so revoking the object URL in the same tick can cancel an
- * in-flight or large download.
- */
-function downloadTextFile(filename: string, text: string, mimeType: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: mimeType }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /** Remove the buttons if mounted. */

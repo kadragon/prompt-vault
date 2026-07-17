@@ -15,7 +15,7 @@ marker is removed by hand once the blocking ticket lands.
 
 - [ ] Gemini adapter (reuse core model + exporters via ConversationAdapter)
 - [ ] Claude adapter (reuse core model + exporters via ConversationAdapter)
-- [ ] Bulk download — navigate across conversations, auto-save many (export layer already programmatic)
+- [ ] Bulk download — live driver *(blocked by: needs logged-in session to verify)*: enumerate conversations from the ChatGPT sidebar (new centralized selectors + adapter `listConversations()`), navigate/extract each, feed the existing `bulkExport` core (`src/content/bulk-export.ts`), add a bulk-export UI trigger + summary surfacing, and add `chrome.downloads` permission / a background worker if Chrome's multi-download throttle requires it. The provider-agnostic export+orchestration core already landed; this is the live-DOM half that cannot be agent-verified.
 
 ## Someday
 
