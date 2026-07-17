@@ -48,6 +48,8 @@ function serializeBlockElement(el: Element, listDepth: number): string {
     case 'ul':
     case 'ol':
       return serializeList(el, tag === 'ol', listDepth);
+    case 'table':
+      return serializeTable(el);
     case 'blockquote':
       return serializeBlocks(el, listDepth)
         .split('\n')
@@ -65,21 +67,137 @@ function serializeBlockElement(el: Element, listDepth: number): string {
 
 function serializeList(list: Element, ordered: boolean, depth: number): string {
   const items = Array.from(list.children).filter((c) => c.tagName.toLowerCase() === 'li');
+  const start = ordered ? listStart(list) : 1;
+  const lines = items.map((li, i) =>
+    serializeListItem(li, ordered ? `${start + i}. ` : '- ', depth),
+  );
+  return lines.join('\n');
+}
+
+// Read a non-negative `start` from <ol start="N">, defaulting to 1 for a plain
+// list or an unparseable attribute.
+function listStart(list: Element): number {
+  const raw = list.getAttribute('start');
+  if (raw === null) return 1;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 1;
+}
+
+// Block-level tags a <li> may directly contain. Each becomes its own segment so a
+// nested <pre>, extra <p>, list, or table is serialized as a real block instead
+// of being flattened into the marker line.
+const LIST_BLOCK_TAGS = [
+  'p',
+  'pre',
+  'ul',
+  'ol',
+  'table',
+  'blockquote',
+  'hr',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+];
+
+/**
+ * Serialize one <li>. Content is partitioned into document-order segments — runs
+ * of inline nodes vs. individual block children — so block structure survives.
+ * The first segment shares the marker line; later segments become continuation
+ * blocks indented to the marker width, blank-line separated. A nested list is the
+ * exception: it carries its own depth-based indent and is emitted tight (matching
+ * the historical `- parent\n  - child` output).
+ */
+function serializeListItem(li: Element, marker: string, depth: number): string {
   const indent = '  '.repeat(depth);
-  const lines: string[] = [];
-  items.forEach((li, i) => {
-    const marker = ordered ? `${i + 1}. ` : '- ';
-    // Split each <li> into its own inline text and any nested lists.
-    const nestedLists = Array.from(li.children).filter((c) =>
-      ['ul', 'ol'].includes(c.tagName.toLowerCase()),
-    );
-    const inline = serializeInline(li, new Set(nestedLists)).trim();
-    lines.push(indent + marker + inline);
-    for (const nested of nestedLists) {
-      lines.push(serializeList(nested, nested.tagName.toLowerCase() === 'ol', depth + 1));
+  const cont = indent + ' '.repeat(marker.length);
+
+  const blocks: { lines: string[]; list: boolean }[] = [];
+  let inlineRun: Node[] = [];
+  const flushInline = () => {
+    if (!inlineRun.length) return;
+    const text = serializeInlineNodes(inlineRun).trim();
+    if (text) blocks.push({ lines: text.split('\n'), list: false });
+    inlineRun = [];
+  };
+  for (const node of Array.from(li.childNodes)) {
+    const el = node.nodeType === NODE_ELEMENT ? (node as Element) : null;
+    const tag = el?.tagName.toLowerCase() ?? '';
+    if (el && LIST_BLOCK_TAGS.includes(tag)) {
+      flushInline();
+      if (tag === 'ul' || tag === 'ol') {
+        const text = serializeList(el, tag === 'ol', depth + 1);
+        if (text) blocks.push({ lines: text.split('\n'), list: true });
+      } else {
+        const text = serializeBlockElement(el, depth);
+        if (text.trim()) blocks.push({ lines: text.split('\n'), list: false });
+      }
+    } else {
+      inlineRun.push(node);
+    }
+  }
+  flushInline();
+
+  if (blocks.length === 0) return indent + marker.trimEnd();
+
+  const out: string[] = [];
+  blocks.forEach((block, i) => {
+    if (i === 0) {
+      if (block.list) {
+        // A list as the very first content: keep the marker on its own line.
+        out.push(indent + marker.trimEnd());
+        out.push(...block.lines);
+      } else {
+        out.push(indent + marker + block.lines[0]);
+        for (const line of block.lines.slice(1)) out.push(line ? cont + line : '');
+      }
+      return;
+    }
+    if (block.list) {
+      out.push(...block.lines);
+    } else {
+      out.push('');
+      for (const line of block.lines) out.push(line ? cont + line : '');
     }
   });
+  return out.join('\n');
+}
+
+/**
+ * Serialize a <table> to a GFM table. The header row is the first <tr> (inside
+ * <thead> if present, since querySelectorAll walks document order); remaining
+ * <tr> are body rows. Rows are padded/truncated to the header column count so the
+ * grid stays valid. Alignment is not emitted (out of scope).
+ */
+function serializeTable(table: Element): string {
+  const rows = Array.from(table.querySelectorAll('tr'));
+  if (rows.length === 0) return '';
+  const cellsOf = (tr: Element): string[] =>
+    Array.from(tr.children)
+      .filter((c) => ['td', 'th'].includes(c.tagName.toLowerCase()))
+      .map(serializeTableCell);
+  const header = cellsOf(rows[0]);
+  const cols = header.length;
+  if (cols === 0) return '';
+  const row = (cells: string[]): string => {
+    const padded = cells.slice(0, cols);
+    while (padded.length < cols) padded.push('');
+    return `| ${padded.join(' | ')} |`;
+  };
+  const lines = [row(header), `| ${Array(cols).fill('---').join(' | ')} |`];
+  for (const tr of rows.slice(1)) lines.push(row(cellsOf(tr)));
   return lines.join('\n');
+}
+
+// A table cell is inline-only in Markdown: flatten to a single line and escape
+// `|` so cell content cannot break the grid.
+function serializeTableCell(cell: Element): string {
+  return serializeInline(cell)
+    .replace(/\n+/g, ' ')
+    .replace(/\|/g, '\\|')
+    .trim();
 }
 
 function serializeCodeBlock(pre: Element): string {
@@ -112,8 +230,15 @@ function codeLanguage(pre: Element): string {
  * an <li>) that a block-level caller handles separately and must not re-emit here.
  */
 function serializeInline(el: Element, skip?: Set<Element>): string {
+  return serializeInlineNodes(Array.from(el.childNodes), skip);
+}
+
+// Serialize an explicit list of sibling nodes as inline flow. Split out from
+// serializeInline so a list item can serialize a subset of its children (the
+// inline run between block segments) without re-wrapping them in an element.
+function serializeInlineNodes(nodes: Node[], skip?: Set<Element>): string {
   let out = '';
-  for (const node of Array.from(el.childNodes)) {
+  for (const node of nodes) {
     if (node.nodeType === NODE_TEXT) {
       // A text node is at a line start only when it is the first content emitted
       // in this inline run; a run after an inline element (`**bold** - x`) is
@@ -180,7 +305,7 @@ function longestBacktickRun(text: string): number {
 // so a direct-children-only check would miss the block structure and flatten it
 // into one inline run.
 function hasBlockChild(el: Element): boolean {
-  return el.querySelector('p, ul, ol, pre, blockquote, hr, h1, h2, h3, h4, h5, h6') !== null;
+  return el.querySelector('p, ul, ol, pre, table, blockquote, hr, h1, h2, h3, h4, h5, h6') !== null;
 }
 
 // Collapse runs of insignificant whitespace (including the newlines the pretty-
