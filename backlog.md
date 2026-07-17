@@ -4,13 +4,6 @@ Design: `docs/design/chatgpt-conversation-backup.md`. v1 tickets below are verti
 dependency order; blocked items stay invisible to `next-tasks` until their `*(blocked by: ...)*`
 marker is removed by hand once the blocking ticket lands.
 
-## 5 — PDF export
-
-> Goal: download the current conversation as a selectable-text PDF, with no print dialog (bulk-ready).
-> Done-when: `src/export/pdf.ts` builds a pdfmake document definition from the model and downloads a PDF directly; code blocks render as monospace; Korean (CJK) glyphs render via an embedded font; the button's PDF action works.
-
-- [ ] [FEAT] pdfmake PDF exporter (CJK font) + wire button PDF action to direct download
-
 ## Tooling & static analysis
 
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the

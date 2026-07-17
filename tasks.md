@@ -11,6 +11,10 @@
 - [ ] [FIX] `html-to-markdown` does not escape Markdown-significant characters in plain text nodes, so assistant text like `# not a heading` or `1. not a list` becomes structural Markdown on export. Escape leading `#`/`>`/`-`/`*`/digit-dot and inline `` ` ``/`[`/`]` in text nodes while preserving delimiters generated for real HTML formatting. Consider handling alongside the Markdown exporter (ticket 4). *(from dev-review: Codex P2)*
 - [ ] [FEAT] `html-to-markdown` best-effort table support: assistant `<table>` currently serializes to concatenated inline text (no rows/separators) and is unrecoverable downstream since exporters only see the normalized string. Serialize `<thead>/<tbody>/<tr>/<td>` into a GFM table here. Not in current fixtures. *(from dev-review: Codex P2)*
 
+### Ticket 5 follow-up (PDF export) — manual verification
+
+- [ ] [VERIFY] Load-unpacked on a live logged-in ChatGPT conversation (incl. a Korean one with a fenced code block): confirm both `MD` and `PDF` buttons mount top-right; the `PDF` button downloads directly with no print dialog; the opened PDF has selectable text, **Korean/CJK glyphs actually rasterize via the embedded Jetendard font (no tofu)**, and code blocks render monospace/boxed. Deferred — needs a logged-in browser session the agent cannot drive; automated coverage stops at the pdfmake document-definition level per the design.
+
 ### Ticket 4 follow-up (Markdown export) — review findings
 
 - [ ] [FIX] `toMarkdown` emits the conversation title into an `# ` heading without escaping Markdown-significant characters, so a title like `# real?` or `1) foo` renders as structure. Escape the title in `markdown.ts` when the plain-text-node escaping (Ticket 3 follow-up above) is tackled — same escape table, shared helper. *(from dev-review: Codex P2; deferred — title is plain page text, low real-world risk)*
