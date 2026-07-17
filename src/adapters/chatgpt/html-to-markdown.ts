@@ -6,6 +6,8 @@
 // against test/fixtures/chatgpt/): headings, p, strong/em, inline & fenced code,
 // ul/ol/li, a, blockquote, hr, br, img.
 
+import { escapeMarkdownText } from '../../core/markdown-escape';
+
 /** Serialize an assistant `.markdown` element to Markdown. */
 export function htmlToMarkdown(root: Element): string {
   const md = serializeBlocks(root, 0);
@@ -19,7 +21,7 @@ function serializeBlocks(container: Element, listDepth: number): string {
   for (const node of Array.from(container.childNodes)) {
     if (node.nodeType === NODE_TEXT) {
       const text = collapseWs(node.textContent ?? '');
-      if (text.trim()) parts.push(text.trim());
+      if (text.trim()) parts.push(escapeMarkdownText(text.trim(), true));
       continue;
     }
     if (node.nodeType !== NODE_ELEMENT) continue;
@@ -113,7 +115,10 @@ function serializeInline(el: Element, skip?: Set<Element>): string {
   let out = '';
   for (const node of Array.from(el.childNodes)) {
     if (node.nodeType === NODE_TEXT) {
-      out += collapseWs(node.textContent ?? '');
+      // A text node is at a line start only when it is the first content emitted
+      // in this inline run; a run after an inline element (`**bold** - x`) is
+      // mid-line, so its leading marker must not be escaped as a block marker.
+      out += escapeMarkdownText(collapseWs(node.textContent ?? ''), out === '');
       continue;
     }
     if (node.nodeType !== NODE_ELEMENT) continue;

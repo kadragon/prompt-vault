@@ -63,6 +63,18 @@ describe('toMarkdown', () => {
   it('renders a title-only document when there are no messages', () => {
     expect(toMarkdown(conversation({ title: 'Empty', messages: [] }))).toBe('# Empty\n');
   });
+
+  it('escapes Markdown-significant characters in the title heading', () => {
+    expect(toMarkdown(conversation({ title: '# real?', messages: [] }))).toBe('# \\# real?\n');
+    expect(toMarkdown(conversation({ title: '1) foo', messages: [] }))).toBe('# 1\\) foo\n');
+    expect(toMarkdown(conversation({ title: '[x](y)', messages: [] }))).toBe('# \\[x\\](y)\n');
+  });
+
+  it('leaves already-Markdown message content unescaped', () => {
+    const content = '# a real heading in content\n\n- a real bullet';
+    const md = toMarkdown(conversation({ messages: [{ role: 'assistant', content }] }));
+    expect(md).toBe(`# My chat\n\n## Assistant\n\n${content}\n`);
+  });
 });
 
 describe('markdownFilename', () => {
