@@ -10,6 +10,9 @@ export default defineManifest({
   name: 'prompt-vault',
   version: pkg.version,
   description: pkg.description,
+  // UI strings resolve via chrome.i18n against _locales/{en,ko}/messages.json,
+  // keyed to the browser's UI language. No extra permission needed.
+  default_locale: 'en',
   // Matches are host-broad because ChatGPT is a client-routed SPA (the script
   // must already be present when the user navigates into a /c/<id> page); the
   // conversation-page gate is enforced in JS via isConversationPage(), and SPA

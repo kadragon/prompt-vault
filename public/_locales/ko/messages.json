@@ -1,0 +1,127 @@
+{
+  "downloadMdLabel": {
+    "message": "MD",
+    "description": "Label for the Markdown export button."
+  },
+  "downloadPdfLabel": {
+    "message": "PDF",
+    "description": "Label for the PDF export button."
+  },
+  "downloadJsonLabel": {
+    "message": "JSON",
+    "description": "Label for the JSON export button."
+  },
+  "downloadHtmlLabel": {
+    "message": "HTML",
+    "description": "Label for the HTML export button."
+  },
+  "downloadMdAriaLabel": {
+    "message": "대화를 Markdown으로 다운로드",
+    "description": "Accessible name for the Markdown export button."
+  },
+  "downloadPdfAriaLabel": {
+    "message": "대화를 PDF로 다운로드",
+    "description": "Accessible name for the PDF export button."
+  },
+  "downloadJsonAriaLabel": {
+    "message": "대화를 JSON으로 다운로드",
+    "description": "Accessible name for the JSON export button."
+  },
+  "downloadHtmlAriaLabel": {
+    "message": "대화를 HTML로 다운로드",
+    "description": "Accessible name for the HTML export button."
+  },
+  "exportNoAdapterMessage": {
+    "message": "이 페이지는 지원되는 대화가 아니어서 내보낼 내용이 없습니다.",
+    "description": "Shown when the current page is not a recognized conversation."
+  },
+  "exportFailedMessage": {
+    "message": "대화를 내보내지 못했습니다. 다시 시도해 주세요.",
+    "description": "Generic fallback for an unexpected export failure."
+  },
+  "exportEmptyMessage": {
+    "message": "이 대화에는 메시지가 없어 내보낼 내용이 없습니다.",
+    "description": "Shown when extraction returns a conversation with no messages."
+  },
+  "downloadBulkLabel": {
+    "message": "일괄",
+    "description": "Label for the toolbar button that opens the bulk-export panel."
+  },
+  "downloadBulkAriaLabel": {
+    "message": "여러 대화 내보내기",
+    "description": "Accessible name for the bulk-export toolbar button."
+  },
+  "bulkPanelTitle": {
+    "message": "여러 대화 내보내기",
+    "description": "Title of the bulk-export selection panel."
+  },
+  "bulkPanelFormatLabel": {
+    "message": "형식",
+    "description": "Label for the format picker in the bulk-export panel."
+  },
+  "bulkPanelSelectAll": {
+    "message": "전체 선택",
+    "description": "Select-all control in the bulk-export panel."
+  },
+  "bulkPanelCancel": {
+    "message": "취소",
+    "description": "Cancel button in the bulk-export panel."
+  },
+  "bulkPanelClose": {
+    "message": "닫기",
+    "description": "Close button in the bulk-export panel."
+  },
+  "bulkEmptyMessage": {
+    "message": "사이드바에서 내보낼 대화를 찾지 못했습니다.",
+    "description": "Shown when the history sidebar lists no conversations."
+  },
+  "bulkUnsupportedMessage": {
+    "message": "이 페이지에서는 일괄 내보내기를 사용할 수 없습니다.",
+    "description": "Shown when the current page's adapter does not support bulk export."
+  },
+  "bulkExportButtonLabel": {
+    "message": "선택한 $count$개 내보내기",
+    "description": "Export-button label with the current selected count.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkProgressMessage": {
+    "message": "$total$개 중 $current$개 내보내는 중: $title$",
+    "description": "In-progress line shown while a batch runs.",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "bulkSummarySaved": {
+    "message": "$total$개 중 $succeeded$개 저장했습니다.",
+    "description": "Final summary line after a batch: how many succeeded.",
+    "placeholders": {
+      "succeeded": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "bulkSummaryFailed": {
+    "message": "$failed$개 실패.",
+    "description": "Appended to the summary line when some exports failed.",
+    "placeholders": {
+      "failed": {
+        "content": "$1"
+      }
+    }
+  }
+}

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] i18n (Korean UI strings) — native `chrome.i18n` localization: message catalog in `public/_locales/{en,ko}/messages.json`, `src/strings.ts` now resolves every user-facing string via `chrome.i18n.getMessage()` (public API unchanged), `default_locale: 'en'` in the manifest; locale follows the browser UI language. A node-env vitest shim (`test/setup/chrome-i18n.ts`) backs the English catalog for tests. No new permissions or network calls (2026-07-17)
+
 - [done] Additional export formats — JSON & HTML — two new provider-agnostic exporters (`src/export/json.ts`, `src/export/html.ts`) consuming the normalized `Conversation` model; JSON is a deterministic round-trippable model dump, HTML is a self-contained document showing each message's Markdown verbatim in an HTML-escaped `<pre>` block; wired into the headless saver (`ExportFormat` now `md|pdf|json|html`) and the header toolbar (four icon buttons). No new permissions or network calls (2026-07-17)
 
 - [done] Bulk download — export core slice — headless `saveConversation(conversation, format, now, doc?)` and a provider-agnostic sequential `bulkExport` orchestrator (per-item fail-loud into a `{ total, succeeded, failed[] }` summary, throttled between saves); `runExport` now delegates its produce+save step to the shared saver. The design's "forward hook" for bulk export; live sidebar enumeration + navigation remain a deferred, login-session-only follow-up (2026-07-17)
