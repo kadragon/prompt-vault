@@ -6,6 +6,7 @@
 // Conversation yields the same bytes (no timestamp, Date, or randomness here).
 
 import type { Conversation, Role } from '../core/conversation';
+import { escapeMarkdownText } from '../core/markdown-escape';
 import { buildExportFilename } from './filename';
 
 // Human-readable section heading per role. Kept exhaustive over Role so a new
@@ -18,7 +19,7 @@ const ROLE_HEADING: Record<Role, string> = {
 
 /** Compose a Conversation into one Markdown document. Deterministic. */
 export function toMarkdown(conversation: Conversation): string {
-  const blocks: string[] = [`# ${stripNewlines(conversation.title)}`];
+  const blocks: string[] = [`# ${escapeMarkdownText(stripNewlines(conversation.title))}`];
   for (const message of conversation.messages) {
     blocks.push(`${ROLE_HEADING[message.role]}\n\n${message.content.trim()}`);
   }

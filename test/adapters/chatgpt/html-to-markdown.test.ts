@@ -72,4 +72,26 @@ describe('htmlToMarkdown', () => {
     expect(md(html)).toBe('first\n\nsecond');
     expect(md(html)).toBe(md(html));
   });
+
+  it('escapes a leading block marker in text so it is not read as structure', () => {
+    expect(md('<p># not a heading</p>')).toBe('\\# not a heading');
+    expect(md('<p>&gt; not a quote</p>')).toBe('\\> not a quote');
+    expect(md('<p>- not a bullet</p>')).toBe('\\- not a bullet');
+    expect(md('<p>* not a bullet</p>')).toBe('\\* not a bullet');
+    expect(md('<p>1. not a list</p>')).toBe('1\\. not a list');
+    expect(md('<p>2) not a list</p>')).toBe('2\\) not a list');
+  });
+
+  it('escapes inline link/code characters in text', () => {
+    expect(md('<p>see [1] for details</p>')).toBe('see \\[1\\] for details');
+    expect(md('<p>type `ls` to list</p>')).toBe('type \\`ls\\` to list');
+  });
+
+  it('does not over-escape real HTML formatting', () => {
+    // Serializer-generated markers (##, **, `, - ) must stay unescaped.
+    expect(md('<h1>Title</h1>')).toBe('# Title');
+    expect(md('<p><strong>bold</strong></p>')).toBe('**bold**');
+    expect(md('<p><code>ls</code></p>')).toBe('`ls`');
+    expect(md('<ul><li>item</li></ul>')).toBe('- item');
+  });
 });
