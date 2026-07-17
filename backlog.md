@@ -25,6 +25,14 @@ marker is removed by hand once the blocking ticket lands.
 
 - [ ] [FEAT] pdfmake PDF exporter (CJK font) + wire button PDF action to direct download *(blocked by: 3-core-adapter)*
 
+## Tooling & static analysis
+
+> Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the
+> regex tripwire, and catch extension-specific and type-level defects in CI.
+
+- [ ] [HARNESS] Add `addons-linter` (web-ext lint) as a CI step — validates the MV3 manifest and flags extension-unsafe patterns (`eval`, remote scripts, over-broad permissions).
+- [ ] [HARNESS] Upgrade eslint from `recommended` to `recommendedTypeChecked` (type-aware lint: floating promises, unsafe `any`); wire `parserOptions.project` and confirm `npm run lint` stays green.
+
 ## Next (roadmap — not v1)
 
 - [ ] Gemini adapter (reuse core model + exporters via ConversationAdapter)
