@@ -52,6 +52,16 @@ describe('escapeMarkdownText', () => {
       // Renders identically to `*.txt`; documents the cosmetic backslash.
       expect(escapeMarkdownText('*.txt')).toBe('\\*.txt');
     });
+
+    it('treats full-width CJK punctuation as flanking context', () => {
+      // `（ ）` (U+FF08/FF09) count as punctuation so the underscores flank and
+      // are escaped, instead of rendering `_literal_` as emphasis after export.
+      expect(escapeMarkdownText('（_literal_）')).toBe('（\\_literal\\_）');
+    });
+
+    it('still leaves an intraword underscore alone between CJK letters', () => {
+      expect(escapeMarkdownText('한글_variable')).toBe('한글_variable');
+    });
   });
 
   describe('leading block markers (atLineStart)', () => {

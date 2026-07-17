@@ -95,15 +95,19 @@ function isWhitespace(ch: string): boolean {
   return /\s/.test(ch);
 }
 
-// ASCII punctuation per CommonMark's definition. (The category also includes
-// Unicode punctuation, but the assistant text this escaper handles is ASCII in
-// practice; broadening later is additive and would only escape more, never less.)
+// CommonMark punctuation: ASCII punctuation OR any Unicode punctuation (P*).
+// The Unicode arm matters for CJK text — e.g. full-width parens `（ ）` around
+// `_literal_` must count as punctuation so the underscores read as flanking and
+// get escaped, instead of round-tripping into emphasis after export.
 function isPunctuation(ch: string): boolean {
   const c = ch.charCodeAt(0);
-  return (
+  if (
     (c >= 0x21 && c <= 0x2f) || // ! " # $ % & ' ( ) * + , - . /
     (c >= 0x3a && c <= 0x40) || // : ; < = > ? @
     (c >= 0x5b && c <= 0x60) || // [ \ ] ^ _ `
     (c >= 0x7b && c <= 0x7e) //    { | } ~
-  );
+  ) {
+    return true;
+  }
+  return /\p{P}/u.test(ch);
 }

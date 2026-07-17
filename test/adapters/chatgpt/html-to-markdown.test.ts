@@ -136,6 +136,18 @@ describe('htmlToMarkdown', () => {
         '- parent\n  - child\n\n  after',
       );
     });
+
+    it('indents a nested list to the full width of a wide ordered marker', () => {
+      // `10. ` is 4 chars wide, so the nested child needs 4 spaces (not a fixed 2)
+      // or CommonMark reads it as an outer list.
+      expect(md('<ol start="10"><li>parent<ul><li>child</li></ul></li></ol>')).toBe(
+        '10. parent\n    - child',
+      );
+    });
+
+    it('ignores a negative <ol start> (not a valid marker)', () => {
+      expect(md('<ol start="-5"><li>a</li></ol>')).toBe('1. a');
+    });
   });
 
   describe('tables', () => {
@@ -156,6 +168,23 @@ describe('htmlToMarkdown', () => {
       expect(md('<table><tr><th>h</th></tr><tr><td><strong>x</strong></td></tr></table>')).toBe(
         '| h |\n| --- |\n| **x** |',
       );
+    });
+
+    it('widens the grid to the widest row instead of dropping cells', () => {
+      // A body row wider than the header must not silently lose its last cell.
+      expect(md('<table><tr><th>h</th></tr><tr><td>a</td><td>b</td></tr></table>')).toBe(
+        '| h |  |\n| --- | --- |\n| a | b |',
+      );
+    });
+
+    it('does not pull a nested table’s rows into the outer grid', () => {
+      const html =
+        '<table><tr><td>outer' +
+        '<table><tr><td>inner</td></tr></table>' +
+        '</td><td>x</td></tr></table>';
+      // Outer table has one row of two cells; the inner table's row does NOT
+      // leak into the outer grid (it is flattened inline within the cell).
+      expect(md(html)).toBe('| outerinner | x |\n| --- | --- |');
     });
   });
 });

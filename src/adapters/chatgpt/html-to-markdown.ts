@@ -47,7 +47,7 @@ function serializeBlockElement(el: Element, listDepth: number): string {
       return serializeCodeBlock(el);
     case 'ul':
     case 'ol':
-      return serializeList(el, tag === 'ol', listDepth);
+      return serializeList(el, tag === 'ol', '  '.repeat(listDepth));
     case 'table':
       return serializeTable(el);
     case 'blockquote':
@@ -65,22 +65,26 @@ function serializeBlockElement(el: Element, listDepth: number): string {
   }
 }
 
-function serializeList(list: Element, ordered: boolean, depth: number): string {
+// `indent` is the whitespace prefix for this level's markers (`''` at top level).
+// A nested list is indented to the parent marker's full width, not a fixed two
+// spaces, so a wide ordered marker (`10. `) keeps its children beneath the text.
+function serializeList(list: Element, ordered: boolean, indent: string): string {
   const items = Array.from(list.children).filter((c) => c.tagName.toLowerCase() === 'li');
   const start = ordered ? listStart(list) : 1;
   const lines = items.map((li, i) =>
-    serializeListItem(li, ordered ? `${start + i}. ` : '- ', depth),
+    serializeListItem(li, ordered ? `${start + i}. ` : '- ', indent),
   );
   return lines.join('\n');
 }
 
 // Read a non-negative `start` from <ol start="N">, defaulting to 1 for a plain
-// list or an unparseable attribute.
+// list, a negative, or an unparseable attribute (all of which are not valid
+// ordered-list markers).
 function listStart(list: Element): number {
   const raw = list.getAttribute('start');
   if (raw === null) return 1;
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? n : 1;
+  return Number.isFinite(n) && n >= 0 ? n : 1;
 }
 
 // Block-level tags a <li> may directly contain. Each becomes its own segment so a
@@ -107,11 +111,10 @@ const LIST_BLOCK_TAGS = [
  * of inline nodes vs. individual block children — so block structure survives.
  * The first segment shares the marker line; later segments become continuation
  * blocks indented to the marker width, blank-line separated. A nested list is the
- * exception: it carries its own depth-based indent and is emitted tight (matching
- * the historical `- parent\n  - child` output).
+ * exception: it is indented to the marker width (`cont`) and emitted tight
+ * (matching the historical `- parent\n  - child` output).
  */
-function serializeListItem(li: Element, marker: string, depth: number): string {
-  const indent = '  '.repeat(depth);
+function serializeListItem(li: Element, marker: string, indent: string): string {
   const cont = indent + ' '.repeat(marker.length);
 
   const blocks: { lines: string[]; list: boolean }[] = [];
@@ -128,10 +131,12 @@ function serializeListItem(li: Element, marker: string, depth: number): string {
     if (el && LIST_BLOCK_TAGS.includes(tag)) {
       flushInline();
       if (tag === 'ul' || tag === 'ol') {
-        const text = serializeList(el, tag === 'ol', depth + 1);
+        // Nested list aligns under the parent marker text (cont), so it already
+        // carries its indent — emitted tight and not re-prefixed below.
+        const text = serializeList(el, tag === 'ol', cont);
         if (text) blocks.push({ lines: text.split('\n'), list: true });
       } else {
-        const text = serializeBlockElement(el, depth);
+        const text = serializeBlockElement(el, 0);
         if (text.trim()) blocks.push({ lines: text.split('\n'), list: false });
       }
     } else {
@@ -167,27 +172,31 @@ function serializeListItem(li: Element, marker: string, depth: number): string {
 
 /**
  * Serialize a <table> to a GFM table. The header row is the first <tr> (inside
- * <thead> if present, since querySelectorAll walks document order); remaining
- * <tr> are body rows. Rows are padded/truncated to the header column count so the
- * grid stays valid. Alignment is not emitted (out of scope).
+ * <thead> if present, since document order puts it first); remaining <tr> are
+ * body rows. `closest('table') === table` keeps a nested table's rows out of the
+ * outer grid. Column count is the widest row so no cell is ever silently dropped
+ * (fail-loud over the extraction principle); narrower rows are padded. Alignment
+ * is not emitted (out of scope).
  */
 function serializeTable(table: Element): string {
-  const rows = Array.from(table.querySelectorAll('tr'));
+  const rows = Array.from(table.querySelectorAll('tr')).filter(
+    (tr) => tr.closest('table') === table,
+  );
   if (rows.length === 0) return '';
   const cellsOf = (tr: Element): string[] =>
     Array.from(tr.children)
       .filter((c) => ['td', 'th'].includes(c.tagName.toLowerCase()))
       .map(serializeTableCell);
-  const header = cellsOf(rows[0]);
-  const cols = header.length;
+  const grid = rows.map(cellsOf);
+  const cols = Math.max(...grid.map((cells) => cells.length));
   if (cols === 0) return '';
   const row = (cells: string[]): string => {
     const padded = cells.slice(0, cols);
     while (padded.length < cols) padded.push('');
     return `| ${padded.join(' | ')} |`;
   };
-  const lines = [row(header), `| ${Array(cols).fill('---').join(' | ')} |`];
-  for (const tr of rows.slice(1)) lines.push(row(cellsOf(tr)));
+  const lines = [row(grid[0]), `| ${Array(cols).fill('---').join(' | ')} |`];
+  for (const cells of grid.slice(1)) lines.push(row(cells));
   return lines.join('\n');
 }
 
