@@ -32,6 +32,13 @@ export interface BulkFailure {
 
 export interface BulkExportSummary {
   total: number;
+  /**
+   * Count of saves that completed without throwing — i.e. the file was *dispatched*
+   * to the browser, NOT confirmed written to disk. A browser that throttles rapid
+   * multi-downloads can drop a dispatched file without surfacing an error here; the
+   * deferred live driver (see backlog) is responsible for real completion handling
+   * (`chrome.downloads` / spacing) before presenting this as a saved-file count.
+   */
   succeeded: number;
   failed: BulkFailure[];
 }
@@ -42,6 +49,10 @@ export interface BulkExportSummary {
  * — per-item fail-loud (AGENTS.md #4), so one bad turn never silently aborts the batch
  * nor gets silently skipped. `sleep(delayMs)` runs BETWEEN saves only (not after the
  * last). Returns the summary for the caller to surface; performs no `alert` itself.
+ *
+ * Note: `succeeded` counts saves dispatched without error, not downloads confirmed on
+ * disk (see `BulkExportSummary.succeeded`). Confirming actual completion under a
+ * browser's multi-download throttle is the deferred live driver's job, not this core's.
  */
 export async function bulkExport(
   conversations: Conversation[],
