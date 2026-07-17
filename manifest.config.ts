@@ -22,7 +22,7 @@ export default defineManifest({
     },
   ],
   host_permissions: HOSTS,
-  // No `permissions` yet: the stub button does nothing. The download mechanism
-  // (URL.createObjectURL + <a download>, per the design doc) needs no permission;
-  // `downloads` is added in the export tickets only if chrome.downloads is used.
+  // No `permissions`: Markdown export downloads via URL.createObjectURL + an
+  // `<a download>`, which needs no permission. `downloads` would only be added
+  // if a future ticket switches to the chrome.downloads API.
 });
