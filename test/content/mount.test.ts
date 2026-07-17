@@ -28,7 +28,7 @@ describe('syncButtons', () => {
     const container = doc.getElementById(CONTAINER_ID);
     expect(container).not.toBeNull();
     expect(container?.parentElement?.id).toBe(HEADER_ID);
-    expect(container?.querySelectorAll('button').length).toBe(2);
+    expect(container?.querySelectorAll('button').length).toBe(5);
     // Native buttons wear the ChatGPT adapter's icon-button class so they blend with
     // the header's native square icon controls.
     expect(container?.querySelector('button')?.className).toContain('rounded-lg');
@@ -82,8 +82,8 @@ describe('syncButtons', () => {
     syncButtons(doc, CONV_URL);
 
     const header = doc.getElementById(HEADER_ID);
-    // 2 export buttons + the fixture's Share button.
-    expect(header?.querySelectorAll('button').length).toBe(3);
+    // 4 per-format buttons + the bulk button + the fixture's Share button.
+    expect(header?.querySelectorAll('button').length).toBe(6);
     expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
   });
 
@@ -151,10 +151,14 @@ describe('createButtons', () => {
     const container = createButtons(bareDoc(), 'native', 'btn btn-ghost');
     const buttons = container.querySelectorAll('button');
 
-    expect(buttons.length).toBe(2);
+    expect(buttons.length).toBe(5);
     expect(buttons[0].className).toBe('btn btn-ghost');
     expect(buttons[0].getAttribute('aria-label')).toBe('Download conversation as Markdown');
     expect(buttons[1].getAttribute('aria-label')).toBe('Download conversation as PDF');
+    expect(buttons[2].getAttribute('aria-label')).toBe('Download conversation as JSON');
+    expect(buttons[3].getAttribute('aria-label')).toBe('Download conversation as HTML');
+    // The bulk action is the last button, after the per-format downloads.
+    expect(buttons[4].getAttribute('aria-label')).toBe('Export multiple conversations');
   });
 
   it('renders icon-only native buttons with a tooltip title and no visible text label', () => {
@@ -168,5 +172,8 @@ describe('createButtons', () => {
     // Title (hover tooltip) carries the meaning the visible label used to.
     expect(buttons[0].getAttribute('title')).toBe('Download conversation as Markdown');
     expect(buttons[1].getAttribute('title')).toBe('Download conversation as PDF');
+    expect(buttons[2].getAttribute('title')).toBe('Download conversation as JSON');
+    expect(buttons[3].getAttribute('title')).toBe('Download conversation as HTML');
+    expect(buttons[4].getAttribute('title')).toBe('Export multiple conversations');
   });
 });

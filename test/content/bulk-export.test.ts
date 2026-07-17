@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Conversation } from '../../src/core/conversation';
 import type { ExportFormat } from '../../src/content/save-conversation';
-import { bulkExport } from '../../src/content/bulk-export';
+import { bulkExport, type BulkTarget } from '../../src/content/bulk-export';
 
 function conversation(title: string): Conversation {
   return {
@@ -10,6 +10,11 @@ function conversation(title: string): Conversation {
     url: `https://chatgpt.com/c/${title}`,
     messages: [{ role: 'user', content: 'hi' }],
   };
+}
+
+/** A target that produces the given conversation successfully (the common case). */
+function target(title: string): BulkTarget {
+  return { title, produce: () => Promise.resolve(conversation(title)) };
 }
 
 const NOW = new Date(2026, 6, 17);
@@ -21,65 +26,96 @@ function deps(save: (c: Conversation, f: ExportFormat, now: Date) => Promise<voi
 }
 
 describe('bulkExport', () => {
-  it('saves every conversation in order and reports an all-success summary', async () => {
+  it('produces and saves every target in order and reports an all-success summary', async () => {
     const saved: string[] = [];
     const { save, sleep } = deps((c) => {
       saved.push(c.title);
       return Promise.resolve();
     });
-    const convs = [conversation('a'), conversation('b'), conversation('c')];
+    const targets = [target('a'), target('b'), target('c')];
 
-    const summary = await bulkExport(convs, 'md', NOW, { save, sleep });
+    const summary = await bulkExport(targets, 'md', NOW, { save, sleep });
 
     expect(saved).toEqual(['a', 'b', 'c']);
     expect(summary).toEqual({ total: 3, succeeded: 3, failed: [] });
-    expect(save).toHaveBeenCalledWith(convs[0], 'md', NOW);
+    expect(save).toHaveBeenCalledWith(conversation('a'), 'md', NOW);
   });
 
-  it('captures a mid-list failure and still saves the remaining conversations', async () => {
+  it('captures a mid-list SAVE failure and still exports the remaining targets', async () => {
     const saved: string[] = [];
     const { save, sleep } = deps((c) => {
-      if (c.title === 'b') return Promise.reject(new Error('extract failed'));
+      if (c.title === 'b') return Promise.reject(new Error('save failed'));
       saved.push(c.title);
       return Promise.resolve();
     });
-    const convs = [conversation('a'), conversation('b'), conversation('c')];
+    const targets = [target('a'), target('b'), target('c')];
 
-    const summary = await bulkExport(convs, 'md', NOW, { save, sleep });
+    const summary = await bulkExport(targets, 'md', NOW, { save, sleep });
 
     expect(saved).toEqual(['a', 'c']); // b failed, c still ran
     expect(summary.total).toBe(3);
     expect(summary.succeeded).toBe(2);
+    expect(summary.failed).toEqual([{ title: 'b', error: 'save failed' }]);
+  });
+
+  it('captures a PRODUCE failure (e.g. navigation/extraction) and does not save that target', async () => {
+    const saved: string[] = [];
+    const { save, sleep } = deps((c) => {
+      saved.push(c.title);
+      return Promise.resolve();
+    });
+    const targets: BulkTarget[] = [
+      target('a'),
+      { title: 'b', produce: () => Promise.reject(new Error('extract failed')) },
+      target('c'),
+    ];
+
+    const summary = await bulkExport(targets, 'md', NOW, { save, sleep });
+
+    expect(saved).toEqual(['a', 'c']); // b never produced a conversation to save
+    expect(summary.succeeded).toBe(2);
     expect(summary.failed).toEqual([{ title: 'b', error: 'extract failed' }]);
+    // The failed target's produce is not paired with a save call.
+    expect(save).toHaveBeenCalledTimes(2);
   });
 
   it('stringifies a non-Error thrown value into the failure message', async () => {
-    // Deliberately reject with a non-Error to exercise bulkExport's String(error) branch.
+    const { save, sleep } = deps(() => Promise.resolve());
     // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
-    const { save, sleep } = deps(() => Promise.reject('boom'));
-    const summary = await bulkExport([conversation('a')], 'md', NOW, { save, sleep });
+    const targets: BulkTarget[] = [{ title: 'a', produce: () => Promise.reject('boom') }];
+    const summary = await bulkExport(targets, 'md', NOW, { save, sleep });
     expect(summary.failed).toEqual([{ title: 'a', error: 'boom' }]);
   });
 
-  it('sleeps between saves only — n-1 times for n conversations', async () => {
+  it('reports progress at the start of each target (zero-based index, title, total)', async () => {
     const { save, sleep } = deps(() => Promise.resolve());
-    await bulkExport([conversation('a'), conversation('b'), conversation('c')], 'md', NOW, { save, sleep });
+    const onProgress = vi.fn<(i: number, total: number, title: string) => void>();
+    await bulkExport([target('a'), target('b')], 'md', NOW, { save, sleep, onProgress });
+    expect(onProgress.mock.calls).toEqual([
+      [0, 2, 'a'],
+      [1, 2, 'b'],
+    ]);
+  });
+
+  it('sleeps between targets only — n-1 times for n targets', async () => {
+    const { save, sleep } = deps(() => Promise.resolve());
+    await bulkExport([target('a'), target('b'), target('c')], 'md', NOW, { save, sleep });
     expect(sleep).toHaveBeenCalledTimes(2);
   });
 
-  it('does not sleep after a single conversation', async () => {
+  it('does not sleep after a single target', async () => {
     const { save, sleep } = deps(() => Promise.resolve());
-    await bulkExport([conversation('a')], 'md', NOW, { save, sleep });
+    await bulkExport([target('a')], 'md', NOW, { save, sleep });
     expect(sleep).not.toHaveBeenCalled();
   });
 
   it('passes the configured delay to sleep', async () => {
     const { save, sleep } = deps(() => Promise.resolve());
-    await bulkExport([conversation('a'), conversation('b')], 'md', NOW, { save, sleep, delayMs: 750 });
+    await bulkExport([target('a'), target('b')], 'md', NOW, { save, sleep, delayMs: 750 });
     expect(sleep).toHaveBeenCalledWith(750);
   });
 
-  it('returns an empty summary and never saves or sleeps for no conversations', async () => {
+  it('returns an empty summary and never saves or sleeps for no targets', async () => {
     const { save, sleep } = deps(() => Promise.resolve());
     const summary = await bulkExport([], 'pdf', NOW, { save, sleep });
     expect(summary).toEqual({ total: 0, succeeded: 0, failed: [] });

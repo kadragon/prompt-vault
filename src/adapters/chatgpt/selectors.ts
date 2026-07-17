@@ -40,4 +40,21 @@ export const selectors = {
    * by its stable `data-testid`; verified against the captured fixtures (2026-07-17).
    */
   shareButton: '[data-testid="share-chat-button"]',
+
+  /**
+   * The history-list container in the left sidebar (`#history`), holding the
+   * `<a href="/c/…">` links for past conversations. Scoping the conversation-link
+   * query to this element cleanly excludes project/GPT chats (which live under
+   * `/g/…/c/…` in separate sections) and the composer. Verified against the live
+   * page (2026-07-17); re-verify if the bulk selection list comes up empty.
+   */
+  sidebarHistory: '#history',
+
+  /**
+   * A single past-conversation link inside `sidebarHistory`. `href` is `/c/<id>`
+   * (the active chat's link may carry a `?messageId=…` query, deduped by path id) and
+   * the full, untruncated title lives in the link's `aria-label`. Verified against the
+   * live page (2026-07-17).
+   */
+  sidebarConversationLink: 'a[href^="/c/"]',
 } as const;

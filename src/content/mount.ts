@@ -1,7 +1,16 @@
 import { pickAdapter } from '../adapters';
 import { ExtractionError } from '../core/errors';
+import { bulkExport, type BulkTarget } from './bulk-export';
+import { openBulkPanel } from './bulk-panel';
 import { saveConversation, type ExportFormat } from './save-conversation';
 import {
+  BULK_UNSUPPORTED_MESSAGE,
+  DOWNLOAD_BULK_ARIA_LABEL,
+  DOWNLOAD_BULK_LABEL,
+  DOWNLOAD_HTML_ARIA_LABEL,
+  DOWNLOAD_HTML_LABEL,
+  DOWNLOAD_JSON_ARIA_LABEL,
+  DOWNLOAD_JSON_LABEL,
   DOWNLOAD_MD_ARIA_LABEL,
   DOWNLOAD_MD_LABEL,
   DOWNLOAD_PDF_ARIA_LABEL,
@@ -30,6 +39,8 @@ interface FormatSpec {
 const FORMATS: ReadonlyArray<FormatSpec> = [
   { format: 'md', label: DOWNLOAD_MD_LABEL, ariaLabel: DOWNLOAD_MD_ARIA_LABEL, icon: markdownIcon },
   { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL, icon: pdfIcon },
+  { format: 'json', label: DOWNLOAD_JSON_LABEL, ariaLabel: DOWNLOAD_JSON_ARIA_LABEL, icon: jsonIcon },
+  { format: 'html', label: DOWNLOAD_HTML_LABEL, ariaLabel: DOWNLOAD_HTML_ARIA_LABEL, icon: htmlIcon },
 ];
 
 // Placement is stamped on the container so `syncButtons` can tell a native mount
@@ -95,11 +106,45 @@ function pdfIcon(doc: Document): SVGElement {
   ]);
 }
 
+// JSON: curly braces, the universal glyph for structured data.
+function jsonIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'path', attrs: { d: 'M8 4a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2' } },
+    { tag: 'path', attrs: { d: 'M16 4a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2' } },
+  ]);
+}
+
+// HTML: an angle-bracket tag mark (`< >` with a slash), the universal glyph for markup.
+function htmlIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'path', attrs: { d: 'M8 8l-4 4 4 4' } },
+    { tag: 'path', attrs: { d: 'M16 8l4 4-4 4' } },
+    { tag: 'path', attrs: { d: 'M13 6l-2 12' } },
+  ]);
+}
+
+// Bulk: two overlapping document sheets — the universal "multiple items" glyph —
+// distinguishing this action (pick several conversations) from the single-format
+// download buttons beside it. Meaning is announced via the tooltip title and aria-label.
+function bulkIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'rect', attrs: { x: '9', y: '3', width: '11', height: '13', rx: '2' } },
+    { tag: 'path', attrs: { d: 'M5 8v11a2 2 0 0 0 2 2h9' } },
+  ]);
+}
+
+/** Shared shape for every toolbar button (per-format download and the bulk action). */
+interface ButtonSpec {
+  label: string;
+  ariaLabel: string;
+  icon: (doc: Document) => SVGElement;
+  onClick: () => void;
+}
+
 function createButton(
   doc: Document,
-  container: HTMLDivElement,
   placement: 'native' | 'overlay',
-  { format, label, ariaLabel, icon }: FormatSpec,
+  { label, ariaLabel, icon, onClick }: ButtonSpec,
   buttonClass: string | undefined,
 ): HTMLButtonElement {
   const button = doc.createElement('button');
@@ -107,9 +152,9 @@ function createButton(
   button.setAttribute('aria-label', ariaLabel);
   if (placement === 'native') {
     // Blend in: wear the provider's own icon-button classes (supplied by the adapter
-    // so this content layer stays provider-agnostic) and show the format glyph only,
-    // matching ChatGPT's square icon controls. The meaning is carried by the tooltip
-    // title and aria-label rather than a visible text label.
+    // so this content layer stays provider-agnostic) and show the glyph only, matching
+    // ChatGPT's square icon controls. The meaning is carried by the tooltip title and
+    // aria-label rather than a visible text label.
     if (buttonClass) button.className = buttonClass;
     button.style.cursor = 'pointer';
     button.title = ariaLabel;
@@ -130,9 +175,7 @@ function createButton(
       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
     });
   }
-  button.addEventListener('click', () => {
-    void runExport(container, format);
-  });
+  button.addEventListener('click', onClick);
   return button;
 }
 
@@ -165,8 +208,18 @@ export function createButtons(
     });
   }
   for (const spec of FORMATS) {
-    container.appendChild(createButton(doc, container, placement, spec, buttonClass));
+    const buttonSpec: ButtonSpec = { ...spec, onClick: () => void runExport(container, spec.format) };
+    container.appendChild(createButton(doc, placement, buttonSpec, buttonClass));
   }
+  // The bulk action sits after the per-format buttons: it opens a selection panel
+  // instead of downloading the current conversation, so it carries its own handler.
+  const bulkSpec: ButtonSpec = {
+    label: DOWNLOAD_BULK_LABEL,
+    ariaLabel: DOWNLOAD_BULK_ARIA_LABEL,
+    icon: bulkIcon,
+    onClick: () => openBulkExport(doc),
+  };
+  container.appendChild(createButton(doc, placement, bulkSpec, buttonClass));
   return container;
 }
 
@@ -200,6 +253,59 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
     exportInFlight = false;
     buttons.forEach((b) => (b.disabled = false));
   }
+}
+
+/**
+ * Open the bulk-export selection panel for the current page. The panel is provider-
+ * agnostic, so this wires it to the active adapter's sidebar enumeration and
+ * cross-conversation navigation. Fail-loud (AGENTS.md #4): if the adapter cannot list
+ * or open conversations, surface a visible message instead of an empty panel. Blocked
+ * while a single export is in flight (the panel's own modal backdrop then blocks
+ * single exports for the reverse case).
+ */
+function openBulkExport(doc: Document): void {
+  if (exportInFlight) return;
+  const adapter = pickAdapter(location.href);
+  if (!adapter) {
+    alert(EXPORT_NO_ADAPTER_MESSAGE);
+    return;
+  }
+  // Bulk needs both sidebar enumeration and cross-conversation navigation; a provider
+  // that implements neither cannot be bulk-exported. Call through `adapter.` (rather
+  // than destructuring the methods) so they keep their `this` binding.
+  if (!adapter.listConversations || !adapter.openConversation) {
+    alert(BULK_UNSUPPORTED_MESSAGE);
+    return;
+  }
+
+  openBulkPanel(doc, {
+    listConversations: () => adapter.listConversations!(doc),
+    run: async (selected, format, onProgress) => {
+      // Hold the in-flight guard for the whole batch so a stray single-export click
+      // short-circuits, and remember where the user started so we can return them.
+      exportInFlight = true;
+      const startUrl = location.href;
+      const targets: BulkTarget[] = selected.map((sidebar) => ({
+        title: sidebar.title,
+        produce: async () => {
+          await adapter.openConversation!(sidebar.url);
+          const conversation = await adapter.extract();
+          assertConversationNonEmpty(conversation);
+          return conversation;
+        },
+      }));
+      try {
+        return await bulkExport(targets, format, new Date(), { onProgress });
+      } finally {
+        // Return the user to where they started BEFORE releasing the guard, so a stray
+        // single-export can't fire against the last-exported conversation while the page
+        // is still navigating back. Best-effort: nav failure is irrelevant to the batch
+        // result, so it is swallowed.
+        await adapter.openConversation!(startUrl).catch(() => undefined);
+        exportInFlight = false;
+      }
+    },
+  });
 }
 
 /** Remove the buttons if mounted. */
