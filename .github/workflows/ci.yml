@@ -17,8 +17,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           # Matches docs/runbook.md support floor (>=24); developed on Node 26.
           node-version: '24'
