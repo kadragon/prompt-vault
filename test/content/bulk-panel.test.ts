@@ -55,6 +55,26 @@ function deps(summary: BulkExportSummary, list: SidebarConversation[] = CONVS): 
   return { listConversations: () => list, run };
 }
 
+/** Deps whose `run` stays pending until the returned `resolve` is called. */
+function pendingDeps(list: SidebarConversation[] = CONVS): BulkPanelDeps & {
+  run: ReturnType<typeof vi.fn>;
+  resolve: (summary: BulkExportSummary) => void;
+} {
+  let resolveRun!: (summary: BulkExportSummary) => void;
+  const run = vi.fn(() => new Promise<BulkExportSummary>((res) => (resolveRun = res)));
+  return { listConversations: () => list, run, resolve: (summary) => resolveRun(summary) };
+}
+
+function pressEscape(doc: Document): void {
+  const view = doc.defaultView as unknown as { KeyboardEvent: typeof KeyboardEvent };
+  doc.dispatchEvent(new view.KeyboardEvent('keydown', { key: 'Escape' }));
+}
+
+function clickBackdrop(backdrop: HTMLElement): void {
+  const view = backdrop.ownerDocument.defaultView as unknown as { Event: typeof Event };
+  backdrop.dispatchEvent(new view.Event('click'));
+}
+
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe('openBulkPanel', () => {
@@ -147,6 +167,36 @@ describe('openBulkPanel', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
     buttonByText(panelOf(doc), 'Cancel').click();
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('closes on Escape via a document-level listener (focus need not be inside the panel)', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    expect(doc.getElementById(BULK_PANEL_ID)).not.toBeNull();
+    pressEscape(doc);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('cannot be dismissed mid-batch — the running batch would keep navigating the tab unseen', async () => {
+    const doc = freshDoc();
+    const d = pendingDeps();
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+    check(checkboxes(panel)[1]);
+    buttonByText(panel, 'Export 1 selected').click();
+    await flush();
+
+    // Batch in flight (run has not resolved): backdrop click and Escape are inert.
+    clickBackdrop(panel);
+    expect(doc.getElementById(BULK_PANEL_ID)).not.toBeNull();
+    pressEscape(doc);
+    expect(doc.getElementById(BULK_PANEL_ID)).not.toBeNull();
+
+    // Once the batch settles, the repurposed Close works again.
+    d.resolve({ total: 1, succeeded: 1, failed: [] });
+    await flush();
+    buttonByText(panel, 'Close').click();
     expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
   });
 });

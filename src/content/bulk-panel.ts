@@ -58,19 +58,27 @@ export function openBulkPanel(doc: Document, deps: BulkPanelDeps): void {
   if (doc.getElementById(BULK_PANEL_ID)) return;
 
   const conversations = deps.listConversations();
-  const { backdrop, close } = buildShell(doc);
+  const { backdrop, dialog, close, setRunning } = buildShell(doc);
 
   if (conversations.length === 0) {
     renderEmptyState(doc, backdrop, close);
   } else {
-    renderSelection(doc, backdrop, close, conversations, deps);
+    renderSelection(doc, backdrop, close, setRunning, conversations, deps);
   }
 
   doc.body.appendChild(backdrop);
+  // Move focus into the modal so keyboard users are placed inside it (aria-modal) and
+  // Escape works immediately rather than only after tabbing to a control.
+  dialog.focus();
 }
 
 /** The modal shell: a full-screen backdrop holding a centered dialog, plus Escape-to-close. */
-function buildShell(doc: Document): { backdrop: HTMLDivElement; dialog: HTMLDivElement; close: () => void } {
+function buildShell(doc: Document): {
+  backdrop: HTMLDivElement;
+  dialog: HTMLDivElement;
+  close: () => void;
+  setRunning: (running: boolean) => void;
+} {
   const backdrop = doc.createElement('div');
   backdrop.id = BULK_PANEL_ID;
   Object.assign(backdrop.style, {
@@ -88,6 +96,8 @@ function buildShell(doc: Document): { backdrop: HTMLDivElement; dialog: HTMLDivE
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-label', BULK_PANEL_TITLE);
+  // Focusable so the caller can move focus into the modal on open (aria-modal contract).
+  dialog.tabIndex = -1;
   Object.assign(dialog.style, {
     display: 'flex',
     flexDirection: 'column',
@@ -101,16 +111,33 @@ function buildShell(doc: Document): { backdrop: HTMLDivElement; dialog: HTMLDivE
   });
   backdrop.appendChild(dialog);
 
-  const close = (): void => backdrop.remove();
+  // While a batch runs the modal must stay put: the batch navigates the host tab across
+  // conversations in the background, so silently removing the modal would strand the run
+  // with no visible progress or summary. `running` gates the dismiss paths (backdrop
+  // click, Escape); the in-run controls are disabled separately and Cancel is repurposed
+  // into Close once the batch settles.
+  let running = false;
+  const setRunning = (value: boolean): void => {
+    running = value;
+  };
+  // Escape is bound on the document rather than the backdrop: a backdrop-scoped listener
+  // only fires while focus is inside it, but on open focus may sit on the toolbar button
+  // that triggered the panel, so document scope makes Escape work regardless of focus.
+  const onKeydown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
+  const close = (): void => {
+    if (running) return;
+    doc.removeEventListener('keydown', onKeydown);
+    backdrop.remove();
+  };
+  doc.addEventListener('keydown', onKeydown);
   // Click on the backdrop (outside the dialog) closes; clicks inside do not bubble out.
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) close();
   });
-  backdrop.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') close();
-  });
 
-  return { backdrop, dialog, close };
+  return { backdrop, dialog, close, setRunning };
 }
 
 /** Section helpers keep the two render paths (empty / selection) readable. */
@@ -177,6 +204,7 @@ function renderSelection(
   doc: Document,
   backdrop: HTMLElement,
   close: () => void,
+  setRunning: (running: boolean) => void,
   conversations: SidebarConversation[],
   deps: BulkPanelDeps,
 ): void {
@@ -288,6 +316,7 @@ function renderSelection(
       controls: [selectAll, formatSelect, exportBtn, cancel, ...checkboxes],
       cancelButton: cancel,
       close,
+      setRunning,
     });
   });
 }
@@ -301,6 +330,8 @@ interface RunBatchArgs {
   controls: Array<HTMLInputElement | HTMLButtonElement | HTMLSelectElement>;
   cancelButton: HTMLButtonElement;
   close: () => void;
+  /** Toggle the shell's dismiss guard so the modal can't be closed mid-batch. */
+  setRunning: (running: boolean) => void;
 }
 
 /**
@@ -310,8 +341,10 @@ interface RunBatchArgs {
  * the whole run is still surfaced (fail-loud) rather than swallowed.
  */
 async function runBatch(doc: Document, args: RunBatchArgs): Promise<void> {
-  const { selected, format, deps, status, controls, cancelButton, close } = args;
+  const { selected, format, deps, status, controls, cancelButton, close, setRunning } = args;
   for (const c of controls) c.disabled = true;
+  // Block the dismiss paths (backdrop click / Escape) for the whole batch.
+  setRunning(true);
 
   const onProgress = (current: number, total: number, title: string): void => {
     // `current` arrives zero-based (item about to start); show it 1-based.
@@ -325,6 +358,7 @@ async function runBatch(doc: Document, args: RunBatchArgs): Promise<void> {
     status.textContent = error instanceof Error ? error.message : String(error);
   } finally {
     // The batch is done (or errored): the only useful action left is closing.
+    setRunning(false);
     cancelButton.disabled = false;
     cancelButton.textContent = BULK_PANEL_CLOSE;
     cancelButton.onclick = close;

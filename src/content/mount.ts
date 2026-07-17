@@ -297,10 +297,12 @@ function openBulkExport(doc: Document): void {
       try {
         return await bulkExport(targets, format, new Date(), { onProgress });
       } finally {
+        // Return the user to where they started BEFORE releasing the guard, so a stray
+        // single-export can't fire against the last-exported conversation while the page
+        // is still navigating back. Best-effort: nav failure is irrelevant to the batch
+        // result, so it is swallowed.
+        await adapter.openConversation!(startUrl).catch(() => undefined);
         exportInFlight = false;
-        // Best-effort: navigate back to the conversation the user was viewing. Any
-        // failure here is irrelevant to the batch result, so it is swallowed.
-        void adapter.openConversation!(startUrl).catch(() => undefined);
       }
     },
   });
