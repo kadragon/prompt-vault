@@ -47,7 +47,9 @@ function serializeBlockElement(el: Element, listDepth: number): string {
       return serializeCodeBlock(el);
     case 'ul':
     case 'ol':
-      return serializeList(el, tag === 'ol', listDepth);
+      return serializeList(el, tag === 'ol', '  '.repeat(listDepth));
+    case 'table':
+      return serializeTable(el);
     case 'blockquote':
       return serializeBlocks(el, listDepth)
         .split('\n')
@@ -63,23 +65,147 @@ function serializeBlockElement(el: Element, listDepth: number): string {
   }
 }
 
-function serializeList(list: Element, ordered: boolean, depth: number): string {
+// `indent` is the whitespace prefix for this level's markers (`''` at top level).
+// A nested list is indented to the parent marker's full width, not a fixed two
+// spaces, so a wide ordered marker (`10. `) keeps its children beneath the text.
+function serializeList(list: Element, ordered: boolean, indent: string): string {
   const items = Array.from(list.children).filter((c) => c.tagName.toLowerCase() === 'li');
-  const indent = '  '.repeat(depth);
-  const lines: string[] = [];
-  items.forEach((li, i) => {
-    const marker = ordered ? `${i + 1}. ` : '- ';
-    // Split each <li> into its own inline text and any nested lists.
-    const nestedLists = Array.from(li.children).filter((c) =>
-      ['ul', 'ol'].includes(c.tagName.toLowerCase()),
-    );
-    const inline = serializeInline(li, new Set(nestedLists)).trim();
-    lines.push(indent + marker + inline);
-    for (const nested of nestedLists) {
-      lines.push(serializeList(nested, nested.tagName.toLowerCase() === 'ol', depth + 1));
+  const start = ordered ? listStart(list) : 1;
+  const lines = items.map((li, i) =>
+    serializeListItem(li, ordered ? `${start + i}. ` : '- ', indent),
+  );
+  return lines.join('\n');
+}
+
+// Read a non-negative `start` from <ol start="N">, defaulting to 1 for a plain
+// list, a negative, or an unparseable attribute (all of which are not valid
+// ordered-list markers).
+function listStart(list: Element): number {
+  const raw = list.getAttribute('start');
+  if (raw === null) return 1;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 1;
+}
+
+// Block-level tags a <li> may directly contain. Each becomes its own segment so a
+// nested <pre>, extra <p>, list, or table is serialized as a real block instead
+// of being flattened into the marker line.
+const LIST_BLOCK_TAGS = [
+  'p',
+  'pre',
+  'ul',
+  'ol',
+  'table',
+  'blockquote',
+  'hr',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+];
+
+/**
+ * Serialize one <li>. Content is partitioned into document-order segments — runs
+ * of inline nodes vs. individual block children — so block structure survives.
+ * The first segment shares the marker line; later segments become continuation
+ * blocks indented to the marker width, blank-line separated. A nested list is the
+ * exception: it is indented to the marker width (`cont`) and emitted tight
+ * (matching the historical `- parent\n  - child` output).
+ */
+function serializeListItem(li: Element, marker: string, indent: string): string {
+  const cont = indent + ' '.repeat(marker.length);
+
+  const blocks: { lines: string[]; list: boolean }[] = [];
+  let inlineRun: Node[] = [];
+  const flushInline = () => {
+    if (!inlineRun.length) return;
+    const text = serializeInlineNodes(inlineRun).trim();
+    if (text) blocks.push({ lines: text.split('\n'), list: false });
+    inlineRun = [];
+  };
+  for (const node of Array.from(li.childNodes)) {
+    const el = node.nodeType === NODE_ELEMENT ? (node as Element) : null;
+    const tag = el?.tagName.toLowerCase() ?? '';
+    if (el && LIST_BLOCK_TAGS.includes(tag)) {
+      flushInline();
+      if (tag === 'ul' || tag === 'ol') {
+        // Nested list aligns under the parent marker text (cont), so it already
+        // carries its indent — emitted tight and not re-prefixed below.
+        const text = serializeList(el, tag === 'ol', cont);
+        if (text) blocks.push({ lines: text.split('\n'), list: true });
+      } else {
+        const text = serializeBlockElement(el, 0);
+        if (text.trim()) blocks.push({ lines: text.split('\n'), list: false });
+      }
+    } else {
+      inlineRun.push(node);
+    }
+  }
+  flushInline();
+
+  if (blocks.length === 0) return indent + marker.trimEnd();
+
+  const out: string[] = [];
+  blocks.forEach((block, i) => {
+    if (i === 0) {
+      if (block.list) {
+        // A list as the very first content: keep the marker on its own line.
+        out.push(indent + marker.trimEnd());
+        out.push(...block.lines);
+      } else {
+        out.push(indent + marker + block.lines[0]);
+        for (const line of block.lines.slice(1)) out.push(line ? cont + line : '');
+      }
+      return;
+    }
+    if (block.list) {
+      out.push(...block.lines);
+    } else {
+      out.push('');
+      for (const line of block.lines) out.push(line ? cont + line : '');
     }
   });
+  return out.join('\n');
+}
+
+/**
+ * Serialize a <table> to a GFM table. The header row is the first <tr> (inside
+ * <thead> if present, since document order puts it first); remaining <tr> are
+ * body rows. `closest('table') === table` keeps a nested table's rows out of the
+ * outer grid. Column count is the widest row so no cell is ever silently dropped
+ * (fail-loud over the extraction principle); narrower rows are padded. Alignment
+ * is not emitted (out of scope).
+ */
+function serializeTable(table: Element): string {
+  const rows = Array.from(table.querySelectorAll('tr')).filter(
+    (tr) => tr.closest('table') === table,
+  );
+  if (rows.length === 0) return '';
+  const cellsOf = (tr: Element): string[] =>
+    Array.from(tr.children)
+      .filter((c) => ['td', 'th'].includes(c.tagName.toLowerCase()))
+      .map(serializeTableCell);
+  const grid = rows.map(cellsOf);
+  const cols = Math.max(...grid.map((cells) => cells.length));
+  if (cols === 0) return '';
+  const row = (cells: string[]): string => {
+    const padded = cells.slice(0, cols);
+    while (padded.length < cols) padded.push('');
+    return `| ${padded.join(' | ')} |`;
+  };
+  const lines = [row(grid[0]), `| ${Array(cols).fill('---').join(' | ')} |`];
+  for (const cells of grid.slice(1)) lines.push(row(cells));
   return lines.join('\n');
+}
+
+// A table cell is inline-only in Markdown: flatten to a single line. A literal
+// `|` from a text node is already escaped at the source by escapeMarkdownText
+// (backslash-first), so no cell-level pipe escaping — which could not see a
+// preceding backslash — is needed here.
+function serializeTableCell(cell: Element): string {
+  return serializeInline(cell).replace(/\n+/g, ' ').trim();
 }
 
 function serializeCodeBlock(pre: Element): string {
@@ -112,8 +238,15 @@ function codeLanguage(pre: Element): string {
  * an <li>) that a block-level caller handles separately and must not re-emit here.
  */
 function serializeInline(el: Element, skip?: Set<Element>): string {
+  return serializeInlineNodes(Array.from(el.childNodes), skip);
+}
+
+// Serialize an explicit list of sibling nodes as inline flow. Split out from
+// serializeInline so a list item can serialize a subset of its children (the
+// inline run between block segments) without re-wrapping them in an element.
+function serializeInlineNodes(nodes: Node[], skip?: Set<Element>): string {
   let out = '';
-  for (const node of Array.from(el.childNodes)) {
+  for (const node of nodes) {
     if (node.nodeType === NODE_TEXT) {
       // A text node is at a line start only when it is the first content emitted
       // in this inline run; a run after an inline element (`**bold** - x`) is
@@ -180,7 +313,7 @@ function longestBacktickRun(text: string): number {
 // so a direct-children-only check would miss the block structure and flatten it
 // into one inline run.
 function hasBlockChild(el: Element): boolean {
-  return el.querySelector('p, ul, ol, pre, blockquote, hr, h1, h2, h3, h4, h5, h6') !== null;
+  return el.querySelector('p, ul, ol, pre, table, blockquote, hr, h1, h2, h3, h4, h5, h6') !== null;
 }
 
 // Collapse runs of insignificant whitespace (including the newlines the pretty-
