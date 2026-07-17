@@ -30,7 +30,6 @@ marker is removed by hand once the blocking ticket lands.
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the
 > regex tripwire, and catch extension-specific and type-level defects in CI.
 
-- [ ] [HARNESS] Add CodeQL (GitHub code scanning) JS/TS workflow — data-flow analysis to catch conversation data reaching a real network sink (semantic-escape resistance the regex gate lacks); wire into CI on push/PR.
 - [ ] [HARNESS] Add `addons-linter` (web-ext lint) as a CI step — validates the MV3 manifest and flags extension-unsafe patterns (`eval`, remote scripts, over-broad permissions).
 - [ ] [HARNESS] Upgrade eslint from `recommended` to `recommendedTypeChecked` (type-aware lint: floating promises, unsafe `any`); wire `parserOptions.project` and confirm `npm run lint` stays green.
 
