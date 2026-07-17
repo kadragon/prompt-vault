@@ -69,3 +69,19 @@ export function bulkSummaryMessage(succeeded: number, total: number, failedCount
   const saved = m('bulkSummarySaved', [String(succeeded), String(total)]);
   return failedCount > 0 ? `${saved} ${m('bulkSummaryFailed', [String(failedCount)])}` : saved;
 }
+
+// --- Options page (choose which toolbar icons to show) ---
+
+// Document title (browser tab) and the visible page heading of the options page.
+export const OPTIONS_TITLE = m('optionsTitle');
+export const OPTIONS_HEADING = m('optionsHeading');
+
+// Section labels for the format checklist and the bulk-icon toggle.
+export const OPTIONS_FORMATS_LABEL = m('optionsFormatsLabel');
+export const OPTIONS_BULK_LABEL = m('optionsBulkLabel');
+
+// Transient confirmation shown after a change is saved.
+export const OPTIONS_SAVED_NOTE = m('optionsSavedNote');
+
+// Shown when the user tries to uncheck the last remaining format (at least one is required).
+export const OPTIONS_MIN_FORMAT_NOTE = m('optionsMinFormatNote');

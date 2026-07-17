@@ -1,5 +1,6 @@
 import { isConversationPage } from './page';
-import { removeButtons, syncButtons } from './mount';
+import { removeButtons, setToolbarSettings, syncButtons } from './mount';
+import { loadSettings, subscribeSettings, type ToolbarSettings } from '../settings/store';
 
 // How often to re-check the page for SPA navigation and header re-renders (see
 // watchNavigation).
@@ -45,5 +46,21 @@ function watchNavigation(): void {
   setInterval(tick, NAV_POLL_MS);
 }
 
+/**
+ * Apply loaded/changed toolbar settings: swap the cached value the toolbar renders from,
+ * then re-mount so the change takes effect immediately (removeButtons + a fresh tick).
+ */
+function applySettings(settings: ToolbarSettings): void {
+  setToolbarSettings(settings);
+  removeButtons(document);
+  tick();
+}
+
 watchNavigation();
 tick();
+
+// Load the user's toolbar settings and re-mount once they arrive (the first tick above
+// draws the all-on default until then). Then keep the toolbar in sync with live changes
+// from the options page. Failure to read storage is non-fatal — the default toolbar stays.
+loadSettings().then(applySettings).catch(() => undefined);
+subscribeSettings(applySettings);

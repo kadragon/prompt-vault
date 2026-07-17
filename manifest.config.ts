@@ -25,7 +25,15 @@ export default defineManifest({
     },
   ],
   host_permissions: HOSTS,
-  // No `permissions`: Markdown export downloads via URL.createObjectURL + an
-  // `<a download>`, which needs no permission. `downloads` would only be added
-  // if a future ticket switches to the chrome.downloads API.
+  // `storage` is the only permission: the options page persists which toolbar icons to
+  // show in chrome.storage.sync, and the content script reads them. Export still downloads
+  // via URL.createObjectURL + an `<a download>` (no permission needed); `downloads` would
+  // only be added if a future ticket switches to the chrome.downloads API.
+  permissions: ['storage'],
+  // Settings UI, embedded in chrome://extensions (open_in_tab: false). crxjs bundles the
+  // referenced HTML entry and its module script into dist/.
+  options_ui: {
+    page: 'src/options/index.html',
+    open_in_tab: false,
+  },
 });
