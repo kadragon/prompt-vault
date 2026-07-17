@@ -12,3 +12,6 @@
 
 - [ ] [VERIFY] Load-unpacked on a live logged-in ChatGPT conversation (incl. a Korean one with a fenced code block): confirm both `MD` and `PDF` buttons mount top-right; the `PDF` button downloads directly with no print dialog; the opened PDF has selectable text, **Korean/CJK glyphs actually rasterize via the embedded Jetendard font (no tofu)**, and code blocks render monospace/boxed. Deferred — needs a logged-in browser session the agent cannot drive; automated coverage stops at the pdfmake document-definition level per the design.
 
+### Header-blend buttons follow-up
+
+- [ ] [VERIFY] Load-unpacked on a live logged-in ChatGPT conversation: confirm the `MD`/`PDF` buttons render inside `#conversation-header-actions` inline with (and no longer covering) the native Share button, match its size/hover in both light and dark themes, and re-appear correctly after SPA navigation between conversations. Deferred — needs a logged-in browser session; unit coverage stops at the DOM-injection structure (`test/content/mount.test.ts`), not live CSS blending.
