@@ -19,5 +19,4 @@ marker is removed by hand once the blocking ticket lands.
 
 ## Someday
 
-- [ ] i18n (Korean UI strings)
 - [ ] Chrome Web Store submission (icons, listing, privacy policy, review)

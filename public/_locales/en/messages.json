@@ -1,0 +1,127 @@
+{
+  "downloadMdLabel": {
+    "message": "MD",
+    "description": "Label for the Markdown export button."
+  },
+  "downloadPdfLabel": {
+    "message": "PDF",
+    "description": "Label for the PDF export button."
+  },
+  "downloadJsonLabel": {
+    "message": "JSON",
+    "description": "Label for the JSON export button."
+  },
+  "downloadHtmlLabel": {
+    "message": "HTML",
+    "description": "Label for the HTML export button."
+  },
+  "downloadMdAriaLabel": {
+    "message": "Download conversation as Markdown",
+    "description": "Accessible name for the Markdown export button."
+  },
+  "downloadPdfAriaLabel": {
+    "message": "Download conversation as PDF",
+    "description": "Accessible name for the PDF export button."
+  },
+  "downloadJsonAriaLabel": {
+    "message": "Download conversation as JSON",
+    "description": "Accessible name for the JSON export button."
+  },
+  "downloadHtmlAriaLabel": {
+    "message": "Download conversation as HTML",
+    "description": "Accessible name for the HTML export button."
+  },
+  "exportNoAdapterMessage": {
+    "message": "This page is not a supported conversation, so there is nothing to export.",
+    "description": "Shown when the current page is not a recognized conversation."
+  },
+  "exportFailedMessage": {
+    "message": "Could not export this conversation. Please try again.",
+    "description": "Generic fallback for an unexpected export failure."
+  },
+  "exportEmptyMessage": {
+    "message": "This conversation has no messages, so there is nothing to export.",
+    "description": "Shown when extraction returns a conversation with no messages."
+  },
+  "downloadBulkLabel": {
+    "message": "Bulk",
+    "description": "Label for the toolbar button that opens the bulk-export panel."
+  },
+  "downloadBulkAriaLabel": {
+    "message": "Export multiple conversations",
+    "description": "Accessible name for the bulk-export toolbar button."
+  },
+  "bulkPanelTitle": {
+    "message": "Export multiple conversations",
+    "description": "Title of the bulk-export selection panel."
+  },
+  "bulkPanelFormatLabel": {
+    "message": "Format",
+    "description": "Label for the format picker in the bulk-export panel."
+  },
+  "bulkPanelSelectAll": {
+    "message": "Select all",
+    "description": "Select-all control in the bulk-export panel."
+  },
+  "bulkPanelCancel": {
+    "message": "Cancel",
+    "description": "Cancel button in the bulk-export panel."
+  },
+  "bulkPanelClose": {
+    "message": "Close",
+    "description": "Close button in the bulk-export panel."
+  },
+  "bulkEmptyMessage": {
+    "message": "No conversations were found in the sidebar to export.",
+    "description": "Shown when the history sidebar lists no conversations."
+  },
+  "bulkUnsupportedMessage": {
+    "message": "Bulk export is not available on this page.",
+    "description": "Shown when the current page's adapter does not support bulk export."
+  },
+  "bulkExportButtonLabel": {
+    "message": "Export $count$ selected",
+    "description": "Export-button label with the current selected count.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkProgressMessage": {
+    "message": "Exporting $current$ of $total$: $title$",
+    "description": "In-progress line shown while a batch runs.",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "bulkSummarySaved": {
+    "message": "Saved $succeeded$ of $total$.",
+    "description": "Final summary line after a batch: how many succeeded.",
+    "placeholders": {
+      "succeeded": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "bulkSummaryFailed": {
+    "message": "$failed$ failed.",
+    "description": "Appended to the summary line when some exports failed.",
+    "placeholders": {
+      "failed": {
+        "content": "$1"
+      }
+    }
+  }
+}
