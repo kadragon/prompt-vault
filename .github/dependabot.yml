@@ -6,6 +6,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # TypeScript is pinned <6.1.0 by the typescript-eslint 8.x peer range
+      # (see docs/runbook.md). Both minor (6.1+) and major (7.x) bumps break
+      # `npm run lint`; allow only 6.0.x patches until that peer widens.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
     groups:
       # Collapse routine minor/patch bumps into one PR to keep review noise low;
       # major bumps stay separate so breaking changes are reviewed individually.
