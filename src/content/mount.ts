@@ -2,6 +2,10 @@ import { pickAdapter } from '../adapters';
 import { ExtractionError } from '../core/errors';
 import { saveConversation, type ExportFormat } from './save-conversation';
 import {
+  DOWNLOAD_HTML_ARIA_LABEL,
+  DOWNLOAD_HTML_LABEL,
+  DOWNLOAD_JSON_ARIA_LABEL,
+  DOWNLOAD_JSON_LABEL,
   DOWNLOAD_MD_ARIA_LABEL,
   DOWNLOAD_MD_LABEL,
   DOWNLOAD_PDF_ARIA_LABEL,
@@ -30,6 +34,8 @@ interface FormatSpec {
 const FORMATS: ReadonlyArray<FormatSpec> = [
   { format: 'md', label: DOWNLOAD_MD_LABEL, ariaLabel: DOWNLOAD_MD_ARIA_LABEL, icon: markdownIcon },
   { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL, icon: pdfIcon },
+  { format: 'json', label: DOWNLOAD_JSON_LABEL, ariaLabel: DOWNLOAD_JSON_ARIA_LABEL, icon: jsonIcon },
+  { format: 'html', label: DOWNLOAD_HTML_LABEL, ariaLabel: DOWNLOAD_HTML_ARIA_LABEL, icon: htmlIcon },
 ];
 
 // Placement is stamped on the container so `syncButtons` can tell a native mount
@@ -92,6 +98,23 @@ function pdfIcon(doc: Document): SVGElement {
     { tag: 'path', attrs: { d: 'M9 13h6' } },
     { tag: 'path', attrs: { d: 'M9 17h6' } },
     { tag: 'path', attrs: { d: 'M9 9h1' } },
+  ]);
+}
+
+// JSON: curly braces, the universal glyph for structured data.
+function jsonIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'path', attrs: { d: 'M8 4a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2' } },
+    { tag: 'path', attrs: { d: 'M16 4a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2' } },
+  ]);
+}
+
+// HTML: an angle-bracket tag mark (`< >` with a slash), the universal glyph for markup.
+function htmlIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'path', attrs: { d: 'M8 8l-4 4 4 4' } },
+    { tag: 'path', attrs: { d: 'M16 8l4 4-4 4' } },
+    { tag: 'path', attrs: { d: 'M13 6l-2 12' } },
   ]);
 }
 

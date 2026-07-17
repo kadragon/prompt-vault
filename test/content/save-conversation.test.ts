@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Window } from 'happy-dom';
 import type { Conversation } from '../../src/core/conversation';
 import { toMarkdown } from '../../src/export/markdown';
+import { toJson } from '../../src/export/json';
+import { toHtml } from '../../src/export/html';
 import { saveConversation } from '../../src/content/save-conversation';
 
 // The PDF path pulls in pdfmake + the embedded font (heavy, browser-oriented). Mock
@@ -83,6 +85,44 @@ describe('saveConversation', () => {
     const doc = bodyDoc();
     await saveConversation(conversation(), 'md', NOW, doc);
     expect(doc.querySelectorAll('a')).toHaveLength(0);
+  });
+
+  it('json: downloads the JSON with the derived filename, mime, and content', async () => {
+    const doc = bodyDoc();
+    let downloadName = '';
+    const realAppend = doc.body.appendChild.bind(doc.body);
+    vi.spyOn(doc.body, 'appendChild').mockImplementation((node: Node) => {
+      downloadName = (node as HTMLAnchorElement).download;
+      return realAppend(node);
+    });
+
+    const conv = conversation();
+    await saveConversation(conv, 'json', NOW, doc);
+
+    expect(downloadName).toBe('chatgpt-My-chat-20260717.json');
+    expect(createdBlobs).toHaveLength(1);
+    expect(createdBlobs[0].type).toBe('application/json');
+    expect(await createdBlobs[0].text()).toBe(toJson(conv));
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+
+  it('html: downloads the HTML with the derived filename, mime, and content', async () => {
+    const doc = bodyDoc();
+    let downloadName = '';
+    const realAppend = doc.body.appendChild.bind(doc.body);
+    vi.spyOn(doc.body, 'appendChild').mockImplementation((node: Node) => {
+      downloadName = (node as HTMLAnchorElement).download;
+      return realAppend(node);
+    });
+
+    const conv = conversation();
+    await saveConversation(conv, 'html', NOW, doc);
+
+    expect(downloadName).toBe('chatgpt-My-chat-20260717.html');
+    expect(createdBlobs).toHaveLength(1);
+    expect(createdBlobs[0].type).toBe('text/html');
+    expect(await createdBlobs[0].text()).toBe(toHtml(conv));
+    expect(downloadPdf).not.toHaveBeenCalled();
   });
 
   it('pdf: delegates to downloadPdf with the conversation and date, writing no blob itself', async () => {

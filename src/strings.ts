@@ -1,14 +1,19 @@
 // Central store for user-facing UI strings. Keeping them in one module makes an
 // i18n message catalog a later drop-in rather than a rewrite (conventions.md).
 
-// Labels for the two format buttons (Markdown / PDF) injected into the ChatGPT header.
+// Labels for the format buttons (Markdown / PDF / JSON / HTML) injected into the
+// ChatGPT header.
 export const DOWNLOAD_MD_LABEL = 'MD';
 export const DOWNLOAD_PDF_LABEL = 'PDF';
+export const DOWNLOAD_JSON_LABEL = 'JSON';
+export const DOWNLOAD_HTML_LABEL = 'HTML';
 
 // Accessible names for the icon-and-label export buttons (the visible label alone is
 // terse; screen readers announce these).
 export const DOWNLOAD_MD_ARIA_LABEL = 'Download conversation as Markdown';
 export const DOWNLOAD_PDF_ARIA_LABEL = 'Download conversation as PDF';
+export const DOWNLOAD_JSON_ARIA_LABEL = 'Download conversation as JSON';
+export const DOWNLOAD_HTML_ARIA_LABEL = 'Download conversation as HTML';
 
 // Shown (fail-loud) when the page is not a recognized conversation the extension
 // can export.
