@@ -1,4 +1,4 @@
-# Review Backlog
+## Review Backlog
 
 ### Ticket 1 follow-up (scaffold) — manual verification
 
@@ -16,6 +16,3 @@
 
 - [ ] [VERIFY] Load-unpacked on a live logged-in ChatGPT conversation (incl. a Korean one with a fenced code block): confirm both `MD` and `PDF` buttons mount top-right; the `PDF` button downloads directly with no print dialog; the opened PDF has selectable text, **Korean/CJK glyphs actually rasterize via the embedded Jetendard font (no tofu)**, and code blocks render monospace/boxed. Deferred — needs a logged-in browser session the agent cannot drive; automated coverage stops at the pdfmake document-definition level per the design.
 
-### Ticket 4 follow-up (Markdown export) — review findings
-
-- [ ] [FIX] `runExport` delegates the fail-loud/empty guard entirely to the adapter: `toMarkdown` renders a title-only document for a zero-message `Conversation`, so an adapter that returned empty without throwing `ExtractionError` would download a near-empty `.md` (Golden Principle #4 gap). Add a defense-in-depth guard (treat `messages.length === 0` as fail-loud) in `runExport`. Not a live bug — the ChatGPT adapter throws. *(from dev-review: Claude P3, confidence 30)*

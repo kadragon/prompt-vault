@@ -7,6 +7,7 @@ import {
   EXPORT_FAILED_MESSAGE,
   EXPORT_NO_ADAPTER_MESSAGE,
 } from '../strings';
+import { assertConversationNonEmpty } from './guard';
 import { isConversationPage } from './page';
 
 // Stable id on the button container so it is mounted at most once and can be
@@ -75,6 +76,7 @@ async function runExport(container: HTMLDivElement, format: Format): Promise<voi
       return;
     }
     const conversation = await adapter.extract();
+    assertConversationNonEmpty(conversation);
     const now = new Date();
     if (format === 'md') {
       downloadTextFile(markdownFilename(conversation, now), toMarkdown(conversation), 'text/markdown');
