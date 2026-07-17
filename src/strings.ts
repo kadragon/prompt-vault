@@ -12,3 +12,8 @@ export const EXPORT_NO_ADAPTER_MESSAGE =
 
 // Generic fallback for an unexpected export failure that is not an ExtractionError.
 export const EXPORT_FAILED_MESSAGE = 'Could not export this conversation. Please try again.';
+
+// Shown (fail-loud) when extraction returns a conversation with no messages, so
+// there is nothing worth downloading (AGENTS.md #4).
+export const EXPORT_EMPTY_MESSAGE =
+  'This conversation has no messages, so there is nothing to export.';
