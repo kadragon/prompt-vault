@@ -36,4 +36,14 @@ export interface ConversationAdapter {
    * Optional — omit to leave the native buttons unstyled but functional.
    */
   readonly toolbarButtonClass?: string;
+
+  /**
+   * A native control inside `toolbarMount` that the export buttons should be inserted
+   * immediately before (e.g. the provider's Share button), so they sit to its left
+   * without replacing it. The content layer inserts ahead of whichever direct child
+   * of the mount contains this element, falling back to the front of the bar when it
+   * is absent. Provider-owned so the shared content layer carries no site-specific
+   * selector. Optional — omit to always mount at the front of the bar.
+   */
+  toolbarAnchor?(root?: ParentNode): Element | null;
 }

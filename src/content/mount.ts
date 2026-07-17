@@ -20,12 +20,15 @@ export const CONTAINER_ID = 'prompt-vault-download-buttons';
 type Format = 'md' | 'pdf';
 interface FormatSpec {
   format: Format;
+  /** Short label; shown only on the self-styled overlay fallback (native is icon-only). */
   label: string;
   ariaLabel: string;
+  /** Builds the format's glyph for the icon-only native buttons. */
+  icon: (doc: Document) => SVGElement;
 }
 const FORMATS: ReadonlyArray<FormatSpec> = [
-  { format: 'md', label: DOWNLOAD_MD_LABEL, ariaLabel: DOWNLOAD_MD_ARIA_LABEL },
-  { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL },
+  { format: 'md', label: DOWNLOAD_MD_LABEL, ariaLabel: DOWNLOAD_MD_ARIA_LABEL, icon: markdownIcon },
+  { format: 'pdf', label: DOWNLOAD_PDF_LABEL, ariaLabel: DOWNLOAD_PDF_ARIA_LABEL, icon: pdfIcon },
 ];
 
 // Placement is stamped on the container so `syncButtons` can tell a native mount
@@ -40,47 +43,76 @@ let exportInFlight = false;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-// A download glyph (arrow into a tray) mirroring the icon-and-label shape of the
-// native Share button, drawn with `currentColor` so it inherits the header's text
-// color in both light and dark themes.
-function downloadIcon(doc: Document): SVGElement {
+// Format glyphs for the icon-only native buttons. Both are line icons drawn with
+// `currentColor` and a stroke, matching ChatGPT's own header icons so they inherit
+// the header's text color in both light and dark themes. Each format gets a distinct,
+// self-explanatory shape; the exact meaning is announced via the button's title
+// tooltip and aria-label.
+type IconChild = { tag: 'rect' | 'path'; attrs: Record<string, string> };
+
+function makeIcon(doc: Document, children: ReadonlyArray<IconChild>): SVGElement {
   const svg = doc.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('width', '18');
-  svg.setAttribute('height', '18');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-  svg.setAttribute('aria-hidden', 'true');
-  const path = doc.createElementNS(SVG_NS, 'path');
-  path.setAttribute('d', 'M12 3v12m0 0 4-4m-4 4-4-4M5 21h14');
-  svg.appendChild(path);
+  const attrs: Record<string, string> = {
+    width: '18',
+    height: '18',
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    'stroke-width': '2',
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+    'aria-hidden': 'true',
+  };
+  for (const [k, v] of Object.entries(attrs)) svg.setAttribute(k, v);
+  for (const { tag, attrs: childAttrs } of children) {
+    const el = doc.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(childAttrs)) el.setAttribute(k, v);
+    svg.appendChild(el);
+  }
   return svg;
+}
+
+// Markdown: the "M + downward chevron" mark inside a rounded badge (the Markdown logo
+// silhouette).
+function markdownIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'rect', attrs: { x: '3', y: '6', width: '18', height: '12', rx: '2' } },
+    { tag: 'path', attrs: { d: 'M7 15V9l2.5 3L12 9v6' } },
+    { tag: 'path', attrs: { d: 'M16 9v5' } },
+    { tag: 'path', attrs: { d: 'M14 12l2 2 2-2' } },
+  ]);
+}
+
+// PDF: a document page with a folded corner and text lines.
+function pdfIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'path', attrs: { d: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z' } },
+    { tag: 'path', attrs: { d: 'M14 3v5h5' } },
+    { tag: 'path', attrs: { d: 'M9 13h6' } },
+    { tag: 'path', attrs: { d: 'M9 17h6' } },
+    { tag: 'path', attrs: { d: 'M9 9h1' } },
+  ]);
 }
 
 function createButton(
   doc: Document,
   container: HTMLDivElement,
   placement: 'native' | 'overlay',
-  { format, label, ariaLabel }: FormatSpec,
+  { format, label, ariaLabel, icon }: FormatSpec,
   buttonClass: string | undefined,
 ): HTMLButtonElement {
   const button = doc.createElement('button');
   button.type = 'button';
   button.setAttribute('aria-label', ariaLabel);
   if (placement === 'native') {
-    // Blend in: wear the provider's own button classes (supplied by the adapter so
-    // this content layer stays provider-agnostic) and mirror the Share button's
-    // inner icon+label layout with generic flex utilities.
+    // Blend in: wear the provider's own icon-button classes (supplied by the adapter
+    // so this content layer stays provider-agnostic) and show the format glyph only,
+    // matching ChatGPT's square icon controls. The meaning is carried by the tooltip
+    // title and aria-label rather than a visible text label.
     if (buttonClass) button.className = buttonClass;
     button.style.cursor = 'pointer';
-    const inner = doc.createElement('div');
-    inner.className = 'flex items-center justify-center gap-1.5';
-    inner.appendChild(downloadIcon(doc));
-    inner.appendChild(doc.createTextNode(label));
-    button.appendChild(inner);
+    button.title = ariaLabel;
+    button.appendChild(icon(doc));
   } else {
     // Fallback overlay: fully self-styled so it stays legible even if ChatGPT's CSS
     // never applies.
@@ -118,7 +150,9 @@ export function createButtons(
   container.id = CONTAINER_ID;
   container.setAttribute(PLACEMENT_ATTR, placement);
   if (placement === 'native') {
-    container.className = 'flex items-center';
+    // `gap-0.5` keeps the two icon buttons from abutting so their hover highlights
+    // don't touch — matching the spacing of ChatGPT's own header controls.
+    container.className = 'flex items-center gap-0.5';
   } else {
     Object.assign(container.style, {
       position: 'fixed',
@@ -217,6 +251,8 @@ export interface SyncOptions {
  *   so the feature still works and never covers Share.
  * - A fallback overlay already mounted but the header bar has since appeared → swap
  *   the overlay out for the native placement so it blends after a late header render.
+ * - Native buttons already mounted → re-assert their position, since the Share anchor
+ *   may have rendered (or moved) after our first mount in a staged SPA header render.
  * - Otherwise already correctly placed → nothing.
  *
  * Re-injection: when ChatGPT's SPA re-renders the header it drops our node, so the
@@ -230,18 +266,55 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
 
   const adapter = pickAdapter(href);
   const mount = adapter?.toolbarMount?.(doc) ?? null;
+  const anchor = mount ? adapter?.toolbarAnchor?.(mount) ?? null : null;
 
   const existing = doc.getElementById(CONTAINER_ID);
   if (existing) {
     const isOverlay = existing.getAttribute(PLACEMENT_ATTR) === 'overlay';
-    // Keep it unless we can upgrade a fallback overlay to the now-available native bar.
-    if (!(isOverlay && mount)) return;
-    existing.remove();
+    if (isOverlay && mount) {
+      // Upgrade the fallback overlay to the now-available native bar.
+      existing.remove();
+    } else {
+      // Already natively placed: re-assert the position in case the Share anchor
+      // rendered after our first mount (staged SPA header render), so the buttons
+      // don't get stranded away from Share's left. No-op when already correct.
+      if (!isOverlay && mount) positionBeforeAnchor(existing, mount, anchor);
+      return;
+    }
   }
 
   if (mount) {
-    mount.prepend(createButtons(doc, 'native', adapter?.toolbarButtonClass));
+    positionBeforeAnchor(createButtons(doc, 'native', adapter?.toolbarButtonClass), mount, anchor);
   } else if (allowOverlayFallback) {
     doc.body.appendChild(createButtons(doc, 'overlay'));
   }
+}
+
+/**
+ * Place `container` immediately to the left of the Share `anchor` inside `mount`
+ * (before whichever direct child of the bar contains the anchor), or at the front of
+ * the bar when the anchor is absent. Idempotent: moves the node only when it is not
+ * already in the right spot, so it doubles as both the initial insert and a
+ * re-assert on later ticks.
+ */
+function positionBeforeAnchor(container: HTMLElement, mount: Element, anchor: Element | null): void {
+  const before = directChildContaining(mount, anchor);
+  if (before) {
+    if (container.nextElementSibling !== before) mount.insertBefore(container, before);
+  } else if (mount.firstElementChild !== container) {
+    mount.prepend(container);
+  }
+}
+
+/**
+ * The direct child of `parent` that is (or contains) `node`, or null if `node` is
+ * absent or not within `parent`. Lets us insert before a control even when it is
+ * nested a few levels below the header bar.
+ */
+function directChildContaining(parent: Element, node: Element | null): Element | null {
+  let current: Element | null = node;
+  while (current && current.parentElement !== parent) {
+    current = current.parentElement;
+  }
+  return current;
 }
