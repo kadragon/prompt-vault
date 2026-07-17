@@ -17,5 +17,8 @@ build/
 # Harness scratch (delegation evidence, session tmp)
 .claude/tmp/
 
+# Harness maintenance stamp (transient date marker, not project state)
+.agents/.maintenance-stamp
+
 # Active sprint file (transient — exists only during a sprint)
 # tasks.md is intentionally tracked when present; do not ignore.
