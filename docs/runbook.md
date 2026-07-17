@@ -5,7 +5,8 @@
 
 ## Environment
 
-- Node ≥ 22.12 (Vite 8 requires `^20.19 || >=22.12`; developed on Node 26), npm.
+- Node `^20.19 || ^22.13 || >=24`, npm. (This is the ESLint 10 engines floor — the strictest of
+  the dev deps; note the 22.x line needs **22.13**, not 22.12. Developed on Node 26.)
 - A Chromium browser (Chrome/Edge/Brave) for load-unpacked testing.
 - **TypeScript is pinned `~6.0.3` (< 6.1.0)** on purpose: `typescript-eslint` 8.x declares a peer of
   `typescript >=4.8.4 <6.1.0`, so bumping to TS 7.x breaks lint. Move TS forward only when

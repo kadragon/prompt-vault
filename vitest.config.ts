@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig } from 'vitest/config';
 
 // Deliberately separate from vite.config.ts: the @crxjs/vite-plugin needs a
 // browser/extension build context and must NOT run during unit tests. Exporters
@@ -8,4 +8,4 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.ts'],
   },
-})
+});

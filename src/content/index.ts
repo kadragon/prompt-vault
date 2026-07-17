@@ -1,9 +1,11 @@
 import { DOWNLOAD_BUTTON_LABEL } from '../strings';
-import { NAV_EVENT } from './nav-event';
 import { isConversationPage } from './page';
 
 // Stable id so the button is mounted at most once and can be located for removal.
 const BUTTON_ID = 'prompt-vault-download-button';
+
+// How often to re-check the URL for SPA navigation (see watchNavigation).
+const NAV_POLL_MS = 500;
 
 function createButton(): HTMLButtonElement {
   const button = document.createElement('button');
@@ -47,7 +49,24 @@ function syncButton(): void {
   }
 }
 
-// The MAIN-world nav-hook (nav-hook.ts) re-broadcasts the app router's history
-// changes as NAV_EVENT on the shared window; re-sync the button on each.
-window.addEventListener(NAV_EVENT, syncButton);
+/**
+ * ChatGPT is a client-routed SPA: the content script loads once and the URL
+ * changes without a reload. A content script runs in the isolated world and
+ * cannot observe the page's own history.pushState calls (those happen in the
+ * main world), but `location` always reflects the current URL across worlds.
+ * So poll it and re-sync on change; `popstate` gives instant back/forward.
+ */
+function watchNavigation(): void {
+  let lastHref = location.href;
+  const check = (): void => {
+    if (location.href !== lastHref) {
+      lastHref = location.href;
+      syncButton();
+    }
+  };
+  window.addEventListener('popstate', check);
+  setInterval(check, NAV_POLL_MS);
+}
+
+watchNavigation();
 syncButton();
