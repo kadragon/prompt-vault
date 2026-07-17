@@ -1,0 +1,16 @@
+# Vendored / generated — do not scan
+node_modules/
+dist/
+build/
+*.zip
+*.min.js
+*.map
+
+# Lockfiles (huge, low signal)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# OS / editor
+.DS_Store
+*.log
