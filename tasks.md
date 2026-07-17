@@ -1,9 +1,5 @@
 ## Review Backlog
 
-### i18n follow-up (chrome.i18n key safety)
-
-- [ ] [TEST] `chrome.i18n.getMessage()` returns `""` (not a throw) for a missing/misspelled key, so a future key typo in `src/strings.ts` would silently ship an empty button label or empty fail-loud message — a regression against AGENTS.md #4 (fail loud). Not currently triggered (all keys match both catalogs). Add a test asserting every key referenced in `src/strings.ts` exists in `public/_locales/en/messages.json` **and** `ko/messages.json` with matching placeholder sets. (`src/strings.ts:6`, source: review; low-confidence 45, out-of-scope for the i18n feature PR #18)
-
 ### Ticket 1 follow-up (scaffold) — manual verification
 
 - [ ] [VERIFY] Load-unpacked on live chatgpt.com: confirm the Download button appears top-right only on `/c/<id>` pages, toggles correctly on SPA navigation (sidebar conversation clicks, back/forward) via the isolated-world `location` polling in `src/content/index.ts`, and that ChatGPT's page CSP does not interfere with the content script. Deferred from ticket 1 — needs a logged-in browser session, which the agent cannot drive.

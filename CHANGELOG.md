@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] i18n message-key safety test — `test/i18n/message-keys.test.ts` asserts every key resolved through `m('...')` in `src/strings.ts` exists in both `public/_locales/{en,ko}/messages.json` with matching placeholder sets, turning a silent-empty-string key typo (AGENTS.md #4 fail-loud regression) into a red test. Test-only; no runtime change (2026-07-17)
+
 - [done] i18n (Korean UI strings) — native `chrome.i18n` localization: message catalog in `public/_locales/{en,ko}/messages.json`, `src/strings.ts` now resolves every user-facing string via `chrome.i18n.getMessage()` (public API unchanged), `default_locale: 'en'` in the manifest; locale follows the browser UI language. A node-env vitest shim (`test/setup/chrome-i18n.ts`) backs the English catalog for tests. No new permissions or network calls (2026-07-17)
 
 - [done] Additional export formats — JSON & HTML — two new provider-agnostic exporters (`src/export/json.ts`, `src/export/html.ts`) consuming the normalized `Conversation` model; JSON is a deterministic round-trippable model dump, HTML is a self-contained document showing each message's Markdown verbatim in an HTML-escaped `<pre>` block; wired into the headless saver (`ExportFormat` now `md|pdf|json|html`) and the header toolbar (four icon buttons). No new permissions or network calls (2026-07-17)
