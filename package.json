@@ -1,0 +1,22 @@
+{
+  "name": "prompt-vault",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Back up AI chat conversations to local Markdown/PDF files. ChatGPT first.",
+  "scripts": {
+    "build": "vite build",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.1",
+    "@types/chrome": "^0.2.2",
+    "eslint": "^10.7.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.64.0",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

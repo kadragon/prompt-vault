@@ -4,26 +4,19 @@ Design: `docs/design/chatgpt-conversation-backup.md`. v1 tickets below are verti
 dependency order; blocked items stay invisible to `next-tasks` until their `*(blocked by: ...)*`
 marker is removed by hand once the blocking ticket lands.
 
-## 1 — Scaffold & MV3 skeleton
-
-> Goal: a walking skeleton — the extension loads and shows a Download button on a ChatGPT conversation page.
-> Done-when: load-unpacked shows a non-intrusive Download button top-right only on `/c/<id>` pages; `npm run build`/`lint`/`test` all run.
-
-- [ ] [FEAT] Vite+TS build + MV3 manifest (host_permissions chatgpt.com/chat.openai.com, `downloads`) + content script mounting a stub Download button top-right on conversation pages; Vitest + lint setup
-
 ## 2 — Privacy invariant gate
 
 > Goal: mechanically enforce local-only (golden principle) before export/adapter code exists, so all later code is checked.
 > Done-when: an automated test/grep gate fails if any `fetch`/`XMLHttpRequest`/`sendBeacon` to an external origin appears in `src/adapters`, `src/export`, or `src/content`.
 
-- [ ] [CONSTRAINT] Add no-external-network test/grep gate over src/adapters|export|content *(blocked by: 1-scaffold)*
+- [ ] [CONSTRAINT] Add no-external-network test/grep gate over src/adapters|export|content
 
 ## 3 — Core model & ChatGPT adapter
 
 > Goal: extract a full conversation from the live page into the normalized model.
 > Done-when: `Conversation`/`Message` types defined; ChatGPT adapter with centralized selectors auto-scrolls to load virtualized messages, extracts in order, and fails loud (visible error) on empty/malformed output; fixture tests pass.
 
-- [ ] [FEAT] Conversation/Message model (src/core) + ChatGPT adapter (selectors, auto-scroll full load, fail-loud) with HTML fixture tests *(blocked by: 1-scaffold)*
+- [ ] [FEAT] Conversation/Message model (src/core) + ChatGPT adapter (selectors, auto-scroll full load, fail-loud) with HTML fixture tests
 
 ## 4 — Markdown export
 

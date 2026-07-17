@@ -1,22 +1,27 @@
 # Runbook
 
-> Status: greenfield. Commands below are the intended shape; fill exact scripts once the build
-> tooling is chosen in the `plan` workflow. Values not yet decided are marked `[unknown]`.
+> Build tooling: Vite + TypeScript + `@crxjs/vite-plugin` (decided in the design doc, scaffolded in
+> ticket 1). Commands below are live.
 
 ## Environment
 
-- Node `[unknown — set once package.json exists]`, npm.
+- Node `^20.19 || ^22.13 || >=24`, npm. (This is the ESLint 10 engines floor — the strictest of
+  the dev deps; note the 22.x line needs **22.13**, not 22.12. Developed on Node 26.)
 - A Chromium browser (Chrome/Edge/Brave) for load-unpacked testing.
+- **TypeScript is pinned `~6.0.3` (< 6.1.0)** on purpose: `typescript-eslint` 8.x declares a peer of
+  `typescript >=4.8.4 <6.1.0`, so bumping to TS 7.x breaks lint. Move TS forward only when
+  `typescript-eslint` widens that peer range.
 
 ## Common commands
 
 | Task | Command |
 |------|---------|
 | Install deps | `npm install` |
-| Build extension | `npm run build` → outputs to `dist/` `[unknown until build tool chosen]` |
-| Lint | `npm run lint` `[unknown]` |
-| Unit tests (exporters, model) | `npm test` `[unknown]` |
-| Package for store | `npm run package` → `*.zip` `[unknown]` |
+| Build extension | `npm run build` → outputs to `dist/` (Load unpacked this dir) |
+| Lint | `npm run lint` (ESLint flat config + typescript-eslint) |
+| Type-check | `npm run typecheck` (`tsc --noEmit`) |
+| Unit tests (exporters, model) | `npm test` (Vitest, node env) |
+| Package for store | `[unknown — added when Web Store submission is scoped]` |
 
 ## Load unpacked (manual test loop)
 

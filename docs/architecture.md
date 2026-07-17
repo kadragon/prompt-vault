@@ -47,8 +47,13 @@ import an exporter. The `Conversation` model is the single contract between scra
 3. Add the host to `manifest.json` `content_scripts.matches` + `host_permissions`.
 4. No change to `src/core/` or `src/export/` — if you need to, the boundary is wrong.
 
-## Open design decisions (resolve in `plan`)
+## Resolved / open design decisions
 
-- PDF generation approach (client-side lib vs. print pipeline) — `[unknown — decide in spec]`.
-- Build tooling (plain files vs. Vite/esbuild + TS) — `[unknown — decide in spec]`.
-- How to capture full history for long/virtualized conversations (lazy-rendered messages).
+- **Build tooling — RESOLVED (ticket 1):** Vite + TypeScript + `@crxjs/vite-plugin`, bundling to
+  `dist/`. The content script runs in the isolated world. SPA route changes are detected by polling
+  `location.href` (plus a `popstate` listener) inside that isolated script — `location` reflects the
+  current URL across worlds, so no main-world injection is needed. (A `world: 'MAIN'` history hook was
+  tried first but crxjs loads such scripts via a relative dynamic `import()` that resolves against the
+  page origin and lacks `chrome.runtime`, so it fails to load — polling is the robust alternative.)
+- PDF generation approach — decided in the design doc (pdfmake); reflected here when ticket 5 lands.
+- How to capture full history for long/virtualized conversations (lazy-rendered messages) — ticket 3.
