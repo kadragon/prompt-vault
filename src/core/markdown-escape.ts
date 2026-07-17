@@ -29,9 +29,22 @@
 // start, so its leading `-` must not be treated as a bullet. Callers pass true
 // only for text that genuinely begins a line/heading.
 
-/** Backslash-escape Markdown-significant characters in plain source text. */
-export function escapeMarkdownText(text: string, atLineStart = false): string {
-  let out = escapeInline(text);
+/**
+ * Backslash-escape Markdown-significant characters in plain source text.
+ *
+ * `prevChar`/`nextChar` supply the visible flow character immediately before/after
+ * this text in the final output, so a delimiter at a text-node edge is classified
+ * against its real neighbor across an inline-element boundary (e.g. the two `_` in
+ * `_<span>literal</span>_`) instead of a start/end-of-string whitespace sentinel.
+ * Both default to `' '` (a whitespace neighbor) — the standalone/edge behavior.
+ */
+export function escapeMarkdownText(
+  text: string,
+  atLineStart = false,
+  prevChar = ' ',
+  nextChar = ' ',
+): string {
+  let out = escapeInline(text, prevChar, nextChar);
   if (atLineStart) {
     // Block markers only matter at the very start of a line (optional leading
     // whitespace tolerated). A leading `*` that was already escaped by the inline
@@ -49,7 +62,7 @@ export function escapeMarkdownText(text: string, atLineStart = false): string {
 // `\`, `` ` ``, `[`, `]`, `|` unconditionally and `*`/`_`/`~` runs when flanking.
 // Backslash is handled by the same branch, so it is always escaped as it is
 // read — no separate char is ever escaped ahead of its own backslash.
-function escapeInline(text: string): string {
+function escapeInline(text: string, prevChar = ' ', nextChar = ' '): string {
   let out = '';
   let i = 0;
   while (i < text.length) {
@@ -63,8 +76,8 @@ function escapeInline(text: string): string {
       // Consume the whole run of this delimiter and classify it as a unit.
       let j = i + 1;
       while (j < text.length && text[j] === ch) j++;
-      const before = i > 0 ? text[i - 1] : ' ';
-      const after = j < text.length ? text[j] : ' ';
+      const before = i > 0 ? text[i - 1] : prevChar;
+      const after = j < text.length ? text[j] : nextChar;
       const piece = shouldEscapeDelimiter(ch, before, after) ? `\\${ch}` : ch;
       out += piece.repeat(j - i);
       i = j;

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] Markdown export serialization edge-case fixes — `<div>`/`<section>` wrapper block children in `<li>` no longer flatten onto the marker line (and a wrapper whose first block child is a nested list no longer collides markers); emphasis/strikethrough delimiters straddling an inline wrapper (`_<span>x</span>_`) now escape via cross-boundary flanking classification, without over-escaping an intraword `_` next to inline markup (2026-07-17)
+
 - [done] Blend download buttons into the ChatGPT header — the `MD`/`PDF` buttons now mount inside ChatGPT's native header action bar (styled like the Share button, auto light/dark) instead of a fixed overlay that covered Share; falls back to a non-overlapping bottom-right overlay if the header is absent (2026-07-17)
 
 - [done] html-to-markdown serialization & escape fixes — block content in `<li>` (nested code/paragraphs/`<ol start>`/text-after-list), literal-backslash-first escaping, CommonMark-flanking emphasis/strikethrough escaping, and GFM `<table>` support (2026-07-17)
