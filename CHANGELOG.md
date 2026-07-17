@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] Toolbar icon opens settings — added an `action` to the manifest with `default_popup` pointing at the existing options page (`src/options/index.html`), so clicking the extension's toolbar icon opens the settings form as a popup. The same page still backs the `chrome://extensions` "Extension options" link, so there's one settings UI reachable two ways. No new permission (`action` needs none) (2026-07-18)
+
 - [done] Toolbar format settings (options page) — a new `options_ui` settings page (`src/options/`) lets the user choose which header-toolbar icons appear: the four single-export format icons (MD/PDF/JSON/HTML) and the bulk icon, each a checkbox. Settings persist in `chrome.storage.sync` (new `storage` permission; `sanitize` fail-safes an all-off value back to all-on so the toolbar is never left export-less), apply live to open ChatGPT tabs via `chrome.storage.onChanged`, and default to all-on so an unconfigured install is unchanged. Content toolbar (`src/content/mount.ts`) filters its buttons by the loaded settings. No network calls (2026-07-17)
 
 - [done] i18n message-key safety test — `test/i18n/message-keys.test.ts` asserts every key resolved through `m('...')` in `src/strings.ts` exists in both `public/_locales/{en,ko}/messages.json` with matching placeholder sets, turning a silent-empty-string key typo (AGENTS.md #4 fail-loud regression) into a red test. Test-only; no runtime change (2026-07-17)

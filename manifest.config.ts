@@ -30,6 +30,14 @@ export default defineManifest({
   // via URL.createObjectURL + an `<a download>` (no permission needed); `downloads` would
   // only be added if a future ticket switches to the chrome.downloads API.
   permissions: ['storage'],
+  // Toolbar icon → clicking it opens the settings form as a popup. Reuses the very same
+  // page as options_ui below (Chrome allows one HTML file to serve both slots), so there
+  // is a single settings UI reachable two ways: the toolbar icon and the chrome://extensions
+  // "Extension options" link. No permission needed for `action`.
+  action: {
+    default_title: 'prompt-vault',
+    default_popup: 'src/options/index.html',
+  },
   // Settings UI, embedded in chrome://extensions (open_in_tab: false). crxjs bundles the
   // referenced HTML entry and its module script into dist/.
   options_ui: {
