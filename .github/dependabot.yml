@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # npm dev dependencies (build/lint/test tooling — the repo has no runtime deps yet).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Collapse routine minor/patch bumps into one PR to keep review noise low;
+      # major bumps stay separate so breaking changes are reviewed individually.
+      dev-minor-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: '[HARNESS]'
+
+  # Keep the CI workflow's actions (checkout, setup-node) current & patched.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: '[HARNESS]'
