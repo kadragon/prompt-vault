@@ -19,4 +19,4 @@ marker is removed by hand once the blocking ticket lands.
 
 ## Someday
 
-- [ ] Chrome Web Store submission (icons, listing, privacy policy, review)
+- [ ] Chrome Web Store submission — **human-only remainder**: icons ✅, packaging (`npm run package`) ✅, privacy policy (`docs/PRIVACY.md`) ✅, listing copy (`docs/store-listing.md`) ✅. Left: host the privacy policy at a public URL, capture 1–5 screenshots on a logged-in ChatGPT session, and upload the zip + fill the dashboard for review (needs a Web Store developer account). See the checklist in `docs/store-listing.md`.

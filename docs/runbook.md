@@ -21,7 +21,18 @@
 | Lint | `npm run lint` (ESLint flat config + typescript-eslint) |
 | Type-check | `npm run typecheck` (`tsc --noEmit`) |
 | Unit tests (exporters, model) | `npm test` (Vitest, node env) |
-| Package for store | `[unknown — added when Web Store submission is scoped]` |
+| Package for store | `npm run package` → builds, then zips `dist/` → `prompt-vault-v<version>.zip` (repo root, gitignored). `--no-build` zips existing `dist/` as-is. Needs the system `zip` CLI. Upload the zip at the Web Store dashboard — see `docs/store-listing.md` |
+| Regenerate icons | Edit `assets/icon.svg`, then render `public/icons/icon{16,32,48,128}.png` (see below) |
+
+## Regenerate toolbar icons
+
+Source of truth is `assets/icon.svg` (kept out of `public/` so it never ships). No ImageMagick /
+Pillow / rsvg is installed in this environment, so rasterize via a headless Chromium canvas: load the
+SVG into an `Image`, `drawImage` onto a `<canvas>` at each size, read `toDataURL('image/png')`, and
+write the base64 to `public/icons/icon{size}.png` for sizes 16/32/48/128. `npm run build` copies
+`public/icons/` verbatim into `dist/icons/`; the manifest references them via `icons` (extensions
+list) and `action.default_icon` (toolbar). The display name/description are localized —
+`__MSG_appName__`/`__MSG_appDesc__` resolve from `public/_locales/{en,ko}/messages.json`.
 
 ## Load unpacked (manual test loop)
 

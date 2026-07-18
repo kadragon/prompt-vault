@@ -7,12 +7,22 @@ const HOSTS = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'prompt-vault',
+  // name/description resolve via chrome.i18n against _locales/{en,ko}/messages.json
+  // so Chrome shows a proper, localized display name instead of the package slug.
+  name: '__MSG_appName__',
   version: pkg.version,
-  description: pkg.description,
+  description: '__MSG_appDesc__',
   // UI strings resolve via chrome.i18n against _locales/{en,ko}/messages.json,
   // keyed to the browser's UI language. No extra permission needed.
   default_locale: 'en',
+  // Toolbar/extension-list icons. crxjs copies public/ into dist/ verbatim, so
+  // these paths are relative to the built extension root.
+  icons: {
+    16: 'icons/icon16.png',
+    32: 'icons/icon32.png',
+    48: 'icons/icon48.png',
+    128: 'icons/icon128.png',
+  },
   // Matches are host-broad because ChatGPT is a client-routed SPA (the script
   // must already be present when the user navigates into a /c/<id> page); the
   // conversation-page gate is enforced in JS via isConversationPage(), and SPA
@@ -35,7 +45,11 @@ export default defineManifest({
   // is a single settings UI reachable two ways: the toolbar icon and the chrome://extensions
   // "Extension options" link. No permission needed for `action`.
   action: {
-    default_title: 'prompt-vault',
+    default_title: '__MSG_appName__',
+    default_icon: {
+      16: 'icons/icon16.png',
+      32: 'icons/icon32.png',
+    },
     default_popup: 'src/options/index.html',
   },
   // Settings UI, embedded in chrome://extensions (open_in_tab: false). crxjs bundles the
