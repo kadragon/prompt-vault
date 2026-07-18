@@ -39,13 +39,29 @@ try {
 
 if (!skipBuild) {
   console.log('› building extension (vite build)…');
-  run('npm', ['run', 'build'], { cwd: root });
+  // On Windows npm is a `npm.cmd` shim; execFileSync won't resolve it without the
+  // extension (or shell:true), so pick the platform-correct binary name.
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  run(npm, ['run', 'build'], { cwd: root });
 }
 
-if (!existsSync(join(dist, 'manifest.json'))) {
+const manifestPath = join(dist, 'manifest.json');
+if (!existsSync(manifestPath)) {
   console.error(
     `error: ${join('dist', 'manifest.json')} not found — run \`npm run build\` first ` +
       '(or drop --no-build).',
+  );
+  process.exit(1);
+}
+
+// Guard against shipping a mislabeled artifact: with --no-build, a stale dist/ can
+// carry an older manifest version than package.json, so the zip name (derived from
+// package.json) would not match the manifest inside it. Fail loud instead.
+const distVersion = JSON.parse(readFileSync(manifestPath, 'utf8')).version;
+if (distVersion !== version) {
+  console.error(
+    `error: dist/manifest.json version (${distVersion}) does not match package.json ` +
+      `(${version}). The build is stale — run \`npm run build\` (drop --no-build) to refresh dist/.`,
   );
   process.exit(1);
 }
@@ -54,9 +70,10 @@ if (!existsSync(join(dist, 'manifest.json'))) {
 if (existsSync(zipPath)) rmSync(zipPath);
 
 // -r recurse, -X strip extra OS metadata, -9 max compression. cwd=dist so paths
-// are relative to the extension root. Exclude macOS cruft that can trip review.
+// are relative to the extension root. Exclude macOS cruft that can trip review —
+// the globs match at any depth (a literal `.DS_Store` would only catch a top-level one).
 console.log(`› zipping dist/ → ${zipName}…`);
-run('zip', ['-r', '-X', '-9', zipPath, '.', '-x', '.DS_Store', '-x', '__MACOSX/*'], {
+run('zip', ['-r', '-X', '-9', zipPath, '.', '-x', '*.DS_Store', '-x', '*/__MACOSX/*'], {
   cwd: dist,
 });
 

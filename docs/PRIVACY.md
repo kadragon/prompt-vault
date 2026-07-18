@@ -8,16 +8,19 @@ not do with your data.
 
 ## Summary
 
-**Prompt Vault does not collect, transmit, store, or share any of your data.** All
-processing happens locally, inside your browser. Your conversations never leave your
-device.
+**Prompt Vault does not collect your conversations, and never transmits them off your
+device.** All conversation processing happens locally, inside your browser. The extension
+makes no network requests of its own to any server. The only data it stores is your
+toolbar-icon preferences, which Chrome may synchronize across your own devices if you have
+Chrome Sync enabled (see below) — no conversation content is ever synced or sent anywhere.
 
 ## What the extension accesses
 
-- **The conversation on the page you are viewing.** When you click an export button, the
-  extension reads the currently open conversation from the page's DOM in order to convert
-  it into the file format you chose. This reading happens only in response to your click
-  and only for the conversation you are looking at.
+- **The conversation(s) you ask it to export.** When you click a single-export button, the
+  extension reads the currently open conversation from the page's DOM. If you use the
+  optional bulk-export action, it reads the set of conversations you select from the
+  sidebar, opening each in turn to read it. In every case the extension reads a
+  conversation only in response to your action, and only to convert it into a file for you.
 
 ## What the extension does with it
 
@@ -29,15 +32,21 @@ device.
 
 - **Your toolbar preferences only.** Which export icons you choose to show are saved with
   Chrome's `storage.sync` API so the setting follows your Chrome profile. This contains no
-  conversation content — only your on/off UI choices. Nothing else is persisted.
+  conversation content — only your on/off UI choices. Nothing else is persisted. Note that
+  `storage.sync` is Chrome's own sync mechanism: if you are signed into Chrome with Sync
+  enabled, Chrome (not this extension) propagates this preference across your devices via
+  your Google account. The extension itself makes no network requests; it only asks Chrome
+  to remember the setting.
 
 ## What the extension does NOT do
 
-- It does **not** send conversation content, or any other data, to any server, analytics
-  service, or third party. The extension makes no network requests to external hosts.
+- It does **not** send your conversation content, or any file it produces, to any server,
+  analytics service, or third party. The extension makes no network requests of its own.
+  (The only data that may leave your device is your toolbar-icon preference, and only via
+  Chrome Sync as described above — never any conversation content.)
 - It does **not** track your browsing, build a profile, or use cookies or advertising
   identifiers.
-- It does **not** sell or share data with anyone — there is no data to sell or share.
+- It does **not** sell or share your data with anyone.
 
 ## Permissions and why they are needed
 
