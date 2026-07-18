@@ -70,6 +70,47 @@ export interface ConversationAdapter {
    * that lists must also open.
    */
   openConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
+
+  // --- Project bulk-download track (parallel to the history track above) ---
+  // A "Project" groups conversations under their own home page. These members power
+  // bulk-downloading every conversation in one project; a provider without projects
+  // omits them and the project trigger simply never mounts.
+
+  /** True when `url` is one of this provider's Project home pages. */
+  matchesProject?(url: string): boolean;
+
+  /**
+   * Enumerate the conversations shown on a Project home page into the lightweight
+   * `SidebarConversation` model, in display order (keyed by the stable conversation
+   * id). Pure DOM read — no messages are scraped (that is `extract`'s job, after
+   * `openProjectConversation` navigates). Returns `[]` when the list is absent.
+   * Defaults to the live `document`; tests pass a parsed fixture root.
+   */
+  listProjectConversations?(root?: ParentNode): SidebarConversation[];
+
+  /**
+   * Like `openConversation`, but for a project conversation: the anchor may live in
+   * the project home page's list or in the persistent project sidebar expando shown
+   * once a conversation is open, so it is located by conversation id across whichever
+   * is currently in the DOM. Fail-loud on miss/timeout (AGENTS.md #4).
+   */
+  openProjectConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
+
+  /**
+   * Client-side navigate from a project conversation back to its project home page, so
+   * the user is returned there after a bulk run. Best-effort — resolves at once when
+   * already on a project home; rejects only when the navigation cannot be made (the
+   * bulk caller swallows that, as it does not affect the batch result).
+   */
+  openProjectHome?(opts?: OpenConversationOptions): Promise<void>;
+
+  /**
+   * The element on a Project home page to mount the bulk-download trigger into (e.g.
+   * the section holding the conversation list), or null when it is not in the DOM yet
+   * — the content layer then falls back to a non-overlapping overlay. Defaults to the
+   * live `document`; tests pass a parsed fixture root.
+   */
+  projectToolbarMount?(root?: ParentNode): Element | null;
 }
 
 /** Polling knobs for `openConversation`'s wait-for-render loop. */

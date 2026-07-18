@@ -59,6 +59,14 @@
     "message": "Export multiple conversations",
     "description": "Accessible name for the bulk-export toolbar button."
   },
+  "downloadProjectBulkLabel": {
+    "message": "Download all",
+    "description": "Label for the trigger that bulk-downloads a project's conversations."
+  },
+  "downloadProjectBulkAriaLabel": {
+    "message": "Download all conversations in this project",
+    "description": "Accessible name for the project bulk-download trigger."
+  },
   "bulkPanelTitle": {
     "message": "Export multiple conversations",
     "description": "Title of the bulk-export selection panel."
@@ -80,8 +88,8 @@
     "description": "Close button in the bulk-export panel."
   },
   "bulkEmptyMessage": {
-    "message": "No conversations were found in the sidebar to export.",
-    "description": "Shown when the history sidebar lists no conversations."
+    "message": "No conversations were found to export.",
+    "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
   },
   "bulkUnsupportedMessage": {
     "message": "Bulk export is not available on this page.",

@@ -3,7 +3,7 @@ import type { SidebarConversation } from '../../core/sidebar';
 import { ExtractionError } from '../../core/errors';
 import type { ConversationAdapter, OpenConversationOptions } from '../types';
 import { htmlToMarkdown } from './html-to-markdown';
-import { matches } from './matches';
+import { matches, matchesProject } from './matches';
 import { selectors } from './selectors';
 
 const PROVIDER = 'chatgpt';
@@ -52,6 +52,11 @@ export const chatgptAdapter: ConversationAdapter = {
   toolbarAnchor,
   listConversations,
   openConversation,
+  matchesProject,
+  listProjectConversations,
+  openProjectConversation,
+  openProjectHome,
+  projectToolbarMount,
 };
 
 /**
@@ -102,15 +107,25 @@ function listConversations(root: ParentNode = document): SidebarConversation[] {
   return conversations;
 }
 
-/** Split a `/c/<id>` sidebar href into its stable path id and a query-free absolute URL. */
+/** Split a conversation href into its stable `/c/<id>` id and a query-free absolute URL. */
 function resolveConversationHref(href: string, origin: string): { id: string; url: string } {
   try {
     const parsed = new URL(href, origin);
-    const match = parsed.pathname.match(/\/c\/([^/?#]+)/);
-    return { id: match ? match[1] : '', url: origin + parsed.pathname };
+    return { id: conversationIdFromPath(parsed.pathname), url: origin + parsed.pathname };
   } catch {
     return { id: '', url: '' };
   }
+}
+
+/**
+ * The stable conversation id from any conversation pathname — plain `/c/<id>` or a
+ * project-scoped `/g/g-p-<id>[-slug]/c/<id>`. The `/c/` segment is the identity; the
+ * project prefix and slug vary by context, so keying on this dedupes the same chat
+ * seen as a project-list link and as a sidebar-expando link. `''` when absent.
+ */
+function conversationIdFromPath(pathname: string): string {
+  const match = pathname.match(/\/c\/([^/?#]+)/);
+  return match ? match[1] : '';
 }
 
 function documentOrigin(root: ParentNode): string {
@@ -169,6 +184,141 @@ function findSidebarAnchor(targetPath: string): HTMLAnchorElement | null {
     if (href && new URL(href, location.origin).pathname === targetPath) return anchor;
   }
   return null;
+}
+
+/**
+ * The Project home page's conversation-list `<section>` — the container wrapping the
+ * `<ol>` of conversation rows. Found as the nearest `<section>` ancestor of a project
+ * conversation link, which deliberately skips the persistent left-nav sidebar expando:
+ * once a project conversation has been opened, that expando also lists the project's
+ * conversations, but its links have no `<section>` ancestor, so they are excluded here
+ * (verified live 2026-07-18 — without this, the trigger's mount and the bulk list would
+ * wrongly bind to the sidebar). Null when the list has not rendered yet or the markup
+ * changed; the content layer then falls back to a non-overlapping overlay. Doubles as
+ * the trigger's mount point. DOM knowledge stays in the adapter (docs/conventions.md).
+ */
+function projectListSection(root: ParentNode): Element | null {
+  for (const link of root.querySelectorAll(selectors.projectConversationLink)) {
+    const section = link.closest('section');
+    if (section) return section;
+  }
+  return null;
+}
+
+/** Where the project bulk-download trigger mounts: the conversation-list section. */
+function projectToolbarMount(root: ParentNode = document): Element | null {
+  return projectListSection(root);
+}
+
+/**
+ * Enumerate the conversations on a Project home page into the lightweight sidebar
+ * model, in display order. Scoped to the list `<section>` (so the left-nav expando is
+ * excluded — see `projectListSection`), reading the project list links
+ * (`/g/g-p-<id>[-slug]/c/<id>`) deduped by the stable `/c/<id>` id; the title comes
+ * from the link's `.font-medium` block (the human title, distinct from the
+ * message-preview snippet beside it), falling back to the link text. Pure DOM read —
+ * returns `[]` when the list has not rendered. Mirrors `listConversations`.
+ */
+function listProjectConversations(root: ParentNode = document): SidebarConversation[] {
+  const section = projectListSection(root);
+  if (!section) return [];
+
+  const origin = documentOrigin(root);
+  const seen = new Set<string>();
+  const conversations: SidebarConversation[] = [];
+  for (const anchor of section.querySelectorAll(selectors.projectConversationLink)) {
+    const href = anchor.getAttribute('href');
+    if (!href) continue;
+    const { id, url } = resolveConversationHref(href, origin);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const titleEl = anchor.querySelector(selectors.projectConversationTitle);
+    const title = (titleEl?.textContent ?? anchor.textContent ?? '').trim();
+    conversations.push({ id, title: title || 'ChatGPT conversation', url });
+  }
+  return conversations;
+}
+
+/**
+ * Client-side navigate to a project conversation and resolve once its turns render.
+ * Unlike `openConversation` (which clicks a `#history` link), the target anchor may be
+ * in the project home page's list OR in the persistent project sidebar expando shown
+ * once a conversation is open — so it is located by conversation id across whichever is
+ * currently in the DOM. Fail-loud (AGENTS.md #4): throws when the link is not present
+ * or the conversation does not render in time. Already-open target → resolve at once.
+ */
+async function openProjectConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const targetId = conversationIdFromPath(new URL(url, location.origin).pathname);
+
+  // Already showing the target conversation with content: no navigation needed.
+  if (conversationIdFromPath(location.pathname) === targetId && hasRenderedMessages()) return;
+
+  const anchor = findProjectConversationAnchor(targetId);
+  if (!anchor) {
+    throw new ExtractionError(
+      'Could not open a selected project conversation: its link was not found on the page ' +
+        '(the project list may need scrolling into view). It was skipped.',
+    );
+  }
+
+  const beforeSignature = messageSignature();
+  anchor.click();
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (
+      conversationIdFromPath(location.pathname) === targetId &&
+      hasRenderedMessages() &&
+      messageSignature() !== beforeSignature
+    ) {
+      return;
+    }
+  }
+  throw new ExtractionError(
+    'Timed out opening a selected project conversation. It may be loading slowly; it was skipped.',
+  );
+}
+
+/** The currently-rendered project conversation link for `convId`, or null. */
+function findProjectConversationAnchor(convId: string): HTMLAnchorElement | null {
+  for (const anchor of document.querySelectorAll<HTMLAnchorElement>(selectors.projectConversationLink)) {
+    const href = anchor.getAttribute('href');
+    if (href && conversationIdFromPath(new URL(href, location.origin).pathname) === convId) return anchor;
+  }
+  return null;
+}
+
+/**
+ * Client-side navigate from a project conversation back to the project home page by
+ * clicking the persistent back-to-project link, resolving once the project list has
+ * re-rendered. Used to return the user to the project after a bulk run finishes.
+ * Best-effort: resolves immediately if already on a project home page; throws
+ * `ExtractionError` (fail-loud) only if the link is absent or the home page never
+ * renders — the bulk caller swallows that (the batch result is unaffected).
+ */
+async function openProjectHome(opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+
+  if (matchesProject(location.href) && hasRenderedProjectList()) return;
+
+  const back = document.querySelector<HTMLAnchorElement>(selectors.projectBackLink);
+  if (!back) {
+    throw new ExtractionError('Could not return to the project home: the back link was not found.');
+  }
+  back.click();
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (matchesProject(location.href) && hasRenderedProjectList()) return;
+  }
+  throw new ExtractionError('Timed out returning to the project home page.');
+}
+
+function hasRenderedProjectList(): boolean {
+  return document.querySelector(selectors.projectConversationLink) !== null;
 }
 
 function hasRenderedMessages(): boolean {

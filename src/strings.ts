@@ -36,6 +36,11 @@ export const EXPORT_EMPTY_MESSAGE = m('exportEmptyMessage');
 export const DOWNLOAD_BULK_LABEL = m('downloadBulkLabel');
 export const DOWNLOAD_BULK_ARIA_LABEL = m('downloadBulkAriaLabel');
 
+// The trigger mounted on a Project home page that opens the same selection panel,
+// pre-filled with that project's conversations.
+export const DOWNLOAD_PROJECT_BULK_LABEL = m('downloadProjectBulkLabel');
+export const DOWNLOAD_PROJECT_BULK_ARIA_LABEL = m('downloadProjectBulkAriaLabel');
+
 // Selection-panel chrome.
 export const BULK_PANEL_TITLE = m('bulkPanelTitle');
 export const BULK_PANEL_FORMAT_LABEL = m('bulkPanelFormatLabel');

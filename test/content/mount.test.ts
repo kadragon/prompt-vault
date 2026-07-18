@@ -1,6 +1,12 @@
 import { afterEach, describe, it, expect } from 'vitest';
 import { Window } from 'happy-dom';
-import { CONTAINER_ID, createButtons, setToolbarSettings, syncButtons } from '../../src/content/mount';
+import {
+  CONTAINER_ID,
+  createButtons,
+  createProjectTrigger,
+  setToolbarSettings,
+  syncButtons,
+} from '../../src/content/mount';
 import { DEFAULT_SETTINGS } from '../../src/settings/store';
 
 // setToolbarSettings mutates module state; reset to the all-on default after every test so
@@ -9,7 +15,20 @@ afterEach(() => setToolbarSettings(DEFAULT_SETTINGS));
 
 const CONV_URL = 'https://chatgpt.com/c/abc-123';
 const NON_CONV_URL = 'https://chatgpt.com/';
+const PROJECT_URL = 'https://chatgpt.com/g/g-p-abc123/project';
 const HEADER_ID = 'conversation-header-actions';
+
+// A Project home page whose conversation-list <section> is the trigger's native mount.
+function docWithProjectSection(): Document {
+  const window = new Window();
+  window.document.write(
+    '<body><main><section><ol><li>' +
+      '<a href="/g/g-p-abc123-demo/c/conv-1" data-discover="true">' +
+      '<div class="text-sm font-medium">A project chat</div></a>' +
+      '</li></ol></section></main></body>',
+  );
+  return window.document as unknown as Document;
+}
 
 function docWithHeader(): Document {
   const window = new Window();
@@ -148,6 +167,100 @@ describe('syncButtons', () => {
     expect(container?.parentElement?.id).toBe(HEADER_ID);
     expect(container?.style.position).toBe(''); // native container is not a fixed overlay
     expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1); // overlay removed, not duplicated
+  });
+});
+
+describe('syncButtons on a Project home page', () => {
+  it('mounts the "Download all" trigger into the project conversation-list section', () => {
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container).not.toBeNull();
+    expect(container?.parentElement?.tagName).toBe('SECTION');
+    // Prepended above the list.
+    expect(container?.previousElementSibling).toBeNull();
+    const button = container?.querySelector('button');
+    expect(button?.getAttribute('aria-label')).toBe('Download all conversations in this project');
+    expect(button?.textContent).toContain('Download all');
+  });
+
+  it('does not mount the per-conversation format toolbar on a project page', () => {
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+    // A single trigger button, not the 4 format buttons + bulk icon.
+    expect(doc.querySelectorAll(`#${CONTAINER_ID} button`).length).toBe(1);
+  });
+
+  it('is idempotent — repeated calls keep a single trigger', () => {
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+    syncButtons(doc, PROJECT_URL);
+    syncButtons(doc, PROJECT_URL);
+    expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
+  });
+
+  it('removes the trigger when navigating away to a non-project page', () => {
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+
+    syncButtons(doc, NON_CONV_URL);
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+  });
+
+  it('does not inject an overlay while the section may still be rendering (fallback disallowed)', () => {
+    const doc = bareDoc();
+    syncButtons(doc, PROJECT_URL, { allowOverlayFallback: false });
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+  });
+
+  it('falls back to a bottom-right overlay when the project section is truly absent', () => {
+    const doc = bareDoc();
+    syncButtons(doc, PROJECT_URL, { allowOverlayFallback: true });
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container?.parentElement?.tagName).toBe('BODY');
+    expect(container?.style.position).toBe('fixed');
+    expect(container?.style.bottom).toBe('12px');
+  });
+
+  it('upgrades an already-mounted overlay to the native section once it renders', () => {
+    const doc = bareDoc();
+    syncButtons(doc, PROJECT_URL, { allowOverlayFallback: true });
+    expect(doc.getElementById(CONTAINER_ID)?.parentElement?.tagName).toBe('BODY');
+
+    // The project list section renders late; next sync swaps the overlay for the native mount.
+    const section = doc.createElement('section');
+    const anchor = doc.createElement('a');
+    anchor.setAttribute('href', '/g/g-p-abc123-demo/c/conv-1');
+    section.appendChild(anchor);
+    doc.querySelector('body')?.appendChild(section);
+    syncButtons(doc, PROJECT_URL, { allowOverlayFallback: true });
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container?.parentElement?.tagName).toBe('SECTION');
+    expect(container?.style.position).toBe('');
+    expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
+  });
+});
+
+describe('createProjectTrigger', () => {
+  it('builds a single labeled button with the project bulk aria-label', () => {
+    const container = createProjectTrigger(bareDoc(), 'native');
+    const buttons = container.querySelectorAll('button');
+    expect(buttons.length).toBe(1);
+    expect(buttons[0].getAttribute('aria-label')).toBe('Download all conversations in this project');
+    expect(buttons[0].getAttribute('title')).toBe('Download all conversations in this project');
+    expect(buttons[0].textContent).toContain('Download all');
+    expect(buttons[0].querySelector('svg')).not.toBeNull();
+  });
+
+  it('positions the overlay variant bottom-right so it never covers page chrome', () => {
+    const container = createProjectTrigger(bareDoc(), 'overlay');
+    expect(container.style.position).toBe('fixed');
+    expect(container.style.bottom).toBe('12px');
+    expect(container.style.top).toBe('');
   });
 });
 
