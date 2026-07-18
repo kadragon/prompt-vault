@@ -1,4 +1,12 @@
 {
+  "appName": {
+    "message": "Prompt Vault — AI Chat Backup",
+    "description": "Extension display name shown in the Chrome toolbar and extensions list."
+  },
+  "appDesc": {
+    "message": "Back up AI chat conversations to local Markdown/PDF files. ChatGPT first.",
+    "description": "Extension description shown in the Chrome Web Store and extensions list."
+  },
   "downloadMdLabel": {
     "message": "MD",
     "description": "Label for the Markdown export button."
