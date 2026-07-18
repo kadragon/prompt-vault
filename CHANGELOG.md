@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1 (2026-07-18)
+
+- [done] Project bulk-download trigger now blends with ChatGPT's chrome — the "Download all" button wears ChatGPT's own labeled secondary-button classes (`btn btn-secondary h-9 px-3`, a theme-aware bordered pill matching the Share button) instead of a foreign green pill; the class is provider-owned (`projectToolbarButtonClass` on the adapter) so the content layer stays provider-agnostic, and the overlay fallback keeps its self-styled pill for legibility without host CSS. Verified against the live logged-in site (2026-07-18)
+
 ## 1.1.0 (2026-07-18)
 
 - [done] Project bulk download — a "Download all" trigger mounts on ChatGPT Project home pages (`/g/g-p-<id>/project`) and drives the existing provider-agnostic `bulkExport` core + selection panel to save every conversation in the project (MD/PDF/JSON/HTML). New adapter members (`matchesProject`, `listProjectConversations`, `openProjectConversation`, `openProjectHome`, `projectToolbarMount`) keep all ChatGPT DOM knowledge centralized; the list `<section>` scope excludes the persistent left-nav project expando. Navigation keys on the stable `/c/<convId>` id (project URLs carry a varying slug). No new permissions, hosts, or network calls; selectors verified against the live logged-in site (2026-07-18)

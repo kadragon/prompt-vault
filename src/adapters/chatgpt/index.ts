@@ -34,6 +34,14 @@ export interface AutoScrollOptions {
 const TOOLBAR_BUTTON_CLASS =
   'text-token-text-primary hover:bg-token-surface-hover flex h-9 w-9 items-center justify-center rounded-lg';
 
+// ChatGPT's own labeled secondary-button classes — the shape of the project page's
+// native controls (e.g. the Share button): a bordered, fully-rounded 36px pill with a
+// centered icon+label, theme-aware via the `btn-secondary` token. Wearing them makes
+// the project "Download all" trigger blend with ChatGPT's chrome in both themes.
+// Verified against the live page (2026-07-18); if ChatGPT renames these tokens the
+// trigger degrades to an unstyled-but-functional button.
+const PROJECT_TOOLBAR_BUTTON_CLASS = 'btn btn-secondary h-9 px-3';
+
 // Bulk navigation tuning. After a sidebar link is clicked, ChatGPT swaps the route
 // instantly but renders the new conversation's turns a beat later (measured ~1s on a
 // warm session); the old turns are unmounted first, so a readiness check that only
@@ -57,6 +65,7 @@ export const chatgptAdapter: ConversationAdapter = {
   openProjectConversation,
   openProjectHome,
   projectToolbarMount,
+  projectToolbarButtonClass: PROJECT_TOOLBAR_BUTTON_CLASS,
 };
 
 /**

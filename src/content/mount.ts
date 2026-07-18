@@ -259,22 +259,44 @@ export function createButtons(
 
 /**
  * Build the project bulk-download trigger container: a single labeled "Download all"
- * button. Unlike the conversation toolbar's icon-only header controls, this stands
- * alone in the project page body (or as an overlay), so it is self-styled with a
- * visible label and stays legible in both themes regardless of the host CSS. `native`
- * sits inline within the project's conversation-list section; `overlay` is the
- * non-overlapping fixed pill used when that section is not found.
+ * button that stands alone in the project page body (or as an overlay). `native` wears
+ * the provider's own labeled-button classes (`buttonClass`, supplied by the adapter so
+ * this content layer stays provider-agnostic) and mirrors the provider's icon+label
+ * inner layout, so it blends with the page's native controls (e.g. the Share button)
+ * and adapts to light/dark. `overlay` is a fully self-styled non-overlapping fixed pill
+ * used when the list section is not found — legible even without the host CSS.
  */
-export function createProjectTrigger(doc: Document, placement: 'native' | 'overlay'): HTMLDivElement {
+export function createProjectTrigger(
+  doc: Document,
+  placement: 'native' | 'overlay',
+  buttonClass?: string,
+): HTMLDivElement {
   const container = doc.createElement('div');
   container.id = CONTAINER_ID;
   container.setAttribute(PLACEMENT_ATTR, placement);
+
+  const button = doc.createElement('button');
+  button.type = 'button';
+  button.setAttribute('aria-label', DOWNLOAD_PROJECT_BULK_ARIA_LABEL);
+  button.title = DOWNLOAD_PROJECT_BULK_ARIA_LABEL;
+
   if (placement === 'native') {
-    Object.assign(container.style, {
-      display: 'flex',
-      justifyContent: 'flex-end',
-      padding: '8px 12px',
-    });
+    // Right-align the trigger at the top of the conversation-list section.
+    Object.assign(container.style, { display: 'flex', justifyContent: 'flex-end', padding: '8px 12px' });
+    // Wear the provider's labeled-button classes (theme-aware, matches native controls).
+    if (buttonClass) button.className = buttonClass;
+    button.style.cursor = 'pointer';
+    // Mirror the provider's icon+label inner layout (a centered flex row with a small
+    // gap). Inline styles, not utility classes, keep this content layer free of any
+    // provider-specific CSS-class knowledge — the only provider classes come from
+    // `buttonClass` above (adapter isolation).
+    const inner = doc.createElement('div');
+    Object.assign(inner.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' });
+    inner.appendChild(bulkIcon(doc));
+    const label = doc.createElement('span');
+    label.textContent = DOWNLOAD_PROJECT_BULK_LABEL;
+    inner.appendChild(label);
+    button.appendChild(inner);
   } else {
     Object.assign(container.style, {
       position: 'fixed',
@@ -283,33 +305,28 @@ export function createProjectTrigger(doc: Document, placement: 'native' | 'overl
       zIndex: '2147483647',
       display: 'flex',
     });
+    Object.assign(button.style, {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '6px 12px',
+      fontSize: '13px',
+      fontFamily: 'inherit',
+      color: '#ffffff',
+      background: '#10a37f',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+    });
+    // The bulk glyph draws with `currentColor`, so it renders white on the green pill.
+    button.appendChild(bulkIcon(doc));
+    const label = doc.createElement('span');
+    label.textContent = DOWNLOAD_PROJECT_BULK_LABEL;
+    button.appendChild(label);
   }
 
-  const button = doc.createElement('button');
-  button.type = 'button';
-  button.setAttribute('aria-label', DOWNLOAD_PROJECT_BULK_ARIA_LABEL);
-  button.title = DOWNLOAD_PROJECT_BULK_ARIA_LABEL;
-  Object.assign(button.style, {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '6px',
-    padding: '6px 12px',
-    fontSize: '13px',
-    fontFamily: 'inherit',
-    color: '#ffffff',
-    background: '#10a37f',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-  });
-  // The bulk glyph draws with `currentColor`, so it renders white on the green pill.
-  button.appendChild(bulkIcon(doc));
-  const label = doc.createElement('span');
-  label.textContent = DOWNLOAD_PROJECT_BULK_LABEL;
-  button.appendChild(label);
   button.addEventListener('click', () => openProjectBulkExport(doc));
-
   container.appendChild(button);
   return container;
 }
@@ -550,7 +567,7 @@ function syncProjectTrigger(doc: Document, href: string, allowOverlayFallback: b
   }
 
   if (mount) {
-    mount.prepend(createProjectTrigger(doc, 'native'));
+    mount.prepend(createProjectTrigger(doc, 'native', adapter?.projectToolbarButtonClass));
   } else if (allowOverlayFallback) {
     doc.body.appendChild(createProjectTrigger(doc, 'overlay'));
   }
