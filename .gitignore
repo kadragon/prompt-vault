@@ -25,3 +25,6 @@ build/
 
 # Active sprint file (transient — exists only during a sprint)
 # tasks.md is intentionally tracked when present; do not ignore.
+
+# repo-quiz local progress (personal, not shared)
+.repo-quiz/
