@@ -286,9 +286,12 @@ export function createProjectTrigger(
     // Wear the provider's labeled-button classes (theme-aware, matches native controls).
     if (buttonClass) button.className = buttonClass;
     button.style.cursor = 'pointer';
-    // Mirror the provider's icon+label inner layout (a centered flex row with a small gap).
+    // Mirror the provider's icon+label inner layout (a centered flex row with a small
+    // gap). Inline styles, not utility classes, keep this content layer free of any
+    // provider-specific CSS-class knowledge — the only provider classes come from
+    // `buttonClass` above (adapter isolation).
     const inner = doc.createElement('div');
-    inner.className = 'flex items-center justify-center gap-1.5';
+    Object.assign(inner.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' });
     inner.appendChild(bulkIcon(doc));
     const label = doc.createElement('span');
     label.textContent = DOWNLOAD_PROJECT_BULK_LABEL;
