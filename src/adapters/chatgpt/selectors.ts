@@ -57,4 +57,32 @@ export const selectors = {
    * live page (2026-07-17).
    */
   sidebarConversationLink: 'a[href^="/c/"]',
+
+  /**
+   * A conversation link on a Project home page (`/g/g-p-<id>/project`) or in the
+   * persistent project sidebar expando shown while a project conversation is open.
+   * `href` is `/g/g-p-<id>[-slug]/c/<convId>` — the slug varies by context, so match
+   * on the `/g/g-p-` prefix plus the `/c/` segment and key by the stable `convId`.
+   * On the project home page these live in a `<main>` `<ol>` of
+   * `<li class="group/project-item">`; only the project home page is scraped for the
+   * bulk list, so no extra scoping is needed. Verified against the live page
+   * (2026-07-18); re-verify if the project bulk list comes up empty.
+   */
+  projectConversationLink: 'a[href*="/g/g-p-"][href*="/c/"]',
+
+  /**
+   * The conversation title inside a `projectConversationLink` on a project home page —
+   * a `text-sm font-medium` block holding the human title (the sibling block is a
+   * message-body preview snippet, also `text-sm` but NOT `font-medium`, so both classes
+   * are required to avoid picking the snippet). Best-effort: extraction falls back to
+   * the link's text when this is absent. Verified against the live page (2026-07-18).
+   */
+  projectConversationTitle: '.text-sm.font-medium',
+
+  /**
+   * The link back to a project's home page shown while a project conversation is open
+   * (`href` ends `/project`). Used to return the user to the project after a bulk run.
+   * Verified against the live page (2026-07-18).
+   */
+  projectBackLink: 'a[href$="/project"]',
 } as const;

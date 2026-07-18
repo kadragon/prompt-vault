@@ -59,6 +59,14 @@
     "message": "여러 대화 내보내기",
     "description": "Accessible name for the bulk-export toolbar button."
   },
+  "downloadProjectBulkLabel": {
+    "message": "전체 다운로드",
+    "description": "Label for the trigger that bulk-downloads a project's conversations."
+  },
+  "downloadProjectBulkAriaLabel": {
+    "message": "이 프로젝트의 모든 대화 다운로드",
+    "description": "Accessible name for the project bulk-download trigger."
+  },
   "bulkPanelTitle": {
     "message": "여러 대화 내보내기",
     "description": "Title of the bulk-export selection panel."
@@ -80,8 +88,8 @@
     "description": "Close button in the bulk-export panel."
   },
   "bulkEmptyMessage": {
-    "message": "사이드바에서 내보낼 대화를 찾지 못했습니다.",
-    "description": "Shown when the history sidebar lists no conversations."
+    "message": "내보낼 대화를 찾지 못했습니다.",
+    "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
   },
   "bulkUnsupportedMessage": {
     "message": "이 페이지에서는 일괄 내보내기를 사용할 수 없습니다.",

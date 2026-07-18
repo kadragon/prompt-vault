@@ -1,4 +1,6 @@
-import { pickAdapter } from '../adapters';
+import { pickAdapter, pickProjectAdapter } from '../adapters';
+import type { ConversationAdapter } from '../adapters';
+import type { SidebarConversation } from '../core/sidebar';
 import { ExtractionError } from '../core/errors';
 import { bulkExport, type BulkTarget } from './bulk-export';
 import { openBulkPanel } from './bulk-panel';
@@ -15,11 +17,13 @@ import {
   DOWNLOAD_MD_LABEL,
   DOWNLOAD_PDF_ARIA_LABEL,
   DOWNLOAD_PDF_LABEL,
+  DOWNLOAD_PROJECT_BULK_ARIA_LABEL,
+  DOWNLOAD_PROJECT_BULK_LABEL,
   EXPORT_FAILED_MESSAGE,
   EXPORT_NO_ADAPTER_MESSAGE,
 } from '../strings';
 import { assertConversationNonEmpty } from './guard';
-import { isConversationPage } from './page';
+import { isConversationPage, isProjectPage } from './page';
 import { DEFAULT_SETTINGS, FORMAT_KEYS, type ToolbarSettings } from '../settings/store';
 
 // Which toolbar controls to render. Defaults to everything-on so the toolbar matches the
@@ -254,6 +258,63 @@ export function createButtons(
 }
 
 /**
+ * Build the project bulk-download trigger container: a single labeled "Download all"
+ * button. Unlike the conversation toolbar's icon-only header controls, this stands
+ * alone in the project page body (or as an overlay), so it is self-styled with a
+ * visible label and stays legible in both themes regardless of the host CSS. `native`
+ * sits inline within the project's conversation-list section; `overlay` is the
+ * non-overlapping fixed pill used when that section is not found.
+ */
+export function createProjectTrigger(doc: Document, placement: 'native' | 'overlay'): HTMLDivElement {
+  const container = doc.createElement('div');
+  container.id = CONTAINER_ID;
+  container.setAttribute(PLACEMENT_ATTR, placement);
+  if (placement === 'native') {
+    Object.assign(container.style, {
+      display: 'flex',
+      justifyContent: 'flex-end',
+      padding: '8px 12px',
+    });
+  } else {
+    Object.assign(container.style, {
+      position: 'fixed',
+      bottom: '12px',
+      right: '12px',
+      zIndex: '2147483647',
+      display: 'flex',
+    });
+  }
+
+  const button = doc.createElement('button');
+  button.type = 'button';
+  button.setAttribute('aria-label', DOWNLOAD_PROJECT_BULK_ARIA_LABEL);
+  button.title = DOWNLOAD_PROJECT_BULK_ARIA_LABEL;
+  Object.assign(button.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 12px',
+    fontSize: '13px',
+    fontFamily: 'inherit',
+    color: '#ffffff',
+    background: '#10a37f',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+  });
+  // The bulk glyph draws with `currentColor`, so it renders white on the green pill.
+  button.appendChild(bulkIcon(doc));
+  const label = doc.createElement('span');
+  label.textContent = DOWNLOAD_PROJECT_BULK_LABEL;
+  button.appendChild(label);
+  button.addEventListener('click', () => openProjectBulkExport(doc));
+
+  container.appendChild(button);
+  return container;
+}
+
+/**
  * Extract the current conversation and download it in `format`, entirely locally.
  * Fail-loud (AGENTS.md #4): any extraction/export problem surfaces a visible alert
  * and no file is written — never a silent or empty download. A module-level in-flight
@@ -286,12 +347,10 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
 }
 
 /**
- * Open the bulk-export selection panel for the current page. The panel is provider-
- * agnostic, so this wires it to the active adapter's sidebar enumeration and
- * cross-conversation navigation. Fail-loud (AGENTS.md #4): if the adapter cannot list
- * or open conversations, surface a visible message instead of an empty panel. Blocked
- * while a single export is in flight (the panel's own modal backdrop then blocks
- * single exports for the reverse case).
+ * Open the bulk-export selection panel for the current conversation page, wired to the
+ * adapter's history-sidebar enumeration and cross-conversation navigation. Fail-loud
+ * (AGENTS.md #4): if the adapter cannot list or open conversations, surface a visible
+ * message instead of an empty panel. Blocked while a single export is in flight.
  */
 function openBulkExport(doc: Document): void {
   if (exportInFlight) return;
@@ -308,17 +367,64 @@ function openBulkExport(doc: Document): void {
     return;
   }
 
+  driveBulkPanel(doc, adapter, {
+    list: () => adapter.listConversations!(doc),
+    open: (url) => adapter.openConversation!(url),
+    // Return the user to the conversation they started from once the batch settles.
+    returnToStart: (startUrl) => adapter.openConversation!(startUrl),
+  });
+}
+
+/**
+ * Open the same selection panel for a Project home page, wired to the adapter's
+ * project-list enumeration and project-conversation navigation. Fail-loud like
+ * `openBulkExport`. After the batch the user is returned to the project home.
+ */
+function openProjectBulkExport(doc: Document): void {
+  if (exportInFlight) return;
+  const adapter = pickProjectAdapter(location.href);
+  if (!adapter) {
+    alert(EXPORT_NO_ADAPTER_MESSAGE);
+    return;
+  }
+  if (!adapter.listProjectConversations || !adapter.openProjectConversation) {
+    alert(BULK_UNSUPPORTED_MESSAGE);
+    return;
+  }
+
+  driveBulkPanel(doc, adapter, {
+    list: () => adapter.listProjectConversations!(doc),
+    open: (url) => adapter.openProjectConversation!(url),
+    // Navigate back to the project the run started from (`startUrl`); best-effort, so a
+    // provider without it is fine.
+    returnToStart: (startUrl) => adapter.openProjectHome?.(startUrl) ?? Promise.resolve(),
+  });
+}
+
+/** The track-specific pieces the shared bulk driver needs (enumerate / open / return). */
+interface BulkTrack {
+  list: () => SidebarConversation[];
+  open: (url: string) => Promise<void>;
+  /** Return the user to `startUrl` (or a home page) once the batch settles. */
+  returnToStart: (startUrl: string) => Promise<void>;
+}
+
+/**
+ * Shared bulk-export driver for both the history and project tracks: opens the
+ * provider-agnostic selection panel and, on run, produces+saves each selected
+ * conversation via the track's navigation, isolating per-item failures in the summary.
+ * Holds the in-flight guard for the whole batch so a stray single-export short-circuits.
+ */
+function driveBulkPanel(doc: Document, adapter: ConversationAdapter, track: BulkTrack): void {
   openBulkPanel(doc, {
-    listConversations: () => adapter.listConversations!(doc),
+    listConversations: track.list,
     run: async (selected, format, onProgress) => {
-      // Hold the in-flight guard for the whole batch so a stray single-export click
-      // short-circuits, and remember where the user started so we can return them.
       exportInFlight = true;
       const startUrl = location.href;
       const targets: BulkTarget[] = selected.map((sidebar) => ({
         title: sidebar.title,
         produce: async () => {
-          await adapter.openConversation!(sidebar.url);
+          await track.open(sidebar.url);
           const conversation = await adapter.extract();
           assertConversationNonEmpty(conversation);
           return conversation;
@@ -327,11 +433,14 @@ function openBulkExport(doc: Document): void {
       try {
         return await bulkExport(targets, format, new Date(), { onProgress });
       } finally {
-        // Return the user to where they started BEFORE releasing the guard, so a stray
-        // single-export can't fire against the last-exported conversation while the page
-        // is still navigating back. Best-effort: nav failure is irrelevant to the batch
-        // result, so it is swallowed.
-        await adapter.openConversation!(startUrl).catch(() => undefined);
+        // Return the user BEFORE releasing the guard, so a stray single-export can't fire
+        // against the last-exported conversation mid-navigation. Best-effort — a nav
+        // failure does not affect the batch result (files are already saved), so it is
+        // swallowed; a console.warn leaves a breadcrumb for why the tab stayed put
+        // instead of returning, without a disruptive alert.
+        await track.returnToStart(startUrl).catch((error: unknown) => {
+          console.warn('prompt-vault: could not return after bulk export', error);
+        });
         exportInFlight = false;
       }
     },
@@ -371,11 +480,17 @@ export interface SyncOptions {
  * `getElementById` check goes null and the next tick re-injects.
  */
 export function syncButtons(doc: Document, href: string, { allowOverlayFallback = false }: SyncOptions = {}): void {
-  if (!isConversationPage(href)) {
+  if (isConversationPage(href)) {
+    syncConversationButtons(doc, href, allowOverlayFallback);
+  } else if (isProjectPage(href)) {
+    syncProjectTrigger(doc, href, allowOverlayFallback);
+  } else {
     removeButtons(doc);
-    return;
   }
+}
 
+/** Mount/refresh the per-conversation export toolbar (format buttons + bulk icon). */
+function syncConversationButtons(doc: Document, href: string, allowOverlayFallback: boolean): void {
   const adapter = pickAdapter(href);
   const mount = adapter?.toolbarMount?.(doc) ?? null;
   const anchor = mount ? adapter?.toolbarAnchor?.(mount) ?? null : null;
@@ -399,6 +514,45 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
     positionBeforeAnchor(createButtons(doc, 'native', adapter?.toolbarButtonClass), mount, anchor);
   } else if (allowOverlayFallback) {
     doc.body.appendChild(createButtons(doc, 'overlay'));
+  }
+}
+
+/**
+ * Mount/refresh the Project home page's single "Download all" trigger. Mirrors the
+ * conversation-toolbar sync (overlay grace, overlay→native upgrade), but the native
+ * mount is the project's conversation-list section (the trigger is prepended into it)
+ * rather than a header bar with a Share anchor.
+ */
+function syncProjectTrigger(doc: Document, href: string, allowOverlayFallback: boolean): void {
+  // The "bulk" toolbar setting governs bulk-export UI overall; when the user has turned
+  // it off, hide the project trigger too (not just the per-conversation bulk icon), so the
+  // setting behaves consistently across pages rather than silently ignoring it here.
+  if (!cachedSettings.bulk) {
+    removeButtons(doc);
+    return;
+  }
+
+  const adapter = pickProjectAdapter(href);
+  const mount = adapter?.projectToolbarMount?.(doc) ?? null;
+
+  const existing = doc.getElementById(CONTAINER_ID);
+  if (existing) {
+    const isOverlay = existing.getAttribute(PLACEMENT_ATTR) === 'overlay';
+    if (isOverlay && mount) {
+      // Upgrade the fallback overlay to the now-available native section.
+      existing.remove();
+    } else {
+      // Native and already placed: re-assert it as the section's first child in case
+      // the list re-rendered around it. No-op when already correct.
+      if (!isOverlay && mount && mount.firstElementChild !== existing) mount.prepend(existing);
+      return;
+    }
+  }
+
+  if (mount) {
+    mount.prepend(createProjectTrigger(doc, 'native'));
+  } else if (allowOverlayFallback) {
+    doc.body.appendChild(createProjectTrigger(doc, 'overlay'));
   }
 }
 

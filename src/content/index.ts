@@ -1,4 +1,4 @@
-import { isConversationPage } from './page';
+import { isConversationPage, isProjectPage } from './page';
 import { removeButtons, setToolbarSettings, syncButtons } from './mount';
 import { loadSettings, subscribeSettings, type ToolbarSettings } from '../settings/store';
 
@@ -27,7 +27,11 @@ function tick(): void {
     convTicks = 0;
     removeButtons(document);
   }
-  convTicks = isConversationPage(location.href) ? convTicks + 1 : 0;
+  // Both conversation pages and project home pages get a mounted control, and both
+  // want the overlay-fallback grace (ChatGPT renders their mount points asynchronously
+  // after a route change), so the grace counter advances on either.
+  const mountable = isConversationPage(location.href) || isProjectPage(location.href);
+  convTicks = mountable ? convTicks + 1 : 0;
   syncButtons(document, location.href, { allowOverlayFallback: convTicks >= MOUNT_GRACE_TICKS });
 }
 

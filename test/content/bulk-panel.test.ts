@@ -100,7 +100,7 @@ describe('openBulkPanel', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }, []));
     const panel = panelOf(doc);
-    expect(panel.textContent).toContain('No conversations were found in the sidebar');
+    expect(panel.textContent).toContain('No conversations were found to export');
     expect(checkboxes(panel)).toHaveLength(0);
   });
 
