@@ -112,6 +112,16 @@ export interface ConversationAdapter {
    * live `document`; tests pass a parsed fixture root.
    */
   projectToolbarMount?(root?: ParentNode): Element | null;
+
+  /**
+   * Provider-owned CSS class string applied to the project bulk-download trigger when it
+   * mounts natively (see `projectToolbarMount`), so it wears the provider's own labeled
+   * button chrome (matching its native controls, light/dark, hover). Distinct from
+   * `toolbarButtonClass` (the conversation header's icon-only square). Kept in the
+   * adapter so the shared content layer carries no provider-specific styling. Optional —
+   * omit to leave the native trigger unstyled but functional.
+   */
+  readonly projectToolbarButtonClass?: string;
 }
 
 /** Polling knobs for `openConversation`'s wait-for-render loop. */

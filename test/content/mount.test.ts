@@ -183,6 +183,8 @@ describe('syncButtons on a Project home page', () => {
     const button = container?.querySelector('button');
     expect(button?.getAttribute('aria-label')).toBe('Download all conversations in this project');
     expect(button?.textContent).toContain('Download all');
+    // Wears ChatGPT's own secondary-button classes so it blends with native controls.
+    expect(button?.className).toContain('btn-secondary');
   });
 
   it('does not mount the per-conversation format toolbar on a project page', () => {
@@ -263,14 +265,17 @@ describe('syncButtons on a Project home page', () => {
 });
 
 describe('createProjectTrigger', () => {
-  it('builds a single labeled button with the project bulk aria-label', () => {
-    const container = createProjectTrigger(bareDoc(), 'native');
+  it('builds a single labeled button wearing the provider class, with the project bulk aria-label', () => {
+    const container = createProjectTrigger(bareDoc(), 'native', 'btn btn-secondary h-9 px-3');
     const buttons = container.querySelectorAll('button');
     expect(buttons.length).toBe(1);
     expect(buttons[0].getAttribute('aria-label')).toBe('Download all conversations in this project');
     expect(buttons[0].getAttribute('title')).toBe('Download all conversations in this project');
     expect(buttons[0].textContent).toContain('Download all');
     expect(buttons[0].querySelector('svg')).not.toBeNull();
+    // Native trigger wears the provider-supplied ChatGPT button classes (not a self-styled pill).
+    expect(buttons[0].className).toBe('btn btn-secondary h-9 px-3');
+    expect(buttons[0].style.background).toBe('');
   });
 
   it('positions the overlay variant bottom-right so it never covers page chrome', () => {
@@ -278,6 +283,8 @@ describe('createProjectTrigger', () => {
     expect(container.style.position).toBe('fixed');
     expect(container.style.bottom).toBe('12px');
     expect(container.style.top).toBe('');
+    // Overlay fallback stays self-styled (green pill) so it is legible without host CSS.
+    expect(container.querySelector('button')?.style.background).toBe('#10a37f');
   });
 });
 
