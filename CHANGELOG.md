@@ -2,7 +2,7 @@
 
 ## 1.1.0 (2026-07-18)
 
-- [done] Project bulk download — a "Download all" trigger mounts on ChatGPT Project home pages (`/g/g-p-<id>/project`) and drives the existing provider-agnostic `bulkExport` core + selection panel to save every conversation in the project (MD/PDF/JSON/HTML). New adapter members (`matchesProject`, `listProjectConversations`, `openProjectConversation`, `openProjectHome`, `projectToolbarMount`) keep all ChatGPT DOM knowledge centralized; the list `<section>` scope excludes the persistent left-nav project expando. Navigation keys on the stable `/c/<convId>` id (project URLs carry a varying slug). No new permissions, hosts, or network calls; selectors verified against the live logged-in site (2026-07-18) (2026-07-18)
+- [done] Project bulk download — a "Download all" trigger mounts on ChatGPT Project home pages (`/g/g-p-<id>/project`) and drives the existing provider-agnostic `bulkExport` core + selection panel to save every conversation in the project (MD/PDF/JSON/HTML). New adapter members (`matchesProject`, `listProjectConversations`, `openProjectConversation`, `openProjectHome`, `projectToolbarMount`) keep all ChatGPT DOM knowledge centralized; the list `<section>` scope excludes the persistent left-nav project expando. Navigation keys on the stable `/c/<convId>` id (project URLs carry a varying slug). No new permissions, hosts, or network calls; selectors verified against the live logged-in site (2026-07-18)
 
 ## 1.0.0 (2026-07-18)
 

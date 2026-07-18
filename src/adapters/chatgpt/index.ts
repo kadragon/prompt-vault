@@ -291,30 +291,57 @@ function findProjectConversationAnchor(convId: string): HTMLAnchorElement | null
 }
 
 /**
- * Client-side navigate from a project conversation back to the project home page by
- * clicking the persistent back-to-project link, resolving once the project list has
- * re-rendered. Used to return the user to the project after a bulk run finishes.
- * Best-effort: resolves immediately if already on a project home page; throws
- * `ExtractionError` (fail-loud) only if the link is absent or the home page never
- * renders — the bulk caller swallows that (the batch result is unaffected).
+ * Client-side navigate from a project conversation back to the project home page
+ * `homeUrl` (where a bulk run started), resolving once the project list has re-rendered.
+ * The back-to-project link is matched to `homeUrl`'s project id, not taken as the first
+ * `…/project` anchor, so a page listing several projects' home links returns the user to
+ * the project they exported from — not a different one. Best-effort: resolves immediately
+ * if already on that project's home page; throws `ExtractionError` (fail-loud) only if no
+ * matching link is present or the home page never renders — the bulk caller swallows that
+ * (the batch result is unaffected).
  */
-async function openProjectHome(opts: OpenConversationOptions = {}): Promise<void> {
+async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = {}): Promise<void> {
   const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
 
-  if (matchesProject(location.href) && hasRenderedProjectList()) return;
+  const targetId = projectIdFromPath(new URL(homeUrl, location.origin).pathname);
+  const onTargetHome = (): boolean =>
+    matchesProject(location.href) &&
+    projectIdFromPath(location.pathname) === targetId &&
+    hasRenderedProjectList();
 
-  const back = document.querySelector<HTMLAnchorElement>(selectors.projectBackLink);
+  if (onTargetHome()) return;
+
+  const back = findProjectBackLink(targetId);
   if (!back) {
-    throw new ExtractionError('Could not return to the project home: the back link was not found.');
+    throw new ExtractionError('Could not return to the project home: its back link was not found.');
   }
   back.click();
 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await delay(pollMs);
-    if (matchesProject(location.href) && hasRenderedProjectList()) return;
+    if (onTargetHome()) return;
   }
   throw new ExtractionError('Timed out returning to the project home page.');
+}
+
+/**
+ * The stable project id (`g-p-<id>`) from a project or project-conversation pathname,
+ * ignoring any trailing `-<slug>` (which varies by context) and the conversation part.
+ * `''` when absent. Lets the return-to-home step match links across slug variants.
+ */
+function projectIdFromPath(pathname: string): string {
+  const match = pathname.match(/\/g\/(g-p-[0-9a-fA-F]+)/);
+  return match ? match[1] : '';
+}
+
+/** The back-to-project link for `projectId`, or null. Falls back to null (never a wrong project). */
+function findProjectBackLink(projectId: string): HTMLAnchorElement | null {
+  for (const anchor of document.querySelectorAll<HTMLAnchorElement>(selectors.projectBackLink)) {
+    const href = anchor.getAttribute('href');
+    if (href && projectIdFromPath(new URL(href, location.origin).pathname) === projectId) return anchor;
+  }
+  return null;
 }
 
 function hasRenderedProjectList(): boolean {

@@ -200,6 +200,23 @@ describe('syncButtons on a Project home page', () => {
     expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
   });
 
+  it('does not mount the trigger when the bulk-export setting is disabled', () => {
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false });
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+  });
+
+  it('removes an existing trigger when the bulk setting is turned off', () => {
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false });
+    syncButtons(doc, PROJECT_URL);
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+  });
+
   it('removes the trigger when navigating away to a non-project page', () => {
     const doc = docWithProjectSection();
     syncButtons(doc, PROJECT_URL);

@@ -72,11 +72,12 @@ export const selectors = {
 
   /**
    * The conversation title inside a `projectConversationLink` on a project home page —
-   * a `font-medium` block holding the human title (the sibling block is a message-body
-   * preview snippet, not the title). Best-effort: extraction falls back to the link's
-   * text when this is absent. Verified against the live page (2026-07-18).
+   * a `text-sm font-medium` block holding the human title (the sibling block is a
+   * message-body preview snippet, also `text-sm` but NOT `font-medium`, so both classes
+   * are required to avoid picking the snippet). Best-effort: extraction falls back to
+   * the link's text when this is absent. Verified against the live page (2026-07-18).
    */
-  projectConversationTitle: '.font-medium',
+  projectConversationTitle: '.text-sm.font-medium',
 
   /**
    * The link back to a project's home page shown while a project conversation is open

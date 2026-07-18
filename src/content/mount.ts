@@ -395,8 +395,9 @@ function openProjectBulkExport(doc: Document): void {
   driveBulkPanel(doc, adapter, {
     list: () => adapter.listProjectConversations!(doc),
     open: (url) => adapter.openProjectConversation!(url),
-    // Navigate back to the project home; best-effort, so a provider without it is fine.
-    returnToStart: () => adapter.openProjectHome?.() ?? Promise.resolve(),
+    // Navigate back to the project the run started from (`startUrl`); best-effort, so a
+    // provider without it is fine.
+    returnToStart: (startUrl) => adapter.openProjectHome?.(startUrl) ?? Promise.resolve(),
   });
 }
 
@@ -523,6 +524,14 @@ function syncConversationButtons(doc: Document, href: string, allowOverlayFallba
  * rather than a header bar with a Share anchor.
  */
 function syncProjectTrigger(doc: Document, href: string, allowOverlayFallback: boolean): void {
+  // The "bulk" toolbar setting governs bulk-export UI overall; when the user has turned
+  // it off, hide the project trigger too (not just the per-conversation bulk icon), so the
+  // setting behaves consistently across pages rather than silently ignoring it here.
+  if (!cachedSettings.bulk) {
+    removeButtons(doc);
+    return;
+  }
+
   const adapter = pickProjectAdapter(href);
   const mount = adapter?.projectToolbarMount?.(doc) ?? null;
 

@@ -97,12 +97,13 @@ export interface ConversationAdapter {
   openProjectConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
 
   /**
-   * Client-side navigate from a project conversation back to its project home page, so
-   * the user is returned there after a bulk run. Best-effort — resolves at once when
-   * already on a project home; rejects only when the navigation cannot be made (the
+   * Client-side navigate back to the project home page `homeUrl` (where a bulk run
+   * started), so the user is returned to the project they exported from — matched by
+   * project id, not the first available home link. Best-effort — resolves at once when
+   * already on that project's home; rejects only when the navigation cannot be made (the
    * bulk caller swallows that, as it does not affect the batch result).
    */
-  openProjectHome?(opts?: OpenConversationOptions): Promise<void>;
+  openProjectHome?(homeUrl: string, opts?: OpenConversationOptions): Promise<void>;
 
   /**
    * The element on a Project home page to mount the bulk-download trigger into (e.g.
