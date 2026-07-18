@@ -28,4 +28,17 @@ export default tseslint.config(
     files: ['eslint.config.js'],
     ...tseslint.configs.disableTypeChecked,
   },
+  {
+    // Node build/packaging scripts: plain ESM, outside the app tsconfig graph.
+    // Disable type-checked rules and expose the Node globals they use.
+    files: ['scripts/**/*.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+      },
+    },
+  },
 );

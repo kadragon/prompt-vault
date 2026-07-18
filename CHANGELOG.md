@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 (2026-07-18)
+
+First Chrome Web Store release.
+
+- [done] Web Store submission prep — `npm run package` (`scripts/package.mjs`) builds and zips `dist/` into a versioned `prompt-vault-v<version>.zip` with the manifest at the zip root (uses the system `zip` CLI, no runtime dep); a local-only/no-collection privacy policy (`docs/PRIVACY.md`); and a full listing + submission guide (`docs/store-listing.md`: EN/KO descriptions, single-purpose statement, permission justifications, data-use disclosures, screenshot shot list, checklist). Runbook's package command filled in. Screenshots and the dashboard upload remain human-only (need a login session / developer account) (2026-07-18)
 
 - [done] Toolbar icon opens settings — added an `action` to the manifest with `default_popup` pointing at the existing options page (`src/options/index.html`), so clicking the extension's toolbar icon opens the settings form as a popup. The same page still backs the `chrome://extensions` "Extension options" link, so there's one settings UI reachable two ways. No new permission (`action` needs none) (2026-07-18)
 

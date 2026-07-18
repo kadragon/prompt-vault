@@ -21,7 +21,7 @@
 | Lint | `npm run lint` (ESLint flat config + typescript-eslint) |
 | Type-check | `npm run typecheck` (`tsc --noEmit`) |
 | Unit tests (exporters, model) | `npm test` (Vitest, node env) |
-| Package for store | `[unknown — added when Web Store submission is scoped]` |
+| Package for store | `npm run package` → builds, then zips `dist/` → `prompt-vault-v<version>.zip` (repo root, gitignored). `--no-build` zips existing `dist/` as-is. Needs the system `zip` CLI. Upload the zip at the Web Store dashboard — see `docs/store-listing.md` |
 | Regenerate icons | Edit `assets/icon.svg`, then render `public/icons/icon{16,32,48,128}.png` (see below) |
 
 ## Regenerate toolbar icons
