@@ -431,34 +431,49 @@ function hasKnownRole(el: Element): boolean {
   return role === 'user' || role === 'assistant' || role === 'system';
 }
 
-/** Read a turn node's content, dispatching on role. May be empty (virtualized/streaming). */
-function readContent(el: Element): string {
+/**
+ * A turn's extracted content plus whether it came from a *reliable* source (a known
+ * content container or a file/image marker) rather than the bare `el.textContent`
+ * fallback. The walk uses `reliable` to replace a skeleton that was first captured via
+ * the fallback (which can pick up stray UI text like "Copy"/"Edit") once the real
+ * content element renders.
+ */
+interface TurnRead {
+  content: string;
+  reliable: boolean;
+}
+
+/** Read a turn node's content + reliability, dispatching on role. */
+function readTurn(el: Element): TurnRead {
   const role = el.getAttribute(selectors.authorRoleAttr) as Role;
-  return role === 'assistant' ? assistantContent(el) : userContent(el);
+  if (role === 'assistant') {
+    const markdownEl = el.querySelector(selectors.assistantMarkdown);
+    // Fall back to plain text if the prose container is missing so a markup change
+    // degrades to readable text rather than an empty message (but mark it unreliable).
+    if (markdownEl) return { content: htmlToMarkdown(markdownEl), reliable: true };
+    return { content: (el.textContent ?? '').trim(), reliable: false };
+  }
+  // User turns are plain (already markdown-ish) text in a pre-wrap block.
+  const textEl = el.querySelector(selectors.userText);
+  const base = (textEl?.textContent ?? '').trim();
+  const files = fileMarkers(el);
+  const combined = [base, files].filter(Boolean).join('\n\n');
+  if (combined) return { content: combined, reliable: true };
+  // A turn with only an uploaded file or a lone image has no readable text node; describe
+  // it rather than dropping it (which would fail the whole export — AGENTS.md #4).
+  if (el.querySelector('img')) return { content: '[Image]', reliable: true };
+  return { content: (el.textContent ?? '').trim(), reliable: false };
 }
 
 /** Map one message DOM node to a normalized Message, or null if it has no content. */
 function toMessage(el: Element): Message | null {
-  const content = readContent(el);
+  const { content } = readTurn(el);
   if (!content.trim()) return null;
   const role = el.getAttribute(selectors.authorRoleAttr) as Role;
   const id = el.getAttribute(selectors.messageIdAttr);
   const message: Message = { role, content };
   if (id) message.id = id;
   return message;
-}
-
-function userContent(el: Element): string {
-  // User turns are plain (already markdown-ish) text in a pre-wrap block.
-  const textEl = el.querySelector(selectors.userText);
-  const base = (textEl?.textContent ?? '').trim();
-  const files = fileMarkers(el);
-  const combined = [base, files].filter(Boolean).join('\n\n');
-  if (combined) return combined;
-  // A turn with only an uploaded file or a lone image has no readable text node; describe
-  // it rather than dropping it (which would fail the whole export — AGENTS.md #4).
-  if (el.querySelector('img')) return '[Image]';
-  return (el.textContent ?? '').trim();
 }
 
 /** `[File: name]` for each attachment tile in a turn (empty string when there are none). */
@@ -468,13 +483,6 @@ function fileMarkers(el: Element): string {
     .filter((name): name is string => Boolean(name))
     .map((name) => `[File: ${name}]`)
     .join('\n\n');
-}
-
-function assistantContent(el: Element): string {
-  const markdownEl = el.querySelector(selectors.assistantMarkdown);
-  // Fall back to plain text if the prose container is missing so a markup change
-  // degrades to readable text rather than an empty message.
-  return markdownEl ? htmlToMarkdown(markdownEl) : (el.textContent ?? '').trim();
 }
 
 function deriveTitle(root: ParentNode): string {
@@ -521,6 +529,7 @@ export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions
 interface CollectedTurn {
   role: Role;
   content: string;
+  reliable: boolean;
 }
 
 /**
@@ -537,7 +546,10 @@ interface CollectedTurn {
  */
 export async function collectVirtualizedTurns(doc: Document, options: AutoScrollOptions = {}): Promise<Message[]> {
   const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
-  if (!container) return readSnapshot(doc);
+  // A zero-height container (hidden/background tab) never actually scrolls, so the walk
+  // below would crawl 1px at a time up to the absolute cap — minutes of a frozen tab.
+  // Fall back to a one-shot read instead.
+  if (!container || container.clientHeight === 0) return readSnapshot(doc);
 
   // Pull in any older turns first (long chats paginate them in as you reach the top),
   // then walk down from the very top. `autoScrollToLoad` leaves the viewport pinned there.
@@ -548,24 +560,27 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
 
   const order: string[] = [];
   const turns = new Map<string, CollectedTurn>();
-  let sawIdlessContent = false;
+  let sawIdlessTurn = false;
   const record = (): void => {
     for (const el of Array.from(doc.querySelectorAll(selectors.message))) {
       if (!hasKnownRole(el)) continue;
       const id = el.getAttribute(selectors.messageIdAttr);
       if (!id) {
-        // No stable key to dedup this turn across windows, so it can't be collected. If it
-        // carries content, flag it so we fail loud rather than silently drop it (AGENTS.md #4).
-        if (readContent(el).trim()) sawIdlessContent = true;
+        // No stable key to dedup this turn across windows, so it can never be collected.
+        // Flag it so we fail loud rather than silently omit it (AGENTS.md #4).
+        sawIdlessTurn = true;
         continue;
       }
-      const content = readContent(el);
+      const { content, reliable } = readTurn(el);
       const seen = turns.get(id);
       if (!seen) {
         order.push(id);
-        turns.set(id, { role: el.getAttribute(selectors.authorRoleAttr) as Role, content });
-      } else if (!seen.content.trim() && content.trim()) {
-        seen.content = content; // upgrade a skeleton captured before it hydrated
+        turns.set(id, { role: el.getAttribute(selectors.authorRoleAttr) as Role, content, reliable });
+      } else if ((!seen.content.trim() && content.trim()) || (!seen.reliable && reliable)) {
+        // Upgrade a turn first captured empty, or captured via the unreliable textContent
+        // fallback (which can grab stray UI text), once its real content element renders.
+        seen.content = content;
+        seen.reliable = reliable;
       }
     }
   };
@@ -573,10 +588,14 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
   container.scrollTop = 0;
   await delay(stepDelayMs);
   let atBottomHits = 0;
+  let reachedBottom = false;
   for (let step = 0; ; step++) {
     record();
     if (container.scrollTop + container.clientHeight >= container.scrollHeight - 1) {
-      if (++atBottomHits >= 2) break; // settle on the bottom (its content may still hydrate)
+      if (++atBottomHits >= 2) {
+        reachedBottom = true;
+        break; // settle on the bottom (its content may still hydrate)
+      }
     } else {
       atBottomHits = 0;
     }
@@ -590,6 +609,16 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
     await delay(stepDelayMs);
   }
 
+  // The walk hit a step cap before reaching the bottom: turns below the last window were
+  // never seen and are absent from `turns`, so the `dropped` check below cannot detect the
+  // missing tail. Fail loud rather than return a silently truncated conversation (AGENTS.md #4).
+  if (!reachedBottom) {
+    throw new ExtractionError(
+      'Timed out loading the full conversation while scrolling. The conversation may be ' +
+        'unusually long; try again, or report if this persists.',
+    );
+  }
+
   const messages: Message[] = [];
   let dropped = 0;
   for (const id of order) {
@@ -600,10 +629,18 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
       dropped++;
     }
   }
-  if (messages.length > 0 && (dropped > 0 || sawIdlessContent)) {
+  if (messages.length > 0 && dropped > 0) {
     throw new ExtractionError(
       'Some conversation turns could not be read (empty or malformed). The conversation may ' +
         'still be loading — wait for it to finish, then try again.',
+    );
+  }
+  // A turn with no message id can't be collected across windows; retrying won't help, so give
+  // it its own message rather than the "still loading" one (AGENTS.md #4 — never silently omit).
+  if (messages.length > 0 && sawIdlessTurn) {
+    throw new ExtractionError(
+      'A conversation turn is missing its identifier and could not be exported reliably. ' +
+        'ChatGPT’s markup may have changed — please report this.',
     );
   }
   return messages;
