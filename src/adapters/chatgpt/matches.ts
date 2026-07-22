@@ -23,18 +23,19 @@ export const CONVERSATION_PATH = /^\/(?:c|g\/[^/]+\/c)\/[^/]+\/?$/;
 export const PROJECT_PATH = /^\/g\/g-p-[^/]+\/project\/?$/;
 
 /**
- * True only for a ChatGPT conversation page: a supported host with a `/c/<id>`
- * path. Invalid URLs return false rather than throwing.
+ * True only for a ChatGPT conversation page: a supported host with a `/c/<id>` or
+ * GPT/Project-scoped `/g/<gizmoId>/c/<convId>` path. Invalid URLs return false rather
+ * than throwing.
  */
 export function matches(url: string): boolean {
   return onSupportedHost(url, CONVERSATION_PATH);
 }
 
 /**
- * True only for a ChatGPT Project home page: a supported host with a
- * `/g/g-p-<id>/project` path. Distinct from `matches` so the single-conversation
- * toolbar gate stays `/c/<id>`-only; this gates the project bulk-download trigger.
- * Invalid URLs return false rather than throwing.
+ * True only for a ChatGPT Project *home* page: a supported host with a
+ * `/g/g-p-<id>/project` path. Distinct from `matches` (which gates conversation pages,
+ * `/c/<id>` and `/g/<gizmoId>/c/<convId>`); this one gates only the project home's
+ * bulk-download trigger. Invalid URLs return false rather than throwing.
  */
 export function matchesProject(url: string): boolean {
   return onSupportedHost(url, PROJECT_PATH);
