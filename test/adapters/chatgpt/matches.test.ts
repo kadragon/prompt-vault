@@ -8,16 +8,29 @@ describe('chatgpt matches', () => {
     expect(matches('https://chat.openai.com/c/xyz')).toBe(true);
   });
 
+  it('accepts custom-GPT and Project conversation URLs', () => {
+    expect(
+      matches('https://chatgpt.com/g/g-Acb5zqD3l-imeil-jagseong-doumi/c/6a602807-a784-83ee-a56b-0e8e88eb405c'),
+    ).toBe(true);
+    expect(matches('https://chatgpt.com/g/g-abc/c/xyz')).toBe(true);
+    expect(matches('https://chatgpt.com/g/g-abc/c/xyz/')).toBe(true);
+    expect(matches('https://chatgpt.com/g/g-p-abc123-slug/c/conv-1')).toBe(true);
+  });
+
   it('rejects non-conversation paths on a supported host', () => {
     expect(matches('https://chatgpt.com/')).toBe(false);
     expect(matches('https://chatgpt.com/c/')).toBe(false);
     expect(matches('https://chatgpt.com/gpts')).toBe(false);
     expect(matches('https://chatgpt.com/c/abc/extra')).toBe(false);
+    expect(matches('https://chatgpt.com/g/g-abc')).toBe(false); // GPT home, no conversation
+    expect(matches('https://chatgpt.com/g/g-abc/c/')).toBe(false); // empty conversation id
+    expect(matches('https://chatgpt.com/g/g-p-abc123/project')).toBe(false); // project home
   });
 
   it('rejects unsupported and look-alike hosts', () => {
     expect(matches('https://example.com/c/abc')).toBe(false);
     expect(matches('https://chatgpt.com.attacker.example/c/abc')).toBe(false);
+    expect(matches('https://chatgpt.com.attacker.example/g/g-a/c/b')).toBe(false);
   });
 
   it('rejects malformed URLs', () => {

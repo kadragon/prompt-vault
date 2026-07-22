@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Download on GPT & Project conversation pages — the single-conversation toolbar (MD/PDF/JSON/HTML) now mounts on custom-GPT and Project chat URLs (`/g/<gizmoId>/c/<convId>`, e.g. `/g/g-Acb5zqD3l-…/c/<id>`), not only plain `/c/<id>`. Fix is a one-regex widening of `CONVERSATION_PATH` in the ChatGPT adapter (`src/adapters/chatgpt/matches.ts`); extraction/toolbar/export were already URL-agnostic once the match gate passes. Project *home* pages (`/g/g-p-<id>/project`) stay `matchesProject`-only — no overlap. Build hygiene: ignore the untracked extracted release package (`prompt-vault-v*/`) in git + eslint. No new permissions, hosts, or network calls (2026-07-22)
 - [done] Chrome Web Store submission prep finalized with three sanitized 1280×800 live screenshots, a required 440×280 promotional tile, a padded store icon, current privacy disclosures and Limited Use statement, live single/bulk export verification, and a validated MV3 `v1.1.2` upload package (2026-07-22)
 
 ## 1.1.1 (2026-07-18)
