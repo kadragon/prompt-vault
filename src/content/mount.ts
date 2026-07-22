@@ -389,12 +389,11 @@ function openBulkExport(doc: Document): void {
     open: (url) => adapter.openConversation!(url),
     // Return the user to the conversation they started from once the batch settles.
     returnToStart: (startUrl) => adapter.openConversation!(startUrl),
-    // "Load more": scroll the virtualized history sidebar, then re-scan the full list.
+    // "Load more": scroll the virtualized history sidebar, accumulating every surfaced
+    // row across rounds (a single post-scroll re-scan would drop rows a recycling
+    // virtualizer trims off the top) and return the full list.
     loadMore: adapter.loadMoreConversations
-      ? async () => {
-          await adapter.loadMoreConversations!(doc);
-          return adapter.listConversations!(doc);
-        }
+      ? () => adapter.loadMoreConversations!(doc)
       : undefined,
   });
 }
@@ -422,12 +421,10 @@ function openProjectBulkExport(doc: Document): void {
     // Navigate back to the project the run started from (`startUrl`); best-effort, so a
     // provider without it is fine.
     returnToStart: (startUrl) => adapter.openProjectHome?.(startUrl) ?? Promise.resolve(),
-    // "Load more": scroll the virtualized project list, then re-scan the full list.
+    // "Load more": scroll the virtualized project list, accumulating every surfaced row
+    // across rounds and returning the full list (see the history track above).
     loadMore: adapter.loadMoreProjectConversations
-      ? async () => {
-          await adapter.loadMoreProjectConversations!(doc);
-          return adapter.listProjectConversations!(doc);
-        }
+      ? () => adapter.loadMoreProjectConversations!(doc)
       : undefined,
   });
 }

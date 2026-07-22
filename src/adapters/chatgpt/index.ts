@@ -103,19 +103,25 @@ function listConversations(root: ParentNode = document): SidebarConversation[] {
   const history = root.querySelector(selectors.sidebarHistory);
   if (!history) return [];
 
-  const origin = documentOrigin(root);
-  const seen = new Set<string>();
-  const conversations: SidebarConversation[] = [];
-  for (const anchor of history.querySelectorAll(selectors.sidebarConversationLink)) {
-    const href = anchor.getAttribute('href');
-    if (!href) continue;
-    const { id, url } = resolveConversationHref(href, origin);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const title = (anchor.getAttribute('aria-label') ?? anchor.textContent ?? '').trim();
-    conversations.push({ id, title: title || 'ChatGPT conversation', url });
-  }
-  return conversations;
+  const acc = new Map<string, SidebarConversation>();
+  collectConversations(
+    history.querySelectorAll(selectors.sidebarConversationLink),
+    documentOrigin(root),
+    historyTitle,
+    acc,
+  );
+  return [...acc.values()];
+}
+
+/** The untruncated human title of a history-sidebar conversation link. */
+function historyTitle(anchor: Element): string {
+  return (anchor.getAttribute('aria-label') ?? anchor.textContent ?? '').trim();
+}
+
+/** The human title of a project-list conversation link (the `.font-medium` block). */
+function projectTitle(anchor: Element): string {
+  const titleEl = anchor.querySelector?.(selectors.projectConversationTitle);
+  return (titleEl?.textContent ?? anchor.textContent ?? '').trim();
 }
 
 /** Split a conversation href into its stable `/c/<id>` id and a query-free absolute URL. */
@@ -234,20 +240,14 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
   const section = projectListSection(root);
   if (!section) return [];
 
-  const origin = documentOrigin(root);
-  const seen = new Set<string>();
-  const conversations: SidebarConversation[] = [];
-  for (const anchor of section.querySelectorAll(selectors.projectConversationLink)) {
-    const href = anchor.getAttribute('href');
-    if (!href) continue;
-    const { id, url } = resolveConversationHref(href, origin);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const titleEl = anchor.querySelector(selectors.projectConversationTitle);
-    const title = (titleEl?.textContent ?? anchor.textContent ?? '').trim();
-    conversations.push({ id, title: title || 'ChatGPT conversation', url });
-  }
-  return conversations;
+  const acc = new Map<string, SidebarConversation>();
+  collectConversations(
+    section.querySelectorAll(selectors.projectConversationLink),
+    documentOrigin(root),
+    projectTitle,
+    acc,
+  );
+  return [...acc.values()];
 }
 
 /**
@@ -493,20 +493,24 @@ export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions
  * rounds, not the raw rendered-node count: a windowed virtualizer can recycle a
  * fixed-size node pool (holding the node count flat while the ids inside it change), so
  * counting cumulative unique ids keeps loading as long as genuinely new conversations
- * surface. (The single post-load re-scan still assumes rows accumulate rather than being
- * trimmed off the top — see the `tasks.md` [VERIFY].)
+ * surface. Each round's rows are folded into `acc` as they surface, so conversations the
+ * virtualizer later trims off the top are already captured; the returned list is the full
+ * accumulation across every scroll round, not just the final on-screen window.
  */
-export async function loadMoreConversations(root: ParentNode = document, options: AutoScrollOptions = {}): Promise<void> {
+export async function loadMoreConversations(
+  root: ParentNode = document,
+  options: AutoScrollOptions = {},
+): Promise<SidebarConversation[]> {
   const history = root.querySelector(selectors.sidebarHistory);
-  if (!history) return;
+  if (!history) return [];
   const container = findScrollableAncestor(history);
-  if (!container) return;
+  if (!container) return [];
 
   const origin = documentOrigin(root);
-  const seen = new Set<string>();
+  const acc = new Map<string, SidebarConversation>();
   await scrollUntilStable(
     container,
-    () => countUniqueConversationIds(history.querySelectorAll(selectors.sidebarConversationLink), origin, seen),
+    () => collectConversations(history.querySelectorAll(selectors.sidebarConversationLink), origin, historyTitle, acc),
     pinBottom,
     options,
     {
@@ -515,27 +519,29 @@ export async function loadMoreConversations(root: ParentNode = document, options
         'unusually long; try again, or report if this persists.',
     },
   );
+  return [...acc.values()];
 }
 
 /**
  * Like `loadMoreConversations`, but for a Project home page's virtualized conversation
  * list. Scrolls the list `<section>`'s scroll container to the bottom until no new
- * conversation id appears. Best-effort when the list/container is absent; fail-loud on runaway.
+ * conversation id appears, accumulating every surfaced row across rounds and returning
+ * the full list. Best-effort when the list/container is absent; fail-loud on runaway.
  */
 export async function loadMoreProjectConversations(
   root: ParentNode = document,
   options: AutoScrollOptions = {},
-): Promise<void> {
+): Promise<SidebarConversation[]> {
   const section = projectListSection(root);
-  if (!section) return;
+  if (!section) return [];
   const container = findScrollableAncestor(section);
-  if (!container) return;
+  if (!container) return [];
 
   const origin = documentOrigin(root);
-  const seen = new Set<string>();
+  const acc = new Map<string, SidebarConversation>();
   await scrollUntilStable(
     container,
-    () => countUniqueConversationIds(section.querySelectorAll(selectors.projectConversationLink), origin, seen),
+    () => collectConversations(section.querySelectorAll(selectors.projectConversationLink), origin, projectTitle, acc),
     pinBottom,
     options,
     {
@@ -544,23 +550,32 @@ export async function loadMoreProjectConversations(
         'unusually long; try again, or report if this persists.',
     },
   );
+  return [...acc.values()];
 }
 
 /**
- * Fold the conversation ids of the currently-rendered `links` into `seen` and return its
- * running size. Keyed by the stable `/c/<id>` id (via `resolveConversationHref`) so the
- * same chat rendered twice — or a node recycled back into view — is counted once; the
- * cumulative size only grows while genuinely new conversations surface, which is exactly
- * the progress signal `scrollUntilStable` needs to decide the virtualized list is drained.
+ * Fold the currently-rendered `links` into `acc` — an ordered `id → SidebarConversation`
+ * map — and return its running size. Keyed by the stable `/c/<id>` id (via
+ * `resolveConversationHref`) so the same chat rendered twice, or a node recycled back into
+ * view, is stored once in first-seen (top→bottom) order; `titleOf` supplies the per-track
+ * title extraction. Because `acc` persists across scroll rounds, rows the virtualizer later
+ * trims off the top stay captured — the cumulative size is the progress signal
+ * `scrollUntilStable` needs, and `acc` itself is the full list the loader returns.
  */
-function countUniqueConversationIds(links: Iterable<Element>, origin: string, seen: Set<string>): number {
+function collectConversations(
+  links: Iterable<Element>,
+  origin: string,
+  titleOf: (anchor: Element) => string,
+  acc: Map<string, SidebarConversation>,
+): number {
   for (const anchor of links) {
     const href = anchor.getAttribute('href');
     if (!href) continue;
-    const { id } = resolveConversationHref(href, origin);
-    if (id) seen.add(id);
+    const { id, url } = resolveConversationHref(href, origin);
+    if (!id || acc.has(id)) continue;
+    acc.set(id, { id, title: titleOf(anchor) || 'ChatGPT conversation', url });
   }
-  return seen.size;
+  return acc.size;
 }
 
 /** Pin a virtualized scroll container to the top (loads older items above). */

@@ -73,15 +73,17 @@ export interface ConversationAdapter {
 
   /**
    * Load every not-yet-rendered conversation in the provider's virtualized history
-   * sidebar (scroll it until the rendered list stops growing), so a following
-   * `listConversations` re-scan sees the full list. Powers the bulk panel's "Load
-   * more" button. Best-effort — resolves when the sidebar is absent; fail-loud
+   * sidebar (scroll it until the rendered list stops growing), accumulating every row
+   * surfaced across scroll rounds and resolving with the full `SidebarConversation`
+   * list — including rows a windowed/recycling virtualizer trims off the top, which a
+   * single post-scroll DOM scan would miss. Powers the bulk panel's "Load more" button.
+   * Best-effort — resolves with `[]` when the sidebar is absent; fail-loud
    * (`ExtractionError`, AGENTS.md #4) only on a runaway that never settles. Inherently
    * live-DOM; `opts` exposes the scroll knobs so the loop is unit-testable. Optional
    * and paired with `listConversations` — a provider whose sidebar is not virtualized
    * omits it and the panel simply shows no "Load more" button.
    */
-  loadMoreConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<void>;
+  loadMoreConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<SidebarConversation[]>;
 
   // --- Project bulk-download track (parallel to the history track above) ---
   // A "Project" groups conversations under their own home page. These members power
@@ -110,10 +112,11 @@ export interface ConversationAdapter {
 
   /**
    * Like `loadMoreConversations`, but for a Project home page's virtualized conversation
-   * list. Best-effort when the list is absent; fail-loud on a runaway that never settles.
-   * Optional and paired with `listProjectConversations`.
+   * list — accumulates every surfaced row across scroll rounds and resolves with the full
+   * list. Best-effort (`[]`) when the list is absent; fail-loud on a runaway that never
+   * settles. Optional and paired with `listProjectConversations`.
    */
-  loadMoreProjectConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<void>;
+  loadMoreProjectConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<SidebarConversation[]>;
 
   /**
    * Client-side navigate back to the project home page `homeUrl` (where a bulk run
