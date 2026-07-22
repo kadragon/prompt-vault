@@ -5,6 +5,8 @@ node_modules/
 dist/
 build/
 *.zip
+# Unzipped release package (transient — the extracted form of prompt-vault-v*.zip)
+prompt-vault-v*/
 
 # Env / secrets
 .env

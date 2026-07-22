@@ -12,8 +12,9 @@ export function pickAdapter(url: string): ConversationAdapter | null {
 
 /**
  * The first adapter that handles this URL as a Project home page, or null. Separate
- * from `pickAdapter` because project pages are not conversation pages — `matches`
- * stays `/c/<id>`-only, so the single-conversation toolbar never mounts on a project.
+ * from `pickAdapter` because a project *home* page is not a conversation page —
+ * `matches` covers conversation pages only (`/c/<id>` and `/g/<gizmoId>/c/<convId>`),
+ * so the single-conversation toolbar never mounts on a project home.
  */
 export function pickProjectAdapter(url: string): ConversationAdapter | null {
   return adapters.find((adapter) => adapter.matchesProject?.(url)) ?? null;

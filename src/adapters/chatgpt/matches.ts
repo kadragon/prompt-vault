@@ -6,8 +6,14 @@
 // look-alike domain (e.g. chatgpt.com.attacker.example) pass.
 export const SUPPORTED_HOSTS = new Set(['chatgpt.com', 'chat.openai.com']);
 
-// A ChatGPT conversation lives at /c/<id> (optionally trailing-slashed).
-export const CONVERSATION_PATH = /^\/c\/[^/]+\/?$/;
+// A ChatGPT conversation lives at /c/<id>, or, when it belongs to a custom GPT or a
+// Project, at /g/<gizmoId>/c/<convId> (e.g. /g/g-Acb5zqD3l-slug/c/<id> for a GPT,
+// /g/g-p-<id>[-slug]/c/<id> for a Project). All are real conversation pages the
+// single-conversation toolbar should mount on — extraction is DOM-based and
+// URL-agnostic once here. A GPT/Project *home* page (/g/<id>, /g/g-p-<id>/project) has
+// no /c/<id> segment, so it stays excluded (project home is gated by PROJECT_PATH).
+// All optionally trailing-slashed. Verified against the live site (2026-07-22).
+export const CONVERSATION_PATH = /^\/(?:c|g\/[^/]+\/c)\/[^/]+\/?$/;
 
 // A ChatGPT Project home page lives at /g/g-p-<id>/project (optionally
 // trailing-slashed). The `g-p-` prefix distinguishes a Project from a plain
@@ -17,18 +23,19 @@ export const CONVERSATION_PATH = /^\/c\/[^/]+\/?$/;
 export const PROJECT_PATH = /^\/g\/g-p-[^/]+\/project\/?$/;
 
 /**
- * True only for a ChatGPT conversation page: a supported host with a `/c/<id>`
- * path. Invalid URLs return false rather than throwing.
+ * True only for a ChatGPT conversation page: a supported host with a `/c/<id>` or
+ * GPT/Project-scoped `/g/<gizmoId>/c/<convId>` path. Invalid URLs return false rather
+ * than throwing.
  */
 export function matches(url: string): boolean {
   return onSupportedHost(url, CONVERSATION_PATH);
 }
 
 /**
- * True only for a ChatGPT Project home page: a supported host with a
- * `/g/g-p-<id>/project` path. Distinct from `matches` so the single-conversation
- * toolbar gate stays `/c/<id>`-only; this gates the project bulk-download trigger.
- * Invalid URLs return false rather than throwing.
+ * True only for a ChatGPT Project *home* page: a supported host with a
+ * `/g/g-p-<id>/project` path. Distinct from `matches` (which gates conversation pages,
+ * `/c/<id>` and `/g/<gizmoId>/c/<convId>`); this one gates only the project home's
+ * bulk-download trigger. Invalid URLs return false rather than throwing.
  */
 export function matchesProject(url: string): boolean {
   return onSupportedHost(url, PROJECT_PATH);
