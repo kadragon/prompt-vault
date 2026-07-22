@@ -17,6 +17,12 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   A selector string appears exactly once so a site change is a one-line fix.
 - `extract()` returns the normalized `Conversation`. It must not throw on a partially-rendered page
   without a clear message; if it cannot find messages, throw a typed extraction error the UI shows.
+- Scraping a **virtualized list** (history sidebar, project list): STEP through it one viewport per
+  round and accumulate rows across rounds into an id-keyed map — never jump to `scrollHeight` then do
+  one final scan. A spacer-height recycling virtualizer keeps only a window of rows in the DOM, so a
+  jump renders just the bottom window and a single scan drops everything in between. Test both models:
+  a jump-to-bottom fake hides this bug — the fake must render only a `windowSize` window around the
+  current `scrollTop` with the full height known up front (see `test/adapters/chatgpt/load-more.test.ts`).
 
 ## Exporters
 
