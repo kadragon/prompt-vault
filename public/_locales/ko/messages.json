@@ -87,6 +87,18 @@
     "message": "닫기",
     "description": "Close button in the bulk-export panel."
   },
+  "bulkPanelLoadMore": {
+    "message": "더 불러오기",
+    "description": "Button in the bulk-export panel that loads conversations not yet rendered in the virtualized source list."
+  },
+  "bulkPanelLoadMoreBusy": {
+    "message": "불러오는 중…",
+    "description": "Busy label on the Load more button while it scrolls the source list."
+  },
+  "bulkPanelLoadMoreDone": {
+    "message": "모든 대화를 불러왔습니다",
+    "description": "Disabled label on the Load more button once every conversation has been loaded."
+  },
   "bulkEmptyMessage": {
     "message": "내보낼 대화를 찾지 못했습니다.",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."

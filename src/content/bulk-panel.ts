@@ -15,6 +15,9 @@ import {
   BULK_PANEL_CANCEL,
   BULK_PANEL_CLOSE,
   BULK_PANEL_FORMAT_LABEL,
+  BULK_PANEL_LOAD_MORE,
+  BULK_PANEL_LOAD_MORE_BUSY,
+  BULK_PANEL_LOAD_MORE_DONE,
   BULK_PANEL_SELECT_ALL,
   BULK_PANEL_TITLE,
   bulkExportButtonLabel,
@@ -47,6 +50,14 @@ export interface BulkPanelDeps {
     format: ExportFormat,
     onProgress: (current: number, total: number, title: string) => void,
   ) => Promise<BulkExportSummary>;
+  /**
+   * Optional: load any conversations not yet rendered in a virtualized source (e.g. a
+   * lazy-loading history sidebar) and resolve with the full, updated list. When
+   * present, the panel shows a "Load more" button that invokes this and appends the
+   * newly-revealed conversations to the checklist, preserving existing selections.
+   * Omit when the source is not virtualized — the button is then not shown.
+   */
+  loadMore?: () => Promise<SidebarConversation[]>;
 }
 
 /**
@@ -244,11 +255,25 @@ function renderSelection(
   controls.append(formatWrap, selectAllWrap);
   dialog.appendChild(controls);
 
-  // Scrollable conversation checklist.
+  // Scrollable conversation checklist. `shown` is the working list backing the rows,
+  // grown by "Load more"; `seen` dedupes so a re-scan never double-lists a conversation.
   const list = doc.createElement('div');
   Object.assign(list.style, { overflowY: 'auto', padding: '8px 20px', flex: '1 1 auto' });
   const checkboxes: HTMLInputElement[] = [];
-  for (const conversation of conversations) {
+  const shown: SidebarConversation[] = [];
+  const seen = new Set<string>();
+
+  // Declared before `appendRow` so its per-row change listener can call them; invoked
+  // only after every const below is initialized, so there is no TDZ hazard.
+  const selectedIds = (): Set<string> => new Set(checkboxes.filter((b) => b.checked).map((b) => b.value));
+  const syncSelectAll = (): void => {
+    selectAll.checked = checkboxes.length > 0 && checkboxes.every((c) => c.checked);
+  };
+
+  const appendRow = (conversation: SidebarConversation): void => {
+    if (seen.has(conversation.id)) return;
+    seen.add(conversation.id);
+    shown.push(conversation);
     const row = doc.createElement('label');
     Object.assign(row.style, {
       display: 'flex',
@@ -267,8 +292,29 @@ function renderSelection(
     row.append(box, title);
     list.appendChild(row);
     checkboxes.push(box);
-  }
+    box.addEventListener('change', () => {
+      syncSelectAll();
+      refreshExport();
+    });
+  };
+
+  for (const conversation of conversations) appendRow(conversation);
   dialog.appendChild(list);
+
+  // "Load more" button (only when the source is virtualized — `deps.loadMore` is set):
+  // pulls not-yet-rendered conversations into the checklist without a manual sidebar scroll.
+  const loadMoreBtn = deps.loadMore ? styledButton(doc, BULK_PANEL_LOAD_MORE, 'secondary') : null;
+  if (loadMoreBtn) {
+    const loadMoreRow = doc.createElement('div');
+    Object.assign(loadMoreRow.style, {
+      display: 'flex',
+      justifyContent: 'center',
+      padding: '4px 20px 8px',
+      borderTop: '1px solid #f0f0f0',
+    });
+    loadMoreRow.appendChild(loadMoreBtn);
+    dialog.appendChild(loadMoreRow);
+  }
 
   // Status line (progress / summary), hidden until a run starts.
   const status = doc.createElement('div');
@@ -282,7 +328,6 @@ function renderSelection(
   footer.append(cancel, exportBtn);
   dialog.appendChild(footer);
 
-  const selectedIds = (): Set<string> => new Set(checkboxes.filter((b) => b.checked).map((b) => b.value));
   const refreshExport = (): void => {
     const count = checkboxes.filter((b) => b.checked).length;
     exportBtn.textContent = bulkExportButtonLabel(count);
@@ -296,29 +341,96 @@ function renderSelection(
     for (const b of checkboxes) b.checked = selectAll.checked;
     refreshExport();
   });
-  for (const b of checkboxes) {
-    b.addEventListener('change', () => {
-      selectAll.checked = checkboxes.every((c) => c.checked);
-      refreshExport();
+
+  // A batch, once started, owns the modal for good — its controls never re-enable and
+  // it drives `status`. A "Load more" that is still in flight when Export is clicked
+  // must therefore NOT touch the UI when it settles (see `loadMore`), so both paths
+  // read this shared flag.
+  let batchStarted = false;
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', () => {
+      void loadMore({
+        loadMoreBtn,
+        appendRow,
+        shown,
+        refreshExport,
+        syncSelectAll,
+        status,
+        deps,
+        isBatchStarted: () => batchStarted,
+      });
     });
   }
 
   cancel.addEventListener('click', close);
   exportBtn.addEventListener('click', () => {
     const ids = selectedIds();
-    const selected = conversations.filter((c) => ids.has(c.id));
+    const selected = shown.filter((c) => ids.has(c.id));
     if (selected.length === 0) return;
+    batchStarted = true;
     void runBatch(doc, {
       selected,
       format: formatSelect.value as ExportFormat,
       deps,
       status,
-      controls: [selectAll, formatSelect, exportBtn, cancel, ...checkboxes],
+      controls: [selectAll, formatSelect, exportBtn, cancel, ...(loadMoreBtn ? [loadMoreBtn] : []), ...checkboxes],
       cancelButton: cancel,
       close,
       setRunning,
     });
   });
+}
+
+interface LoadMoreArgs {
+  loadMoreBtn: HTMLButtonElement;
+  appendRow: (conversation: SidebarConversation) => void;
+  shown: SidebarConversation[];
+  refreshExport: () => void;
+  syncSelectAll: () => void;
+  status: HTMLElement;
+  deps: BulkPanelDeps;
+  /** True once an export batch has started — the load-more completion must then not touch the UI. */
+  isBatchStarted: () => boolean;
+}
+
+/**
+ * Handle a "Load more" click: scroll the virtualized source (via `deps.loadMore`) to
+ * pull in every not-yet-rendered conversation, then append the newly-revealed ones —
+ * `appendRow` dedupes, so existing rows and their selections are untouched. When the
+ * re-scan reveals nothing new the list is fully loaded, so the button settles into a
+ * disabled done state. Fail-loud (AGENTS.md #4): a rejected load surfaces its message in
+ * the status line rather than failing silently, and the button re-enables to retry.
+ *
+ * If an export batch was started while this load was in flight, the batch has taken over
+ * the modal (controls locked, `status` streaming progress); this completion must then be
+ * inert — it must not append interactive rows, re-enable controls, or clobber the batch's
+ * progress line (which would otherwise let a second concurrent batch start).
+ */
+async function loadMore(args: LoadMoreArgs): Promise<void> {
+  const { loadMoreBtn, appendRow, shown, refreshExport, syncSelectAll, status, deps, isBatchStarted } = args;
+  if (loadMoreBtn.disabled || !deps.loadMore) return;
+  loadMoreBtn.disabled = true;
+  loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_BUSY;
+  const before = shown.length;
+  try {
+    const updated = await deps.loadMore();
+    if (isBatchStarted()) return; // A batch took over while loading — leave the modal to it.
+    for (const conversation of updated) appendRow(conversation);
+    if (shown.length > before) {
+      syncSelectAll();
+      refreshExport();
+      loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
+      loadMoreBtn.disabled = false;
+    } else {
+      // Nothing new appeared → the source is exhausted. Leave the button disabled.
+      loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_DONE;
+    }
+  } catch (error) {
+    if (isBatchStarted()) return; // Don't overwrite the running batch's progress line.
+    status.textContent = error instanceof Error ? error.message : String(error);
+    loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
+    loadMoreBtn.disabled = false;
+  }
 }
 
 interface RunBatchArgs {

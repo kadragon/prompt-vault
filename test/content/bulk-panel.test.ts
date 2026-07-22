@@ -123,6 +123,23 @@ describe('openBulkPanel', () => {
     expect(buttonByText(panel, `Export ${CONVS.length} selected`)).toBeTruthy();
   });
 
+  it('unchecks select-all once Load more appends new (unchecked) rows', async () => {
+    const doc = freshDoc();
+    const more: SidebarConversation[] = [...CONVS, { id: 'd', title: 'Delta', url: 'https://chatgpt.com/c/d' }];
+    const d = { ...deps({ total: 0, succeeded: 0, failed: [] }), loadMore: () => Promise.resolve(more) };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    check(checkboxes(panel)[0]); // select-all before loading more
+    expect(checkboxes(panel)[0].checked).toBe(true);
+
+    buttonByText(panel, 'Load more').click();
+    await flush();
+
+    // A freshly-appended unchecked row must clear the select-all box.
+    expect(checkboxes(panel)[0].checked).toBe(false);
+  });
+
   it('runs the batch for exactly the selected conversations in the chosen format', async () => {
     const doc = freshDoc();
     const d = deps({ total: 2, succeeded: 2, failed: [] });
@@ -161,6 +178,102 @@ describe('openBulkPanel', () => {
     expect(panel.textContent).toContain('Beta: Timed out opening');
     // After the run, the only action left is Close.
     expect(buttonByText(panel, 'Close')).toBeTruthy();
+  });
+
+  it('shows no Load more button when deps.loadMore is absent', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    expect(() => buttonByText(panelOf(doc), 'Load more')).toThrow();
+  });
+
+  it('Load more appends newly-revealed conversations, preserving prior selections', async () => {
+    const doc = freshDoc();
+    const more: SidebarConversation[] = [
+      ...CONVS,
+      { id: 'd', title: 'Delta', url: 'https://chatgpt.com/c/d' },
+      { id: 'e', title: 'Epsilon', url: 'https://chatgpt.com/c/e' },
+    ];
+    const d = { ...deps({ total: 0, succeeded: 0, failed: [] }), loadMore: () => Promise.resolve(more) };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    check(checkboxes(panel)[1]); // select Alpha before loading more
+    buttonByText(panel, 'Load more').click();
+    await flush();
+
+    // The two new conversations were appended; the earlier list is untouched.
+    expect(panel.textContent).toContain('Delta');
+    expect(panel.textContent).toContain('Epsilon');
+    expect(checkboxes(panel)).toHaveLength(more.length + 1); // +1 select-all
+    // The prior Alpha selection survived the append; new rows default unchecked.
+    const boxes = checkboxes(panel);
+    expect(boxes[1].checked).toBe(true); // Alpha
+    expect(boxes.slice(4).every((b) => !b.checked)).toBe(true); // Delta, Epsilon
+    // Export count still reflects the single prior selection.
+    expect(buttonByText(panel, 'Export 1 selected')).toBeTruthy();
+  });
+
+  it('Load more that reveals nothing new settles into a disabled done state', async () => {
+    const doc = freshDoc();
+    const d = { ...deps({ total: 0, succeeded: 0, failed: [] }), loadMore: () => Promise.resolve(CONVS) };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    buttonByText(panel, 'Load more').click();
+    await flush();
+
+    const done = buttonByText(panel, 'All conversations loaded');
+    expect(done.disabled).toBe(true);
+  });
+
+  it('surfaces a rejected Load more in the status line and re-enables the button', async () => {
+    const doc = freshDoc();
+    const d = {
+      ...deps({ total: 0, succeeded: 0, failed: [] }),
+      loadMore: () => Promise.reject(new Error('Timed out loading the conversation list')),
+    };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    buttonByText(panel, 'Load more').click();
+    await flush();
+
+    expect(panel.textContent).toContain('Timed out loading the conversation list');
+    // Back to the actionable label so the user can retry.
+    expect(buttonByText(panel, 'Load more').disabled).toBe(false);
+  });
+
+  it('a Load more settling after Export started does not re-enable controls or clobber progress', async () => {
+    const doc = freshDoc();
+    let resolveLoad!: (list: SidebarConversation[]) => void;
+    const run = vi.fn(
+      (selected: SidebarConversation[], _f: ExportFormat, onProgress: (c: number, t: number, title: string) => void) => {
+        onProgress(0, selected.length, selected[0].title);
+        return new Promise<BulkExportSummary>(() => {}); // batch stays in flight
+      },
+    );
+    const d: BulkPanelDeps = {
+      listConversations: () => CONVS,
+      loadMore: () => new Promise<SidebarConversation[]>((r) => (resolveLoad = r)),
+      run,
+    };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    check(checkboxes(panel)[1]); // select Alpha
+    const exportBtn = buttonByText(panel, 'Export 1 selected');
+    buttonByText(panel, 'Load more').click(); // loadMore now pending
+    await flush();
+    exportBtn.click(); // start the batch while loadMore is still in flight
+    await flush();
+    expect(exportBtn.disabled).toBe(true); // batch locked the controls
+
+    // The late loadMore resolves with an extra conversation — it must be inert now.
+    resolveLoad([...CONVS, { id: 'd', title: 'Delta', url: 'https://chatgpt.com/c/d' }]);
+    await flush();
+
+    expect(exportBtn.disabled).toBe(true); // still locked — no second batch can start
+    expect(panel.textContent).not.toContain('Delta'); // no interactive row appended mid-batch
   });
 
   it('closes on Cancel', () => {
