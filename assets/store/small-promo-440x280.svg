@@ -1,0 +1,58 @@
+<svg width="440" height="280" viewBox="0 0 440 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="background" x1="22" y1="18" x2="418" y2="262" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <filter id="shadow" x="-32" y="-32" width="240" height="240" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#312E81" flood-opacity="0.32"/>
+    </filter>
+    <filter id="card-shadow" x="-16" y="-16" width="112" height="120" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#312E81" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <rect width="440" height="280" rx="20" fill="url(#background)"/>
+  <circle cx="399" cy="30" r="94" fill="#FFFFFF" fill-opacity="0.06"/>
+  <circle cx="35" cy="272" r="80" fill="#FFFFFF" fill-opacity="0.05"/>
+  <path d="M74 140H366" stroke="#C4B5FD" stroke-opacity="0.22" stroke-width="2" stroke-dasharray="5 9"/>
+
+  <!-- Local file motifs: Markdown, PDF, JSON, and HTML represented without words. -->
+  <g transform="translate(47 73) rotate(-8 34 43)" filter="url(#card-shadow)">
+    <path d="M6 0H48L68 20V86H6C2.686 86 0 83.314 0 80V6C0 2.686 2.686 0 6 0Z" fill="#FFFFFF"/>
+    <path d="M48 0V20H68" fill="#E0E7FF"/>
+    <path d="M48 0V20H68" stroke="#C7D2FE" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M17 40H30M20 33L16 49M31 33L27 49" stroke="#6366F1" stroke-width="3" stroke-linecap="round"/>
+    <path d="M39 35V49M39 49L33 43M39 49L45 43" stroke="#6366F1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(101 164) rotate(7 31 39)" filter="url(#card-shadow)">
+    <path d="M6 0H44L62 18V78H6C2.686 78 0 75.314 0 72V6C0 2.686 2.686 0 6 0Z" fill="#FFFFFF"/>
+    <path d="M44 0V18H62" fill="#FEE2E2"/>
+    <path d="M44 0V18H62" stroke="#FECACA" stroke-width="2" stroke-linejoin="round"/>
+    <rect x="13" y="34" width="36" height="6" rx="3" fill="#EF4444"/>
+    <rect x="13" y="47" width="28" height="4" rx="2" fill="#FCA5A5"/>
+    <rect x="13" y="57" width="32" height="4" rx="2" fill="#FCA5A5"/>
+  </g>
+
+  <g transform="translate(325 71) rotate(8 34 43)" filter="url(#card-shadow)">
+    <path d="M6 0H48L68 20V86H6C2.686 86 0 83.314 0 80V6C0 2.686 2.686 0 6 0Z" fill="#FFFFFF"/>
+    <path d="M48 0V20H68" fill="#EDE9FE"/>
+    <path d="M48 0V20H68" stroke="#DDD6FE" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M27 31C21 31 21 36 21 40V43C21 47 18 49 15 49C18 49 21 51 21 55V58C21 62 21 67 27 67M41 31C47 31 47 36 47 40V43C47 47 50 49 53 49C50 49 47 51 47 55V58C47 62 47 67 41 67" stroke="#8B5CF6" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(276 165) rotate(-7 31 39)" filter="url(#card-shadow)">
+    <path d="M6 0H44L62 18V78H6C2.686 78 0 75.314 0 72V6C0 2.686 2.686 0 6 0Z" fill="#FFFFFF"/>
+    <path d="M44 0V18H62" fill="#D1FAE5"/>
+    <path d="M44 0V18H62" stroke="#A7F3D0" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M27 35L16 46L27 57M35 35L46 46L35 57" stroke="#10B981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Prompt Vault mark, matching assets/icon.svg. -->
+  <g transform="translate(162 82)" filter="url(#shadow)">
+    <rect width="116" height="116" rx="25" fill="#FFFFFF"/>
+    <path d="M27.188 30.813C27.188 25.808 31.245 21.75 36.25 21.75H79.75C84.755 21.75 88.813 25.808 88.813 30.813V61.625C88.813 66.63 84.755 70.688 79.75 70.688H52.563L38.063 87V70.688H36.25C31.245 70.688 27.188 66.63 27.188 61.625V30.813Z" fill="#EEF2FF"/>
+    <path d="M58 36.25V56.188M58 56.188L48.031 46.219M58 56.188L67.969 46.219" stroke="#6366F1" stroke-width="6.344" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

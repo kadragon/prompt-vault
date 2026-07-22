@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- [done] Chrome Web Store submission prep finalized with three sanitized 1280×800 live screenshots, a required 440×280 promotional tile, a padded store icon, current privacy disclosures and Limited Use statement, live single/bulk export verification, and a validated MV3 `v1.1.2` upload package (2026-07-22)
+
 ## 1.1.1 (2026-07-18)
 
 - [done] Project bulk-download trigger now blends with ChatGPT's chrome — the "Download all" button wears ChatGPT's own labeled secondary-button classes (`btn btn-secondary h-9 px-3`, a theme-aware bordered pill matching the Share button) instead of a foreign green pill; the class is provider-owned (`projectToolbarButtonClass` on the adapter) so the content layer stays provider-agnostic, and the overlay fallback keeps its self-styled pill for legibility without host CSS. Verified against the live logged-in site (2026-07-18)
