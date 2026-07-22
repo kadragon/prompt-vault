@@ -489,13 +489,15 @@ export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions
  * its scroll container) is absent. Fail-loud (AGENTS.md #4) only on the runaway cap —
  * new conversations never stop appearing — mirroring `autoScrollToLoad`.
  *
- * Progress is judged by the count of *distinct conversation ids* seen across scroll
- * rounds, not the raw rendered-node count: a windowed virtualizer can recycle a
- * fixed-size node pool (holding the node count flat while the ids inside it change), so
- * counting cumulative unique ids keeps loading as long as genuinely new conversations
- * surface. Each round's rows are folded into `acc` as they surface, so conversations the
- * virtualizer later trims off the top are already captured; the returned list is the full
- * accumulation across every scroll round, not just the final on-screen window.
+ * Scrolls one viewport per round (`stepDown`, not a jump to the bottom) so every window
+ * of a recycling virtualizer is rendered in turn. Progress is judged by the count of
+ * *distinct conversation ids* seen across rounds, not the raw rendered-node count: a
+ * windowed virtualizer recycles a fixed-size node pool (holding the node count flat while
+ * the ids inside it change), so counting cumulative unique ids keeps loading as long as
+ * genuinely new conversations surface. Each round's rows are folded into `acc` as they
+ * pass through the viewport, so conversations the virtualizer trims off the top (or has
+ * not yet scrolled into view) are all captured; the returned list is the full accumulation
+ * across every scroll round, not just the final on-screen window.
  */
 export async function loadMoreConversations(
   root: ParentNode = document,
@@ -511,7 +513,7 @@ export async function loadMoreConversations(
   await scrollUntilStable(
     container,
     () => collectConversations(history.querySelectorAll(selectors.sidebarConversationLink), origin, historyTitle, acc),
-    pinBottom,
+    stepDown,
     options,
     {
       timeoutMessage:
@@ -542,7 +544,7 @@ export async function loadMoreProjectConversations(
   await scrollUntilStable(
     container,
     () => collectConversations(section.querySelectorAll(selectors.projectConversationLink), origin, projectTitle, acc),
-    pinBottom,
+    stepDown,
     options,
     {
       timeoutMessage:
@@ -583,9 +585,21 @@ function pinTop(container: HTMLElement): void {
   container.scrollTop = 0;
 }
 
-/** Pin a virtualized scroll container to the bottom (loads more items below). */
-function pinBottom(container: HTMLElement): void {
-  container.scrollTop = container.scrollHeight;
+/**
+ * Advance a virtualized scroll container downward by ~one viewport, clamped at the
+ * bottom. Deliberately a step, not a jump to `scrollHeight`: a jump renders only the
+ * final window, so a spacer-height recycling virtualizer (full height known up front,
+ * only the window around the current offset kept in the DOM) would never render — and
+ * `collectConversations` would never fold — the rows in between. Stepping visits each
+ * window in turn so every row is captured. The ~10% viewport overlap guarantees
+ * consecutive windows abut with no gap. Degrades gracefully for a lazy-load list whose
+ * height grows as chunks load: each step nudges toward the receding bottom, pulling the
+ * next chunk, exactly as a jump-to-bottom did.
+ */
+function stepDown(container: HTMLElement): void {
+  const { scrollTop, clientHeight, scrollHeight } = container;
+  const advance = Math.max(1, Math.floor(clientHeight * 0.9));
+  container.scrollTop = Math.min(scrollTop + advance, scrollHeight);
 }
 
 /**
