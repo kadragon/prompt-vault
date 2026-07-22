@@ -71,6 +71,18 @@ export interface ConversationAdapter {
    */
   openConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
 
+  /**
+   * Load every not-yet-rendered conversation in the provider's virtualized history
+   * sidebar (scroll it until the rendered list stops growing), so a following
+   * `listConversations` re-scan sees the full list. Powers the bulk panel's "Load
+   * more" button. Best-effort — resolves when the sidebar is absent; fail-loud
+   * (`ExtractionError`, AGENTS.md #4) only on a runaway that never settles. Inherently
+   * live-DOM; `opts` exposes the scroll knobs so the loop is unit-testable. Optional
+   * and paired with `listConversations` — a provider whose sidebar is not virtualized
+   * omits it and the panel simply shows no "Load more" button.
+   */
+  loadMoreConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<void>;
+
   // --- Project bulk-download track (parallel to the history track above) ---
   // A "Project" groups conversations under their own home page. These members power
   // bulk-downloading every conversation in one project; a provider without projects
@@ -95,6 +107,13 @@ export interface ConversationAdapter {
    * is currently in the DOM. Fail-loud on miss/timeout (AGENTS.md #4).
    */
   openProjectConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
+
+  /**
+   * Like `loadMoreConversations`, but for a Project home page's virtualized conversation
+   * list. Best-effort when the list is absent; fail-loud on a runaway that never settles.
+   * Optional and paired with `listProjectConversations`.
+   */
+  loadMoreProjectConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<void>;
 
   /**
    * Client-side navigate back to the project home page `homeUrl` (where a bulk run
@@ -122,6 +141,19 @@ export interface ConversationAdapter {
    * omit to leave the native trigger unstyled but functional.
    */
   readonly projectToolbarButtonClass?: string;
+}
+
+/**
+ * Scroll knobs for the `loadMore*` virtualized-list loop, so the wait is unit-testable
+ * without real timers/DOM. Structurally matches the ChatGPT adapter's `AutoScrollOptions`.
+ */
+export interface LoadMoreOptions {
+  /** Milliseconds to wait after each scroll pin before re-counting. */
+  stepDelayMs?: number;
+  /** Rounds with no new items before the list is judged fully loaded. */
+  stableRounds?: number;
+  /** Absolute step cap; exceeding it while items still appear fails loud. */
+  maxSteps?: number;
 }
 
 /** Polling knobs for `openConversation`'s wait-for-render loop. */

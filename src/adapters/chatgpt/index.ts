@@ -60,10 +60,12 @@ export const chatgptAdapter: ConversationAdapter = {
   toolbarAnchor,
   listConversations,
   openConversation,
+  loadMoreConversations,
   matchesProject,
   listProjectConversations,
   openProjectConversation,
   openProjectHome,
+  loadMoreProjectConversations,
   projectToolbarMount,
   projectToolbarButtonClass: PROJECT_TOOLBAR_BUTTON_CLASS,
 };
@@ -469,37 +471,145 @@ function ownerDocument(root: ParentNode): Document | null {
  * non-zero), so a fully-loaded conversation never falsely fails.
  */
 export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions = {}): Promise<void> {
+  const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
+  if (!container) return; // Best-effort: extract whatever is already present.
+
+  // Messages lazy-load as you scroll UP (older turns above), so pin to the top.
+  await scrollUntilStable(container, () => doc.querySelectorAll(selectors.message).length, pinTop, options, {
+    timeoutMessage:
+      'Timed out loading the full conversation while scrolling. The conversation may be ' +
+      'unusually long; try again, or report if this persists.',
+  });
+}
+
+/**
+ * Load every not-yet-rendered conversation in the virtualized history sidebar by
+ * scrolling it to the bottom until the rendered link count holds steady, so the bulk
+ * panel's re-scan sees the full list. Best-effort: resolves immediately when the
+ * sidebar (or its scroll container) is absent. Fail-loud (AGENTS.md #4) only on the
+ * runaway cap — links never stop appearing — mirroring `autoScrollToLoad`.
+ */
+export async function loadMoreConversations(root: ParentNode = document, options: AutoScrollOptions = {}): Promise<void> {
+  const history = root.querySelector(selectors.sidebarHistory);
+  if (!history) return;
+  const container = findScrollableAncestor(history);
+  if (!container) return;
+
+  await scrollUntilStable(
+    container,
+    () => history.querySelectorAll(selectors.sidebarConversationLink).length,
+    pinBottom,
+    options,
+    {
+      timeoutMessage:
+        'Timed out loading the conversation list while scrolling. The sidebar may be ' +
+        'unusually long; try again, or report if this persists.',
+    },
+  );
+}
+
+/**
+ * Like `loadMoreConversations`, but for a Project home page's virtualized conversation
+ * list. Scrolls the list `<section>`'s scroll container to the bottom until the rendered
+ * link count stabilizes. Best-effort when the list/container is absent; fail-loud on runaway.
+ */
+export async function loadMoreProjectConversations(
+  root: ParentNode = document,
+  options: AutoScrollOptions = {},
+): Promise<void> {
+  const section = projectListSection(root);
+  if (!section) return;
+  const container = findScrollableAncestor(section);
+  if (!container) return;
+
+  await scrollUntilStable(
+    container,
+    () => section.querySelectorAll(selectors.projectConversationLink).length,
+    pinBottom,
+    options,
+    {
+      timeoutMessage:
+        'Timed out loading the project conversation list while scrolling. The list may be ' +
+        'unusually long; try again, or report if this persists.',
+    },
+  );
+}
+
+/** Pin a virtualized scroll container to the top (loads older items above). */
+function pinTop(container: HTMLElement): void {
+  container.scrollTop = 0;
+}
+
+/** Pin a virtualized scroll container to the bottom (loads more items below). */
+function pinBottom(container: HTMLElement): void {
+  container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Repeatedly pin `container`'s scroll position and wait, until the rendered item
+ * `count` holds steady for `stableRounds` (i.e. no more lazy items appear). Progress
+ * resets the stall counter, so an arbitrarily long list keeps loading as long as new
+ * items keep arriving. Completion is judged by count stability alone — never by
+ * `scrollTop`, which the user or browser may leave off the pinned edge — so a
+ * fully-loaded list never falsely fails. Only the absolute step cap (reached solely if
+ * items never stop appearing) is a fail-loud condition (AGENTS.md #4).
+ */
+async function scrollUntilStable(
+  container: HTMLElement,
+  count: () => number,
+  pin: (container: HTMLElement) => void,
+  options: AutoScrollOptions,
+  { timeoutMessage }: { timeoutMessage: string },
+): Promise<void> {
   const {
     stepDelayMs = SCROLL_STEP_DELAY_MS,
     stableRounds = SCROLL_STABLE_ROUNDS,
     maxSteps = SCROLL_ABSOLUTE_MAX_STEPS,
   } = options;
 
-  const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
-  if (!container) return; // Best-effort: extract whatever is already present.
-
   let lastCount = -1;
   let stalls = 0;
   for (let step = 0; step < maxSteps; step++) {
-    const count = doc.querySelectorAll(selectors.message).length;
-    if (count > lastCount) {
-      stalls = 0; // Progress: more older turns rendered — keep going.
+    const current = count();
+    if (current > lastCount) {
+      stalls = 0; // Progress: more items rendered — keep going.
     } else {
       stalls++;
-      if (stalls >= stableRounds) return; // No new turns for a while → fully loaded.
+      if (stalls >= stableRounds) return; // No new items for a while → fully loaded.
     }
-    lastCount = count;
-    container.scrollTop = 0;
+    lastCount = current;
+    pin(container);
     await delay(stepDelayMs);
   }
 
-  // Reached the absolute cap while turns were still appearing every few rounds: the
-  // conversation is longer than we can safely load in one pass. Fail loud rather
-  // than return a silent partial.
-  throw new ExtractionError(
-    'Timed out loading the full conversation while scrolling. The conversation may be ' +
-      'unusually long; try again, or report if this persists.',
-  );
+  // Reached the absolute cap while items were still appearing every few rounds: the
+  // list is longer than we can safely load in one pass. Fail loud rather than return
+  // a silent partial.
+  throw new ExtractionError(timeoutMessage);
+}
+
+/**
+ * The nearest vertically-scrollable ancestor of `el` (inclusive) — the element whose
+ * own overflow scrolls the virtualized list. Walks up returning the first with
+ * `scrollHeight > clientHeight` and a scrollable `overflow-y` (when `getComputedStyle`
+ * is available), falling back to `el` itself. Deliberately generic rather than a
+ * hardcoded selector: the sidebar's scroll wrapper is not a stable, verified selector
+ * and ChatGPT's markup shifts (AGENTS.md #5).
+ */
+function findScrollableAncestor(el: Element): HTMLElement | null {
+  const view = ownerDocument(el)?.defaultView ?? null;
+  let current: Element | null = el;
+  while (current) {
+    const node = current as HTMLElement;
+    if (node.scrollHeight > node.clientHeight) {
+      const overflowY = view?.getComputedStyle?.(node).overflowY;
+      if (!overflowY || overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+        return node;
+      }
+    }
+    current = current.parentElement;
+  }
+  return el as HTMLElement;
 }
 
 function delay(ms: number): Promise<void> {

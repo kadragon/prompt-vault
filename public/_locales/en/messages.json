@@ -87,6 +87,18 @@
     "message": "Close",
     "description": "Close button in the bulk-export panel."
   },
+  "bulkPanelLoadMore": {
+    "message": "Load more",
+    "description": "Button in the bulk-export panel that loads conversations not yet rendered in the virtualized source list."
+  },
+  "bulkPanelLoadMoreBusy": {
+    "message": "Loading…",
+    "description": "Busy label on the Load more button while it scrolls the source list."
+  },
+  "bulkPanelLoadMoreDone": {
+    "message": "All conversations loaded",
+    "description": "Disabled label on the Load more button once every conversation has been loaded."
+  },
   "bulkEmptyMessage": {
     "message": "No conversations were found to export.",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."

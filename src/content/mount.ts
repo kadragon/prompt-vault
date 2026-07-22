@@ -389,6 +389,13 @@ function openBulkExport(doc: Document): void {
     open: (url) => adapter.openConversation!(url),
     // Return the user to the conversation they started from once the batch settles.
     returnToStart: (startUrl) => adapter.openConversation!(startUrl),
+    // "Load more": scroll the virtualized history sidebar, then re-scan the full list.
+    loadMore: adapter.loadMoreConversations
+      ? async () => {
+          await adapter.loadMoreConversations!(doc);
+          return adapter.listConversations!(doc);
+        }
+      : undefined,
   });
 }
 
@@ -415,6 +422,13 @@ function openProjectBulkExport(doc: Document): void {
     // Navigate back to the project the run started from (`startUrl`); best-effort, so a
     // provider without it is fine.
     returnToStart: (startUrl) => adapter.openProjectHome?.(startUrl) ?? Promise.resolve(),
+    // "Load more": scroll the virtualized project list, then re-scan the full list.
+    loadMore: adapter.loadMoreProjectConversations
+      ? async () => {
+          await adapter.loadMoreProjectConversations!(doc);
+          return adapter.listProjectConversations!(doc);
+        }
+      : undefined,
   });
 }
 
@@ -424,6 +438,12 @@ interface BulkTrack {
   open: (url: string) => Promise<void>;
   /** Return the user to `startUrl` (or a home page) once the batch settles. */
   returnToStart: (startUrl: string) => Promise<void>;
+  /**
+   * Optional: load not-yet-rendered conversations from a virtualized source and resolve
+   * with the full updated list (wired to the adapter's `loadMore*` + `list*`). Absent
+   * when the track's source is not virtualized — the panel then shows no "Load more".
+   */
+  loadMore?: () => Promise<SidebarConversation[]>;
 }
 
 /**
@@ -435,6 +455,7 @@ interface BulkTrack {
 function driveBulkPanel(doc: Document, adapter: ConversationAdapter, track: BulkTrack): void {
   openBulkPanel(doc, {
     listConversations: track.list,
+    loadMore: track.loadMore,
     run: async (selected, format, onProgress) => {
       exportInFlight = true;
       const startUrl = location.href;
