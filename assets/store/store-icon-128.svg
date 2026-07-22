@@ -1,0 +1,12 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="background" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <!-- Chrome Web Store artwork area: 96×96 centered in a transparent 128×128 canvas. -->
+  <rect x="16" y="16" width="96" height="96" rx="21" fill="url(#background)"/>
+  <path d="M38.5 41.5C38.5 37.358 41.858 34 46 34H82C86.142 34 89.5 37.358 89.5 41.5V67C89.5 71.142 86.142 74.5 82 74.5H59.5L47.5 88V74.5H46C41.858 74.5 38.5 71.142 38.5 67V41.5Z" fill="#FFFFFF"/>
+  <path d="M64 46V62.5M64 62.5L55.75 54.25M64 62.5L72.25 54.25" stroke="#6366F1" stroke-width="5.25" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

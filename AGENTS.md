@@ -18,6 +18,8 @@ per-site adapters. All processing is local — conversation data never leaves th
 | `docs/delegation.md` | Before delegating to sub-agents |
 | `docs/eval-criteria.md` | When writing a Sprint Contract or evaluating a completed feature |
 | `docs/runbook.md` | For build, load-unpacked, test, and package commands |
+| `docs/store-listing.md` | Before preparing or updating a Chrome Web Store submission |
+| `docs/PRIVACY.md` | Before changing data handling, permissions, or store privacy disclosures |
 
 ## Golden Principles
 
