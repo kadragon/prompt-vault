@@ -243,6 +243,39 @@ describe('openBulkPanel', () => {
     expect(buttonByText(panel, 'Load more').disabled).toBe(false);
   });
 
+  it('a Load more settling after Export started does not re-enable controls or clobber progress', async () => {
+    const doc = freshDoc();
+    let resolveLoad!: (list: SidebarConversation[]) => void;
+    const run = vi.fn(
+      (selected: SidebarConversation[], _f: ExportFormat, onProgress: (c: number, t: number, title: string) => void) => {
+        onProgress(0, selected.length, selected[0].title);
+        return new Promise<BulkExportSummary>(() => {}); // batch stays in flight
+      },
+    );
+    const d: BulkPanelDeps = {
+      listConversations: () => CONVS,
+      loadMore: () => new Promise<SidebarConversation[]>((r) => (resolveLoad = r)),
+      run,
+    };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    check(checkboxes(panel)[1]); // select Alpha
+    const exportBtn = buttonByText(panel, 'Export 1 selected');
+    buttonByText(panel, 'Load more').click(); // loadMore now pending
+    await flush();
+    exportBtn.click(); // start the batch while loadMore is still in flight
+    await flush();
+    expect(exportBtn.disabled).toBe(true); // batch locked the controls
+
+    // The late loadMore resolves with an extra conversation — it must be inert now.
+    resolveLoad([...CONVS, { id: 'd', title: 'Delta', url: 'https://chatgpt.com/c/d' }]);
+    await flush();
+
+    expect(exportBtn.disabled).toBe(true); // still locked — no second batch can start
+    expect(panel.textContent).not.toContain('Delta'); // no interactive row appended mid-batch
+  });
+
   it('closes on Cancel', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));

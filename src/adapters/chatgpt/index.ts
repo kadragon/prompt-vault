@@ -484,10 +484,17 @@ export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions
 
 /**
  * Load every not-yet-rendered conversation in the virtualized history sidebar by
- * scrolling it to the bottom until the rendered link count holds steady, so the bulk
- * panel's re-scan sees the full list. Best-effort: resolves immediately when the
- * sidebar (or its scroll container) is absent. Fail-loud (AGENTS.md #4) only on the
- * runaway cap — links never stop appearing — mirroring `autoScrollToLoad`.
+ * scrolling it to the bottom until no *new* conversation appears, so the bulk panel's
+ * re-scan sees the full list. Best-effort: resolves immediately when the sidebar (or
+ * its scroll container) is absent. Fail-loud (AGENTS.md #4) only on the runaway cap —
+ * new conversations never stop appearing — mirroring `autoScrollToLoad`.
+ *
+ * Progress is judged by the count of *distinct conversation ids* seen across scroll
+ * rounds, not the raw rendered-node count: a windowed virtualizer can recycle a
+ * fixed-size node pool (holding the node count flat while the ids inside it change), so
+ * counting cumulative unique ids keeps loading as long as genuinely new conversations
+ * surface. (The single post-load re-scan still assumes rows accumulate rather than being
+ * trimmed off the top — see the `tasks.md` [VERIFY].)
  */
 export async function loadMoreConversations(root: ParentNode = document, options: AutoScrollOptions = {}): Promise<void> {
   const history = root.querySelector(selectors.sidebarHistory);
@@ -495,9 +502,11 @@ export async function loadMoreConversations(root: ParentNode = document, options
   const container = findScrollableAncestor(history);
   if (!container) return;
 
+  const origin = documentOrigin(root);
+  const seen = new Set<string>();
   await scrollUntilStable(
     container,
-    () => history.querySelectorAll(selectors.sidebarConversationLink).length,
+    () => countUniqueConversationIds(history.querySelectorAll(selectors.sidebarConversationLink), origin, seen),
     pinBottom,
     options,
     {
@@ -510,8 +519,8 @@ export async function loadMoreConversations(root: ParentNode = document, options
 
 /**
  * Like `loadMoreConversations`, but for a Project home page's virtualized conversation
- * list. Scrolls the list `<section>`'s scroll container to the bottom until the rendered
- * link count stabilizes. Best-effort when the list/container is absent; fail-loud on runaway.
+ * list. Scrolls the list `<section>`'s scroll container to the bottom until no new
+ * conversation id appears. Best-effort when the list/container is absent; fail-loud on runaway.
  */
 export async function loadMoreProjectConversations(
   root: ParentNode = document,
@@ -522,9 +531,11 @@ export async function loadMoreProjectConversations(
   const container = findScrollableAncestor(section);
   if (!container) return;
 
+  const origin = documentOrigin(root);
+  const seen = new Set<string>();
   await scrollUntilStable(
     container,
-    () => section.querySelectorAll(selectors.projectConversationLink).length,
+    () => countUniqueConversationIds(section.querySelectorAll(selectors.projectConversationLink), origin, seen),
     pinBottom,
     options,
     {
@@ -533,6 +544,23 @@ export async function loadMoreProjectConversations(
         'unusually long; try again, or report if this persists.',
     },
   );
+}
+
+/**
+ * Fold the conversation ids of the currently-rendered `links` into `seen` and return its
+ * running size. Keyed by the stable `/c/<id>` id (via `resolveConversationHref`) so the
+ * same chat rendered twice — or a node recycled back into view — is counted once; the
+ * cumulative size only grows while genuinely new conversations surface, which is exactly
+ * the progress signal `scrollUntilStable` needs to decide the virtualized list is drained.
+ */
+function countUniqueConversationIds(links: Iterable<Element>, origin: string, seen: Set<string>): number {
+  for (const anchor of links) {
+    const href = anchor.getAttribute('href');
+    if (!href) continue;
+    const { id } = resolveConversationHref(href, origin);
+    if (id) seen.add(id);
+  }
+  return seen.size;
 }
 
 /** Pin a virtualized scroll container to the top (loads older items above). */
@@ -602,7 +630,9 @@ function findScrollableAncestor(el: Element): HTMLElement | null {
   while (current) {
     const node = current as HTMLElement;
     if (node.scrollHeight > node.clientHeight) {
-      const overflowY = view?.getComputedStyle?.(node).overflowY;
+      // `getComputedStyle` can return null for a disconnected element in some engines,
+      // so read `overflowY` optionally rather than crashing the whole load.
+      const overflowY = view?.getComputedStyle?.(node)?.overflowY;
       if (!overflowY || overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
         return node;
       }

@@ -342,9 +342,23 @@ function renderSelection(
     refreshExport();
   });
 
+  // A batch, once started, owns the modal for good — its controls never re-enable and
+  // it drives `status`. A "Load more" that is still in flight when Export is clicked
+  // must therefore NOT touch the UI when it settles (see `loadMore`), so both paths
+  // read this shared flag.
+  let batchStarted = false;
   if (loadMoreBtn) {
     loadMoreBtn.addEventListener('click', () => {
-      void loadMore({ loadMoreBtn, appendRow, shown, refreshExport, syncSelectAll, status, deps });
+      void loadMore({
+        loadMoreBtn,
+        appendRow,
+        shown,
+        refreshExport,
+        syncSelectAll,
+        status,
+        deps,
+        isBatchStarted: () => batchStarted,
+      });
     });
   }
 
@@ -353,6 +367,7 @@ function renderSelection(
     const ids = selectedIds();
     const selected = shown.filter((c) => ids.has(c.id));
     if (selected.length === 0) return;
+    batchStarted = true;
     void runBatch(doc, {
       selected,
       format: formatSelect.value as ExportFormat,
@@ -374,6 +389,8 @@ interface LoadMoreArgs {
   syncSelectAll: () => void;
   status: HTMLElement;
   deps: BulkPanelDeps;
+  /** True once an export batch has started — the load-more completion must then not touch the UI. */
+  isBatchStarted: () => boolean;
 }
 
 /**
@@ -383,15 +400,21 @@ interface LoadMoreArgs {
  * re-scan reveals nothing new the list is fully loaded, so the button settles into a
  * disabled done state. Fail-loud (AGENTS.md #4): a rejected load surfaces its message in
  * the status line rather than failing silently, and the button re-enables to retry.
+ *
+ * If an export batch was started while this load was in flight, the batch has taken over
+ * the modal (controls locked, `status` streaming progress); this completion must then be
+ * inert — it must not append interactive rows, re-enable controls, or clobber the batch's
+ * progress line (which would otherwise let a second concurrent batch start).
  */
 async function loadMore(args: LoadMoreArgs): Promise<void> {
-  const { loadMoreBtn, appendRow, shown, refreshExport, syncSelectAll, status, deps } = args;
+  const { loadMoreBtn, appendRow, shown, refreshExport, syncSelectAll, status, deps, isBatchStarted } = args;
   if (loadMoreBtn.disabled || !deps.loadMore) return;
   loadMoreBtn.disabled = true;
   loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_BUSY;
   const before = shown.length;
   try {
     const updated = await deps.loadMore();
+    if (isBatchStarted()) return; // A batch took over while loading — leave the modal to it.
     for (const conversation of updated) appendRow(conversation);
     if (shown.length > before) {
       syncSelectAll();
@@ -403,6 +426,7 @@ async function loadMore(args: LoadMoreArgs): Promise<void> {
       loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_DONE;
     }
   } catch (error) {
+    if (isBatchStarted()) return; // Don't overwrite the running batch's progress line.
     status.textContent = error instanceof Error ? error.message : String(error);
     loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
     loadMoreBtn.disabled = false;
