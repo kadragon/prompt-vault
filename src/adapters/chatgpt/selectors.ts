@@ -17,6 +17,16 @@ export const selectors = {
   assistantMarkdown: '.markdown',
 
   /**
+   * A file-attachment tile inside a user turn (e.g. an uploaded/pasted-as-file `.txt`).
+   * ChatGPT renders it as a `role="group"` element whose `aria-label` is the file name;
+   * the tile carries no readable text node, so such a turn extracts empty unless the name
+   * is pulled from here. Used only to describe an otherwise text-free turn so it is not
+   * dropped (AGENTS.md #4). Verified against the live page (2026-07-22); re-verify if
+   * attachment turns start exporting empty.
+   */
+  attachmentTile: '[role="group"][aria-label]',
+
+  /**
    * Scroll viewport that virtualizes the message list. ChatGPT lazy-renders older
    * turns as you scroll up, so auto-scroll targets this element. It is an ancestor
    * of `<main>` (verified against the captured fixtures — the messages all live
