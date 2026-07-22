@@ -17,6 +17,14 @@ const PROVIDER = 'chatgpt';
 const SCROLL_STEP_DELAY_MS = 150;
 const SCROLL_STABLE_ROUNDS = 3;
 const SCROLL_ABSOLUTE_MAX_STEPS = 400;
+// Fraction of the viewport to advance per step during the content-collection pass
+// (see `collectVirtualizedTurns`). At 0.5 each region of the list falls inside two
+// consecutive windows, so every turn is seen at least twice — once to record it, again
+// to upgrade its content if the first sighting caught an un-hydrated skeleton.
+const WALK_STEP_FRACTION = 0.5;
+// Hard anti-runaway ceiling for the collection walk, far above any real conversation's
+// step count (the primary bound is derived from the live scroll height per iteration).
+const WALK_ABSOLUTE_MAX_STEPS = 2000;
 
 /** Overridable knobs so the loop can be unit-tested without real timers/DOM. */
 export interface AutoScrollOptions {
@@ -375,31 +383,21 @@ function messageSignature(): string {
   return `${nodes.length}:${firstId}`;
 }
 
-async function extract(root: ParentNode = document): Promise<Conversation> {
-  // Auto-scroll only makes sense against the live document; fixture roots are
-  // fully materialized already.
-  if (root === (globalThis as { document?: Document }).document) {
-    await autoScrollToLoad(root as Document);
-  }
-
-  // Only nodes carrying a recognized author role are real conversation turns.
-  const roleNodes = Array.from(root.querySelectorAll(selectors.message)).filter(hasKnownRole);
-  const messages = roleNodes.map(toMessage).filter((m): m is Message => m !== null);
+export async function extract(root: ParentNode = document, options: AutoScrollOptions = {}): Promise<Conversation> {
+  // On the live page ChatGPT virtualizes the message list by *windowing*: only a
+  // handful of turn nodes exist in the DOM at once (the rest are removed, not merely
+  // emptied), so a single `querySelectorAll` can never see the whole conversation.
+  // Collect turns by scrolling through the list and accumulating each one as it enters
+  // the window. Fixture roots are fully materialized, so they use the one-shot read.
+  const messages =
+    root === (globalThis as { document?: Document }).document
+      ? await collectVirtualizedTurns(root as Document, options)
+      : readSnapshot(root);
 
   if (messages.length === 0) {
     throw new ExtractionError(
       'No messages found on the page. The conversation may not have loaded, or ChatGPT’s ' +
         'markup changed — extraction selectors need updating.',
-    );
-  }
-
-  // A turn was present in the DOM but produced no content (empty/malformed, e.g. a
-  // response still streaming). Fail loud rather than export a conversation that is
-  // silently missing turns (AGENTS.md #4).
-  if (messages.length < roleNodes.length) {
-    throw new ExtractionError(
-      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
-        'still be loading — wait for it to finish, then try again.',
     );
   }
 
@@ -411,17 +409,39 @@ async function extract(root: ParentNode = document): Promise<Conversation> {
   };
 }
 
+/**
+ * One-shot read of every turn currently in `root` (fixtures, or a live page with no
+ * scroll container). Fails loud if a role-bearing turn yielded no content — a silently
+ * dropped turn would be worse than a visible error (AGENTS.md #4).
+ */
+function readSnapshot(root: ParentNode): Message[] {
+  const roleNodes = Array.from(root.querySelectorAll(selectors.message)).filter(hasKnownRole);
+  const messages = roleNodes.map(toMessage).filter((m): m is Message => m !== null);
+  if (messages.length > 0 && messages.length < roleNodes.length) {
+    throw new ExtractionError(
+      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
+        'still be loading — wait for it to finish, then try again.',
+    );
+  }
+  return messages;
+}
+
 function hasKnownRole(el: Element): boolean {
   const role = el.getAttribute(selectors.authorRoleAttr);
   return role === 'user' || role === 'assistant' || role === 'system';
 }
 
+/** Read a turn node's content, dispatching on role. May be empty (virtualized/streaming). */
+function readContent(el: Element): string {
+  const role = el.getAttribute(selectors.authorRoleAttr) as Role;
+  return role === 'assistant' ? assistantContent(el) : userContent(el);
+}
+
 /** Map one message DOM node to a normalized Message, or null if it has no content. */
 function toMessage(el: Element): Message | null {
-  const role = el.getAttribute(selectors.authorRoleAttr) as Role;
-  const content = role === 'assistant' ? assistantContent(el) : userContent(el);
+  const content = readContent(el);
   if (!content.trim()) return null;
-
+  const role = el.getAttribute(selectors.authorRoleAttr) as Role;
   const id = el.getAttribute(selectors.messageIdAttr);
   const message: Message = { role, content };
   if (id) message.id = id;
@@ -431,7 +451,23 @@ function toMessage(el: Element): Message | null {
 function userContent(el: Element): string {
   // User turns are plain (already markdown-ish) text in a pre-wrap block.
   const textEl = el.querySelector(selectors.userText);
-  return (textEl?.textContent ?? el.textContent ?? '').trim();
+  const base = (textEl?.textContent ?? '').trim();
+  const files = fileMarkers(el);
+  const combined = [base, files].filter(Boolean).join('\n\n');
+  if (combined) return combined;
+  // A turn with only an uploaded file or a lone image has no readable text node; describe
+  // it rather than dropping it (which would fail the whole export — AGENTS.md #4).
+  if (el.querySelector('img')) return '[Image]';
+  return (el.textContent ?? '').trim();
+}
+
+/** `[File: name]` for each attachment tile in a turn (empty string when there are none). */
+function fileMarkers(el: Element): string {
+  return Array.from(el.querySelectorAll(selectors.attachmentTile))
+    .map((tile) => tile.getAttribute('aria-label')?.trim())
+    .filter((name): name is string => Boolean(name))
+    .map((name) => `[File: ${name}]`)
+    .join('\n\n');
 }
 
 function assistantContent(el: Element): string {
@@ -480,6 +516,97 @@ export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions
       'Timed out loading the full conversation while scrolling. The conversation may be ' +
       'unusually long; try again, or report if this persists.',
   });
+}
+
+interface CollectedTurn {
+  role: Role;
+  content: string;
+}
+
+/**
+ * Read the whole conversation off a live, virtualized message list. ChatGPT *windows*
+ * the list — only a handful of turn nodes exist in the DOM at once, and off-screen turns
+ * are removed entirely — so no single `querySelectorAll` sees every turn. This scrolls
+ * from top to bottom in overlapping steps and accumulates each turn (keyed by its stable
+ * `data-message-id`) the first time it enters the window, upgrading its content on a later
+ * sighting if the first was still an un-hydrated skeleton. Turn order is the first-seen
+ * order during the strictly-downward walk, which equals conversation order. Falls back to
+ * a one-shot snapshot read when there is no scroll container (best-effort). Fails loud if
+ * a turn is seen but never yields content, so a windowed conversation is never silently
+ * truncated (AGENTS.md #4).
+ */
+export async function collectVirtualizedTurns(doc: Document, options: AutoScrollOptions = {}): Promise<Message[]> {
+  const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
+  if (!container) return readSnapshot(doc);
+
+  // Pull in any older turns first (long chats paginate them in as you reach the top),
+  // then walk down from the very top. `autoScrollToLoad` leaves the viewport pinned there.
+  await autoScrollToLoad(doc, options);
+
+  const { stepDelayMs = SCROLL_STEP_DELAY_MS } = options;
+  const stepPx = Math.max(1, Math.floor(container.clientHeight * WALK_STEP_FRACTION));
+
+  const order: string[] = [];
+  const turns = new Map<string, CollectedTurn>();
+  let sawIdlessContent = false;
+  const record = (): void => {
+    for (const el of Array.from(doc.querySelectorAll(selectors.message))) {
+      if (!hasKnownRole(el)) continue;
+      const id = el.getAttribute(selectors.messageIdAttr);
+      if (!id) {
+        // No stable key to dedup this turn across windows, so it can't be collected. If it
+        // carries content, flag it so we fail loud rather than silently drop it (AGENTS.md #4).
+        if (readContent(el).trim()) sawIdlessContent = true;
+        continue;
+      }
+      const content = readContent(el);
+      const seen = turns.get(id);
+      if (!seen) {
+        order.push(id);
+        turns.set(id, { role: el.getAttribute(selectors.authorRoleAttr) as Role, content });
+      } else if (!seen.content.trim() && content.trim()) {
+        seen.content = content; // upgrade a skeleton captured before it hydrated
+      }
+    }
+  };
+
+  container.scrollTop = 0;
+  await delay(stepDelayMs);
+  let atBottomHits = 0;
+  for (let step = 0; ; step++) {
+    record();
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 1) {
+      if (++atBottomHits >= 2) break; // settle on the bottom (its content may still hydrate)
+    } else {
+      atBottomHits = 0;
+    }
+    // Cap recomputed from the current height so a list that grows as it hydrates is not
+    // cut short, while a stuck loop still terminates. Overridable for tests. A fixed
+    // absolute ceiling backstops against a pathologically growing height (defense-in-depth,
+    // far above any real conversation's step count).
+    const cap = options.maxSteps ?? Math.ceil(container.scrollHeight / stepPx) + SCROLL_STABLE_ROUNDS + 5;
+    if (step >= cap || step >= WALK_ABSOLUTE_MAX_STEPS) break;
+    container.scrollTop = Math.min(container.scrollTop + stepPx, container.scrollHeight);
+    await delay(stepDelayMs);
+  }
+
+  const messages: Message[] = [];
+  let dropped = 0;
+  for (const id of order) {
+    const turn = turns.get(id)!;
+    if (turn.content.trim()) {
+      messages.push({ role: turn.role, content: turn.content, id });
+    } else {
+      dropped++;
+    }
+  }
+  if (messages.length > 0 && (dropped > 0 || sawIdlessContent)) {
+    throw new ExtractionError(
+      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
+        'still be loading — wait for it to finish, then try again.',
+    );
+  }
+  return messages;
 }
 
 /**

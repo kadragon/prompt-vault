@@ -72,4 +72,22 @@ describe('chatgptAdapter.extract', () => {
       chatgptAdapter.extract(window.document as unknown as Document),
     ).rejects.toBeInstanceOf(ExtractionError);
   });
+
+  it('describes a file-attachment-only user turn instead of dropping it', async () => {
+    // A user turn that carries only an uploaded file (no typed text) — ChatGPT renders it
+    // as a role="group" tile whose aria-label is the file name and no readable text node.
+    // It must not be treated as empty (which would fail the whole export).
+    const window = new Window();
+    window.document.write(
+      '<!DOCTYPE html><html><head><title>T</title></head><body>' +
+        '<div data-message-author-role="user" data-message-id="u1">' +
+        '<div role="group" aria-label="pasted text (1).txt"><button>x</button></div></div>' +
+        '<div data-message-author-role="assistant" data-message-id="a1">' +
+        '<div class="markdown">ok</div></div>' +
+        '</body></html>',
+    );
+    const convo = await chatgptAdapter.extract(window.document as unknown as Document);
+    expect(convo.messages).toHaveLength(2);
+    expect(convo.messages[0].content).toBe('[File: pasted text (1).txt]');
+  });
 });
