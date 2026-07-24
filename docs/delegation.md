@@ -10,8 +10,13 @@ generator/evaluator separation.
 |---------------------------------|-------------|------|------|
 | First time mapping a provider's live conversation DOM this session | `explorer` | sub-agent | Recommended |
 | Target area spans >5 files, or output would flood context (>20 lines) | `explorer` | sub-agent | Recommended |
-| After any implementation | `qa-verifier` | sub-agent | **Mandatory** — implementer must not self-verify |
-| Feature complete (against `docs/eval-criteria.md`) | `product-evaluator` | sub-agent | Mandatory |
+| Implementation run in parallel/batch (`task-next --all`, worktree isolation), or spanning >5 files | `implementer` | sub-agent | Recommended |
+| After any implementation | `qa-verifier` | sub-agent | **Mandatory** — whoever implemented must not self-verify |
+| Before a Web Store release, or a feature shipping new user-visible UI (against `docs/eval-criteria.md`) | `product-evaluator` | sub-agent | Mandatory |
+
+**The lead implements by default.** A Sprint Contract is not itself a delegation trigger — an
+ordinary single-session change is written inline, and `qa-verifier` still runs against it. Spawn
+`implementer` only when the work is genuinely parallel or would flood this context.
 
 Nothing here is path-blocking (no critical-path hook) — this is a client-side extension with no
 server, auth, or migrations. The one hard rule is generator ≠ evaluator: whoever wrote the code does

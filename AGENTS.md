@@ -18,6 +18,7 @@ per-site adapters. All processing is local — conversation data never leaves th
 | `docs/delegation.md` | Before delegating to sub-agents |
 | `docs/eval-criteria.md` | When writing a Sprint Contract or evaluating a completed feature |
 | `docs/runbook.md` | For build, load-unpacked, test, and package commands |
+| `docs/live-dom-verification.md` | Before verifying selectors against the logged-in live page or capturing a fixture |
 | `docs/store-listing.md` | Before preparing or updating a Chrome Web Store submission |
 | `docs/PRIVACY.md` | Before changing data handling, permissions, or store privacy disclosures |
 
@@ -42,9 +43,11 @@ Invariants that, if broken, cause the most damage. Keep them true.
 ## Delegation
 
 Read `docs/delegation.md` for the routing table and Spawn Prompt Contract. Solo/greenfield repo —
-most work is inline. Objective triggers to delegate: target area >5 files or first exploration of an
-adapter's DOM structure → `explorer`; after implementation → `qa-verifier` (implementer must NOT
-verify its own work); feature complete → `product-evaluator`.
+**the lead implements by default**; a Sprint Contract is not a delegation trigger. Objective triggers
+to delegate: target area >5 files or first exploration of an adapter's DOM structure → `explorer`;
+parallel/batch or >5-file implementation → `implementer`; after any implementation →
+`qa-verifier` (whoever implemented must NOT verify their own work); Web Store release or new
+user-visible UI → `product-evaluator`.
 
 ## Token Economy
 
