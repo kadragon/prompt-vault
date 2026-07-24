@@ -36,13 +36,18 @@ const SCROLL_ABSOLUTE_MAX_STEPS = 400;
  * stalled round — ~1.6–1.8× the slowest measured round-trip either way.
  * `SIDEBAR_SCROLL_DEFAULTS_TEST` pins that margin so it cannot be tuned back down unnoticed.
  *
- * The step cap is anti-runaway only. A 1042-conversation history needs roughly 60 stepping
- * rounds plus ~6 dwell rounds per lazy batch (~37 batches) ≈ 300 rounds, so 600 leaves ~2×
- * headroom while bounding a genuinely runaway list at ~5 minutes.
+ * The step cap is anti-runaway only, and must not be sized to the one account we measured.
+ * Rounds scale with the conversation count N: stepping rounds ≈ N/17.5 (a ~700 px sidebar of
+ * ~36 px rows, advanced 0.9 viewport per round) plus ~6 dwell rounds per 28-row page while its
+ * fetch lands, plus the final dwell — `rounds(N) ≈ 0.271 N + 10`, which puts the measured
+ * 1042-conversation account at ~292 rounds. A cap of 600 would therefore throw on a *healthy*
+ * list at N ≈ 2200, discarding the entire accumulation; 2000 carries N ≈ 7300 and bounds a
+ * genuinely runaway list at 2000 × 500 ms ≈ 17 minutes. The long pathological wait is the
+ * deliberate side of that trade: failing early on a real history is the worse outcome.
  */
 const SIDEBAR_STEP_DELAY_MS = 500;
 const SIDEBAR_STABLE_ROUNDS = 10;
-const SIDEBAR_ABSOLUTE_MAX_STEPS = 600;
+const SIDEBAR_ABSOLUTE_MAX_STEPS = 2000;
 const SIDEBAR_SCROLL_DEFAULTS: AutoScrollOptions = {
   stepDelayMs: SIDEBAR_STEP_DELAY_MS,
   stableRounds: SIDEBAR_STABLE_ROUNDS,
@@ -881,7 +886,11 @@ async function scrollUntilStable(
   let stalls = 0;
   for (let step = 0; step < maxSteps; step++) {
     const current = count();
-    if (current > lastCount || !settled(container)) {
+    // Consulted every round, never short-circuited past: `settled` may be stateful
+    // (`endOfListGate` compares against the position it saw last round), so skipping the
+    // call on a round where the count grew would leave it reading a stale position.
+    const stillScrolling = !settled(container);
+    if (current > lastCount || stillScrolling) {
       stalls = 0; // Progress, or not yet at the end of the list — keep going.
     } else {
       stalls++;

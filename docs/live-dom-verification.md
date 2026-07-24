@@ -60,6 +60,10 @@ A verification that isn't recorded gets redone next month.
 - Stamp the selector(s) in `selectors.ts` with the date and what was confirmed.
 - Resolve the `tasks.md` `[VERIFY]` item with the evidence — concrete numbers, not "looks fine".
   A verification that *disproves* the premise is a result: say so and close the item.
+- If the finding is not about a selector — a latency, a list's paging shape, which element actually
+  scrolls — `selectors.ts` has nowhere to hold it, so copy it into **Verified findings** below
+  *before* closing the item. `tasks.md` entries are deleted when the work lands; a measurement that
+  adapter code now depends on must not leave with them.
 - Commit `[DOCS]`.
 
 ## Verified findings
