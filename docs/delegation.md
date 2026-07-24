@@ -22,6 +22,12 @@ Nothing here is path-blocking (no critical-path hook) — this is a client-side 
 server, auth, or migrations. The one hard rule is generator ≠ evaluator: whoever wrote the code does
 not grade it.
 
+**Changing a trigger means changing it in four places.** A routing rule is duplicated across the
+table above, the `## Delegation` summary in `AGENTS.md`, the matching step in `docs/workflows.md`
+(Steps 3–5), and the spawning agent's own `description:` in `.claude/agents/{agent}.md` — an agent
+routes off whichever it reads first, so a partial edit produces silently contradictory routing.
+Grep the agent name across all four before considering the change done.
+
 ## Spawn Prompt Contract (four fields)
 
 Every spawn brief includes:

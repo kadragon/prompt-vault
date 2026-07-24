@@ -1,9 +1,12 @@
 # Live-DOM Verification (ChatGPT)
 
 Unit tests run against frozen fixtures, so they can never tell you that ChatGPT's markup moved.
-Only a session against the live, logged-in page can. Every entry in
-`src/adapters/chatgpt/selectors.ts` carries a `Verified against the live page (YYYY-MM-DD)` stamp —
-this doc is how that stamp gets earned.
+Only a session against the live, logged-in page can. Entries in
+`src/adapters/chatgpt/selectors.ts` should carry a `Verified against the live page (YYYY-MM-DD)`
+stamp — this doc is how that stamp gets earned. Coverage is currently partial: some entries are
+stamped only `verified against the captured fixtures` (weaker — a fixture cannot detect drift), and
+the oldest ones carry no per-entry stamp at all, inheriting only the file header. Treat an unstamped
+or fixture-only entry as unverified, not as verified-by-default.
 
 ## When to run one
 
@@ -14,8 +17,11 @@ this doc is how that stamp gets earned.
 
 ## Tooling reality (read before promising anything)
 
-The Playwright MCP server is configured with no flags —
-`{"command": "npx", "args": ["@playwright/mcp@latest"]}`.
+The Playwright MCP server is **not repo-owned** — this repo checks in no `.mcp.json`. It comes from
+a user-scoped Claude plugin (`playwright@claude-plugins-official`), configured with no flags —
+`{"command": "npx", "args": ["@playwright/mcp@latest"]}`. On another machine or a fresh checkout it
+may be absent or configured differently; confirm it is available before promising a live session,
+and re-read its config rather than assuming the flags below.
 
 - **The login does not survive.** With no `--user-data-dir`, `--help` states "a temporary directory
   will be created" — a fresh profile per run. Every session starts logged out. Ask the user to log
