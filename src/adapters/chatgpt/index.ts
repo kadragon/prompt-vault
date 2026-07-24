@@ -17,6 +17,43 @@ const PROVIDER = 'chatgpt';
 const SCROLL_STEP_DELAY_MS = 150;
 const SCROLL_STABLE_ROUNDS = 3;
 const SCROLL_ABSOLUTE_MAX_STEPS = 400;
+/**
+ * Scroll tuning for the *conversation-list* loaders (`loadMoreConversations`,
+ * `loadMoreProjectConversations`) — deliberately far more patient than the message-viewport
+ * numbers above. Older turns are already in the client, but `#history` fetches each next
+ * page from the server: measured round-trips of 1418–2830 ms across four consecutive batches
+ * on a 1042-conversation account (2026-07-24). The viewport's 3 × 150 ms ≈ 450 ms stall
+ * window elapses long before a batch lands, so the loader read "no new items" mid-fetch and
+ * returned 19 of 852 conversations — a silent 2% truncation (AGENTS.md #4).
+ *
+ * ChatGPT exposes no verified "fetching" marker we may key on (AGENTS.md #5 forbids inventing
+ * a spinner selector), so the terminal signal is partly time-based. The structural half is in
+ * `scrollUntilStable`: the walk never settles while the container still scrolls, so every
+ * landed page — which lets it scroll further again — resets the stall counter no matter how
+ * long the fetch took. This window covers the remaining case, dwelling at the end while the
+ * last page is still in flight. Ten rounds of 500 ms means 5 s elapse between the scroll that
+ * reaches the end (triggering the fetch) and giving up, or 4.5 s counted from the first
+ * stalled round — ~1.6–1.8× the slowest measured round-trip either way.
+ * `SIDEBAR_SCROLL_DEFAULTS_TEST` pins that margin so it cannot be tuned back down unnoticed.
+ *
+ * The step cap is anti-runaway only. A 1042-conversation history needs roughly 60 stepping
+ * rounds plus ~6 dwell rounds per lazy batch (~37 batches) ≈ 300 rounds, so 600 leaves ~2×
+ * headroom while bounding a genuinely runaway list at ~5 minutes.
+ */
+const SIDEBAR_STEP_DELAY_MS = 500;
+const SIDEBAR_STABLE_ROUNDS = 10;
+const SIDEBAR_ABSOLUTE_MAX_STEPS = 600;
+const SIDEBAR_SCROLL_DEFAULTS: AutoScrollOptions = {
+  stepDelayMs: SIDEBAR_STEP_DELAY_MS,
+  stableRounds: SIDEBAR_STABLE_ROUNDS,
+  maxSteps: SIDEBAR_ABSOLUTE_MAX_STEPS,
+};
+/**
+ * The sidebar defaults, exported solely so a test can assert the stall window still exceeds
+ * the measured lazy-load latency. Not part of the adapter's runtime contract — callers pass
+ * overrides through `AutoScrollOptions` instead.
+ */
+export const SIDEBAR_SCROLL_DEFAULTS_TEST: Readonly<AutoScrollOptions> = SIDEBAR_SCROLL_DEFAULTS;
 // Fraction of the viewport to advance per step during the content-collection pass
 // (see `collectVirtualizedTurns`). At 0.5 each region of the list falls inside two
 // consecutive windows, so every turn is seen at least twice — once to record it, again
@@ -658,7 +695,10 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
  * *distinct conversation ids* seen across rounds, not the raw rendered-node count: a
  * windowed virtualizer recycles a fixed-size node pool (holding the node count flat while
  * the ids inside it change), so counting cumulative unique ids keeps loading as long as
- * genuinely new conversations surface. Each round's rows are folded into `acc` as they
+ * genuinely new conversations surface. Because `#history` pages in from the server, the
+ * loader also refuses to settle while the container still scrolls, and dwells at the end far
+ * longer than the message viewport does — see `SIDEBAR_SCROLL_DEFAULTS`, `endOfListGate`, and
+ * `scrollUntilStable`. Each round's rows are folded into `acc` as they
  * pass through the viewport, so conversations the virtualizer trims off the top (or has
  * not yet scrolled into view) are all captured; the returned list is the full accumulation
  * across every scroll round, not just the final on-screen window.
@@ -683,6 +723,8 @@ export async function loadMoreConversations(
       timeoutMessage:
         'Timed out loading the conversation list while scrolling. The sidebar may be ' +
         'unusually long; try again, or report if this persists.',
+      settled: endOfListGate(),
+      defaults: SIDEBAR_SCROLL_DEFAULTS,
     },
   );
   return [...acc.values()];
@@ -714,6 +756,8 @@ export async function loadMoreProjectConversations(
       timeoutMessage:
         'Timed out loading the project conversation list while scrolling. The list may be ' +
         'unusually long; try again, or report if this persists.',
+      settled: endOfListGate(),
+      defaults: SIDEBAR_SCROLL_DEFAULTS,
     },
   );
   return [...acc.values()];
@@ -750,6 +794,33 @@ function pinTop(container: HTMLElement): void {
 }
 
 /**
+ * A stateful end-of-list test for a downward walk: true once `stepDown` has stopped moving
+ * the container, i.e. the browser is clamping `scrollTop` because there is nothing left to
+ * scroll into. Each call compares against the position the previous round's `stepDown` left
+ * behind, so it must be created fresh per walk.
+ *
+ * Deliberately a position *delta* rather than the `scrollTop + clientHeight >= scrollHeight`
+ * arithmetic used for the message viewport: `findScrollableAncestor` resolves whichever
+ * ancestor actually scrolls, which can be a port taller than the list itself (the project
+ * page's stage scroll port measured `scrollH 730 > clientH 400` while merely *containing*
+ * the list section — see `docs/live-dom-verification.md`). Such a container's arithmetic
+ * bottom may sit below anything the list walk can reach, and requiring it would spin to the
+ * step cap and fail loud on a perfectly healthy list. The delta test converges on any
+ * container that clamps, whatever its height is made of. A zero-height container
+ * (hidden/background tab) never scrolls at all, so it counts as ended immediately rather
+ * than creeping 1px per round to the cap.
+ */
+function endOfListGate(): (container: HTMLElement) => boolean {
+  let previousTop = -1;
+  return (container) => {
+    const { scrollTop, clientHeight } = container;
+    const clamped = clientHeight === 0 || scrollTop <= previousTop;
+    previousTop = scrollTop;
+    return clamped;
+  };
+}
+
+/**
  * Advance a virtualized scroll container downward by ~one viewport, clamped at the
  * bottom. Deliberately a step, not a jump to `scrollHeight`: a jump renders only the
  * final window, so a spacer-height recycling virtualizer (full height known up front,
@@ -767,36 +838,54 @@ function stepDown(container: HTMLElement): void {
 }
 
 /**
- * Repeatedly pin `container`'s scroll position and wait, until the rendered item
- * `count` holds steady for `stableRounds` (i.e. no more lazy items appear). Progress
- * resets the stall counter, so an arbitrarily long list keeps loading as long as new
- * items keep arriving. Completion is judged by count stability alone — never by
- * `scrollTop`, which the user or browser may leave off the pinned edge — so a
- * fully-loaded list never falsely fails. Only the absolute step cap (reached solely if
- * items never stop appearing) is a fail-loud condition (AGENTS.md #4).
+ * Repeatedly pin `container`'s scroll position and wait, until the list is judged fully
+ * loaded. A round counts as **progress** — resetting the stall counter — when either:
+ *
+ * - `count` grew: more items rendered; or
+ * - `settled(container)` is false: the walk has not yet reached the end of the list, so a
+ *   run of item-less windows (date dividers, non-`/c/` rows, a page that landed below the
+ *   viewport) can never be mistaken for the end of a lazy list. This is what separates "no
+ *   new items" from "still fetching" structurally: once a page lands the container scrolls
+ *   further again, so only a genuinely exhausted list ever accumulates stalls.
+ *
+ * `settled` is called once per round *before* the pin, so it observes where the previous
+ * round's pin landed. Only a settled, static list accumulates stalls, and only `stableRounds`
+ * of those in a row end the loop. `settled` defaults to always-true, preserving the message
+ * viewport's count-stability-only rule: that path pins to the *top*, where `scrollTop` is not a usable
+ * completion signal (the user or browser may leave it off the pinned edge), so judging it by
+ * position would falsely fail a fully-loaded conversation. Only the absolute step cap
+ * (reached solely if items never stop appearing) is a fail-loud condition (AGENTS.md #4).
  */
 async function scrollUntilStable(
   container: HTMLElement,
   count: () => number,
   pin: (container: HTMLElement) => void,
   options: AutoScrollOptions,
-  { timeoutMessage }: { timeoutMessage: string },
+  {
+    timeoutMessage,
+    settled = () => true,
+    defaults = {},
+  }: {
+    timeoutMessage: string;
+    settled?: (container: HTMLElement) => boolean;
+    defaults?: AutoScrollOptions;
+  },
 ): Promise<void> {
   const {
-    stepDelayMs = SCROLL_STEP_DELAY_MS,
-    stableRounds = SCROLL_STABLE_ROUNDS,
-    maxSteps = SCROLL_ABSOLUTE_MAX_STEPS,
+    stepDelayMs = defaults.stepDelayMs ?? SCROLL_STEP_DELAY_MS,
+    stableRounds = defaults.stableRounds ?? SCROLL_STABLE_ROUNDS,
+    maxSteps = defaults.maxSteps ?? SCROLL_ABSOLUTE_MAX_STEPS,
   } = options;
 
   let lastCount = -1;
   let stalls = 0;
   for (let step = 0; step < maxSteps; step++) {
     const current = count();
-    if (current > lastCount) {
-      stalls = 0; // Progress: more items rendered — keep going.
+    if (current > lastCount || !settled(container)) {
+      stalls = 0; // Progress, or not yet at the end of the list — keep going.
     } else {
       stalls++;
-      if (stalls >= stableRounds) return; // No new items for a while → fully loaded.
+      if (stalls >= stableRounds) return; // Settled and static for a while → fully loaded.
     }
     lastCount = current;
     pin(container);

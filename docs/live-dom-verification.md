@@ -62,6 +62,38 @@ A verification that isn't recorded gets redone next month.
   A verification that *disproves* the premise is a result: say so and close the item.
 - Commit `[DOCS]`.
 
+## Verified findings
+
+Results worth keeping after the `tasks.md` `[VERIFY]` item that produced them is closed — a
+measurement of live behavior that adapter code now depends on. Numbers, not impressions; each
+entry names the account scale it was measured at, because these are not scale-invariant.
+
+### 2026-07-24 — `#history` sidebar is append-only, not a recycling virtualizer
+
+Measured on a 1042-conversation account. The rendered node count grew **monotonically from 28 to
+1042** and always equalled the cumulative unique-id count (`windowed: false`) — rows are never
+trimmed off the top at this scale. The accumulate-across-rounds logic in `loadMoreConversations`
+guards a recycling path that this account never exercises; it stays correct and unit-covered, but
+do not cite live evidence for it.
+
+### 2026-07-24 — `#history` pages in from the server, at 1418–2830 ms per page
+
+Same account. Four consecutive lazy batches were timed; every one cost a server round-trip in that
+range. This is why the list loaders carry their own scroll tuning (`SIDEBAR_SCROLL_DEFAULTS` in the
+adapter) instead of the message viewport's much shorter stall window. A patient replay (1500 ms per
+step, 8 stable rounds) reached all 852 top-level `/c/` conversations (1042 counting project- and
+GPT-scoped rows) and settled at the true bottom, confirming the list itself loads fine.
+
+### 2026-07-24 — project home scroll port is taller than the list it contains
+
+On `/g/g-p-…/project`, `projectListSection` resolved the `<main>` `<section>` correctly (the
+left-nav expando was excluded: 5 links in the document, 5 in the section). `findScrollableAncestor`
+skipped every `overflow-y: visible` ancestor and, once the page overflowed, resolved the **stage**
+scroll port — `overflow-y: auto`, `scrollHeight 730 > clientHeight 400`, merely *containing* the
+section — with `stepDown` moving it 0→330. A downward walk therefore cannot assume the container's
+arithmetic bottom is the list's end; see `endOfListGate` in the adapter. `.text-sm.font-medium`
+extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-snippet mis-picks.
+
 ## Capturing a fixture
 
 - Fixtures are whole-page HTML (`document.documentElement.outerHTML`) in
