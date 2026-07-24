@@ -47,3 +47,5 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 - Exporters and the `Conversation` model are pure → unit-test them directly.
 - Adapters depend on live DOM → test against saved HTML fixtures (`test/fixtures/{provider}/`), not
   the live site, so tests are deterministic. Capture a fresh fixture when a site's DOM changes.
+- Fixtures freeze the DOM, so they cannot detect that the site's markup moved. Re-verify selectors
+  against the logged-in live page per `docs/live-dom-verification.md`, and stamp the result.

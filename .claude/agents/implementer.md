@@ -1,9 +1,10 @@
 ---
 name: implementer
 description: |
-  Trigger when a Sprint Contract exists and the task needs ≥1 file edited in
-  prompt-vault (adapters, exporters, content script, manifest). Produces a
-  minimal diff. Does NOT self-evaluate — hands off to qa-verifier afterwards.
+  Trigger ONLY when implementation is run in parallel/batch (task-next --all,
+  worktree isolation) or spans >5 files. An ordinary single-session change is
+  written inline by the lead — a Sprint Contract alone is NOT a trigger. Produces
+  a minimal diff. Does NOT self-evaluate — hands off to qa-verifier afterwards.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 ---

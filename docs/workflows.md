@@ -26,14 +26,16 @@ reading an adapter's live DOM structure, or target area >5 files → spawn `expl
 `tasks.md`. Template + criteria in `docs/eval-criteria.md`. Approach for this repo:
 reference the target site DOM / existing adapter → implement → lint/build → load-unpacked manual check.
 
-**Step 3: Implement** — ≤2 files and not `[FEAT]`/`[REFACTOR]` → inline. Larger → spawn `implementer`
-with the Sprint Contract, in-scope file paths, and the lint/build command.
+**Step 3: Implement** — the lead writes the change inline by default. Spawn `implementer` only when
+the work is run in parallel/batch (`task-next --all`, worktree isolation) or spans >5 files, handing
+it the Sprint Contract, in-scope file paths, and the lint/build command.
 
-**Step 4: QA (mandatory)** — always spawn `qa-verifier`. The agent that implemented must NOT verify
-its own work. Verify against the Sprint Contract, including a real load-unpacked run where relevant.
+**Step 4: QA (mandatory)** — always spawn `qa-verifier`, whether the lead or `implementer` wrote the
+change. Whoever implemented must NOT verify their own work. Verify against the Sprint Contract,
+including a real load-unpacked run where relevant.
 
-**Step 5: Feature-complete evaluation** — when a feature is done, spawn `product-evaluator` against
-`docs/eval-criteria.md`.
+**Step 5: Feature-complete evaluation** — before a Web Store release, or when a feature ships new
+user-visible UI, spawn `product-evaluator` against `docs/eval-criteria.md`.
 
 **Step 6: Version bump & handoff** — bump `manifest.json` version + `package.json` if present. Leave
 uncommitted for the review cycle.

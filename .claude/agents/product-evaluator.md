@@ -1,9 +1,10 @@
 ---
 name: product-evaluator
 description: |
-  Trigger at feature completion for subjective quality judgment against
-  docs/eval-criteria.md. Independent from implementer and qa-verifier — never
-  the agent that built or QA'd the feature.
+  Trigger before a Web Store release, or when a feature ships new user-visible
+  UI, for subjective quality judgment against docs/eval-criteria.md. Independent
+  from whoever implemented and from qa-verifier — never the agent that built or
+  QA'd the feature.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---

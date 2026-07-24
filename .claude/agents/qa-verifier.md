@@ -1,8 +1,9 @@
 ---
 name: qa-verifier
 description: |
-  ALWAYS invoke after every implementer run to verify against the Sprint
-  Contract — do NOT skip, and NEVER the same agent instance that implemented.
+  ALWAYS invoke after ANY implementation — whether the lead wrote it inline or
+  `implementer` produced it — to verify against the Sprint Contract. Do NOT skip,
+  and NEVER the same agent instance that implemented.
   Grades against criteria and real behavior, not impressions.
 tools: Read, Grep, Glob, Bash
 model: sonnet
