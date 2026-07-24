@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { loadMoreConversations, loadMoreProjectConversations } from '../../../src/adapters/chatgpt';
+import {
+  loadMoreConversations,
+  loadMoreProjectConversations,
+  SIDEBAR_SCROLL_DEFAULTS_TEST,
+} from '../../../src/adapters/chatgpt';
 import { ExtractionError } from '../../../src/core/errors';
 
 // Build a fake list root modelling ChatGPT's virtualized history sidebar / project list
@@ -11,17 +15,24 @@ import { ExtractionError } from '../../../src/core/errors';
 // loader must STEP through each window to see every row. Each rendered link carries a
 // distinct `/c/<n>` href. `runaway` makes new rows keep appearing forever (never settles).
 // The root doubles as its own scroll container so `findScrollableAncestor` selects it.
+// `gap` marks a half-open index range whose rows render WITHOUT a `/c/` href — the shape of
+// the sidebar's date dividers and non-conversation rows. A gap wider than the viewport keeps
+// the conversation count flat for several consecutive windows in the middle of the list.
 const ROW = 40;
 function makeRoot({
   total,
   windowSize = Infinity,
   runaway = false,
   present = true,
+  gap,
+  clampTop,
 }: {
   total: number;
   windowSize?: number;
   runaway?: boolean;
   present?: boolean;
+  gap?: [number, number];
+  clampTop?: number;
 }): { root: ParentNode } {
   const winRows = windowSize === Infinity ? Number.MAX_SAFE_INTEGER : windowSize;
   // Viewport height: exactly `windowSize` rows (a small fixed viewport when unwindowed).
@@ -37,8 +48,9 @@ function makeRoot({
     const last = Math.min(count, first + winRows);
     const arr: Element[] = [];
     for (let i = first; i < last; i++) {
+      const href = gap && i >= gap[0] && i < gap[1] ? null : `/c/${i}`;
       arr.push({
-        getAttribute: (name: string) => (name === 'href' ? `/c/${i}` : null),
+        getAttribute: (name: string) => (name === 'href' ? href : null),
         closest: () => listRoot,
         querySelector: () => null, // project-title lookup: falls back to the default title
       } as unknown as Element);
@@ -57,7 +69,7 @@ function makeRoot({
       return this._top;
     },
     set scrollTop(v: number) {
-      this._top = Math.min(v, heightOf());
+      this._top = Math.min(v, clampTop ?? heightOf());
       if (runaway) grown += winRows; // never settles: more rows keep surfacing below
     },
     querySelectorAll: (): Element[] => anchorsAt(listRoot._top),
@@ -72,7 +84,83 @@ function makeRoot({
   return { root };
 }
 
+// Build a fake `#history` sidebar as a **server-paged, append-only lazy list** — the shape
+// live measurement found (2026-07-24, 1042 conversations): the rendered node count grows
+// monotonically and never recycles, and reaching the bottom triggers a server round-trip
+// (measured 1418–2830 ms) that appends the next page. `fetchMs` is that round-trip;
+// `hydrateRounds` is how many further re-reads the landed rows stay href-less (present in
+// the DOM, raising the container height, but not yet countable conversations).
+function makeLazyRoot({
+  pageSize,
+  pages,
+  fetchMs,
+  hydrateRounds = 0,
+  view = 3,
+}: {
+  pageSize: number;
+  pages: number;
+  fetchMs: number;
+  hydrateRounds?: number;
+  view?: number;
+}): { root: ParentNode } {
+  const clientHeight = view * ROW;
+  let loaded = pageSize;
+  let pagesIn = 1;
+  let fetching = false;
+  let reads = 0;
+  let countableFromRead = 0; // reads before this still hide the newest page
+  const anchorsUpTo = (n: number): Element[] =>
+    Array.from({ length: n }, (_, i) => ({
+      getAttribute: (name: string) => (name === 'href' ? `/c/${i}` : null),
+      closest: () => listRoot,
+      querySelector: () => null,
+    })) as unknown as Element[];
+  const maybeFetch = (): void => {
+    if (fetching || pagesIn >= pages) return;
+    if (listRoot._top + clientHeight < loaded * ROW - 1) return; // more to scroll first
+    fetching = true;
+    setTimeout(() => {
+      loaded += pageSize;
+      pagesIn++;
+      countableFromRead = reads + hydrateRounds + 1;
+      fetching = false;
+    }, fetchMs);
+  };
+  const listRoot = {
+    get scrollHeight(): number {
+      return loaded * ROW;
+    },
+    clientHeight,
+    parentElement: null,
+    ownerDocument: { defaultView: null },
+    _top: 0,
+    get scrollTop(): number {
+      return this._top;
+    },
+    set scrollTop(v: number) {
+      this._top = Math.max(0, Math.min(v, loaded * ROW - clientHeight));
+      maybeFetch();
+    },
+    querySelectorAll: (): Element[] => {
+      reads++;
+      return anchorsUpTo(reads < countableFromRead ? loaded - pageSize : loaded);
+    },
+  };
+  const root = {
+    querySelector: () => listRoot,
+    querySelectorAll: (sel: string) =>
+      sel.includes('/g/g-p-') ? [{ closest: () => listRoot } as unknown as Element] : [],
+  } as unknown as ParentNode;
+  return { root };
+}
+
 const fast = { stepDelayMs: 0, stableRounds: 3, maxSteps: 200 };
+
+// Slowest `#history` page round-trip measured live (2026-07-24, 1042-conversation account;
+// range 1418-2830 ms over four consecutive batches). `SCALE` runs the production timings that
+// much faster so a real-latency test stays a sub-second unit test.
+const SLOWEST_MEASURED_FETCH_MS = 2830;
+const SCALE = 100;
 
 // The stable `/c/<n>` ids the loader is expected to return, in order, for a list of `n`.
 const idsUpTo = (n: number): string[] => Array.from({ length: n }, (_, i) => String(i));
@@ -96,6 +184,57 @@ describe('loadMoreConversations (history sidebar)', () => {
   it('returns [] when the sidebar is absent', async () => {
     const { root } = makeRoot({ total: 20, present: false });
     await expect(loadMoreConversations(root, fast)).resolves.toEqual([]);
+  });
+
+  it('keeps walking past a run of item-less windows in the middle of the list', async () => {
+    // Rows 5-19 carry no `/c/` href (date dividers / non-conversation rows), so the
+    // conversation count holds flat for three consecutive windows well above the bottom.
+    // Judging completion by count stability alone would call that "fully loaded" and return
+    // the first 5 of 15 — a silent truncation (AGENTS.md #4).
+    const { root } = makeRoot({ total: 30, windowSize: 5, gap: [5, 20] });
+    const result = await loadMoreConversations(root, fast);
+    expect(result.map((c) => c.id)).toEqual([...idsUpTo(5), ...Array.from({ length: 10 }, (_, i) => String(20 + i))]);
+  });
+
+  it('settles on a scroll port whose arithmetic bottom the list can never reach', async () => {
+    // `findScrollableAncestor` resolves whichever ancestor actually scrolls, which can be a
+    // port taller than the list it contains (the project page's stage: scrollH 730 > clientH
+    // 400, per docs/live-dom-verification.md). Here it stops accepting scrollTop at 100, far
+    // short of scrollHeight - clientHeight, so `scrollTop + clientHeight >= scrollHeight` is
+    // never true. Judging the end by that arithmetic would burn the whole step cap and then
+    // fail loud on a healthy, fully-rendered list.
+    const { root } = makeRoot({ total: 20, clampTop: 100 });
+    const result = await loadMoreConversations(root, fast);
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(20));
+  });
+
+  it('keeps waiting while a server-paged sidebar fetches its next page', async () => {
+    // Each page costs a round-trip during which nothing changes: the count is flat and the
+    // viewport sits at the (current) bottom, so only wall-clock patience gets the rest of the
+    // history. Run the PRODUCTION dwell (`stableRounds` unchanged, `stepDelayMs` scaled) against
+    // the slowest measured round-trip, likewise scaled: shrinking either constant below the
+    // real latency fails here, not just in the arithmetic guard below. Timing jitter can only
+    // lengthen a round, i.e. make the loader more patient, so this cannot flake the other way.
+    const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 4, fetchMs: SLOWEST_MEASURED_FETCH_MS / SCALE });
+    const result = await loadMoreConversations(root, { stepDelayMs: stepDelayMs / SCALE, stableRounds, maxSteps });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(20));
+  });
+
+  it('keeps waiting while a landed page is still hydrating its hrefs', async () => {
+    // The page is in the DOM (the container grew) but its rows have no href yet, so the
+    // conversation count stays flat for two more rounds after the fetch resolves.
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 3, fetchMs: 0, hydrateRounds: 2 });
+    const result = await loadMoreConversations(root, { stepDelayMs: 0, stableRounds: 2, maxSteps: 400 });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(15));
+  });
+
+  it('waits out the slowest measured lazy-load round-trip by default', () => {
+    // The timing test above proves the dwell works; this pins the margin in the abstract, so a
+    // shrunk constant fails loudly instead of leaving the suite to rely on measured latency
+    // staying put. Keeps the defaults from drifting back to the viewport's 450 ms window.
+    const { stepDelayMs, stableRounds } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+    expect((stepDelayMs ?? 0) * (stableRounds ?? 0)).toBeGreaterThanOrEqual(SLOWEST_MEASURED_FETCH_MS * 1.5);
   });
 
   it('fails loud when new conversations never stop appearing (runaway) within the step cap', async () => {

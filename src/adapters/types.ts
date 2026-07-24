@@ -153,7 +153,11 @@ export interface ConversationAdapter {
 export interface LoadMoreOptions {
   /** Milliseconds to wait after each scroll pin before re-counting. */
   stepDelayMs?: number;
-  /** Rounds with no new items before the list is judged fully loaded. */
+  /**
+   * Consecutive rounds with no new item, at the end of the list, before it is judged fully
+   * loaded. Times the wait for an in-flight lazy page, so the product with `stepDelayMs`
+   * must exceed the site's real fetch latency.
+   */
   stableRounds?: number;
   /** Absolute step cap; exceeding it while items still appear fails loud. */
   maxSteps?: number;
