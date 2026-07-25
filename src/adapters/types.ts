@@ -148,7 +148,9 @@ export interface ConversationAdapter {
 
 /**
  * Scroll knobs for the `loadMore*` virtualized-list loop, so the wait is unit-testable
- * without real timers/DOM. Structurally matches the ChatGPT adapter's `AutoScrollOptions`.
+ * without real timers/DOM. Structurally matches the ChatGPT adapter's
+ * `LoadMoreScrollOptions` — not its `AutoScrollOptions`, which is the progress-free base
+ * the message-viewport walk uses and which deliberately has no `onProgress`.
  */
 export interface LoadMoreOptions {
   /** Milliseconds to wait after each scroll pin before re-counting. */

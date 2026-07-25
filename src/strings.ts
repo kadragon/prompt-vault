@@ -55,7 +55,7 @@ export const BULK_PANEL_LOAD_MORE = m('bulkPanelLoadMore');
 export const BULK_PANEL_LOAD_MORE_BUSY = m('bulkPanelLoadMoreBusy');
 export const BULK_PANEL_LOAD_MORE_DONE = m('bulkPanelLoadMoreDone');
 
-/** Progress line while "Load more" walks the list, e.g. "Loading… 340 conversations". */
+/** Progress line while "Load more" walks the list, e.g. "Loading conversations… 340 so far". */
 export function bulkLoadMoreProgressMessage(loaded: number): string {
   return m('bulkLoadMoreProgressMessage', [String(loaded)]);
 }

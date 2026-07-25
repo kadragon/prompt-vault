@@ -272,7 +272,12 @@ describe('loadMoreConversations (history sidebar)', () => {
     });
     const progress: number[] = [];
     await loadMoreConversations(root, { ...fast, onProgress: (n) => progress.push(n) });
+    // The round counter alone is too loose to discriminate — it exceeds the loop-iteration
+    // count by enough slack to absorb a tick on every round. What a stall-round tick would
+    // actually produce is a *repeated* count, so require every tick to report a strictly
+    // larger one: that fails the moment the `current > lastCount` guard is dropped.
     expect(progress.length).toBeLessThan(rounds);
+    for (let i = 1; i < progress.length; i++) expect(progress[i]).toBeGreaterThan(progress[i - 1]);
   });
 
   it('omitting onProgress leaves the loop behavior unchanged', async () => {

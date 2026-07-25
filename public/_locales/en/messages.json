@@ -100,8 +100,8 @@
     "description": "Disabled label on the Load more button once every conversation has been loaded."
   },
   "bulkLoadMoreProgressMessage": {
-    "message": "Loading… $count$ conversations",
-    "description": "Progress line while Load more walks the virtualized list.",
+    "message": "Loading conversations… $count$ so far",
+    "description": "Progress line while Load more walks the virtualized list. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
     "placeholders": {
       "count": {
         "content": "$1"
