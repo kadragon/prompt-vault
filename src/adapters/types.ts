@@ -161,6 +161,12 @@ export interface LoadMoreOptions {
   stableRounds?: number;
   /** Absolute step cap; exceeding it while items still appear fails loud. */
   maxSteps?: number;
+  /**
+   * Fired with the cumulative count of distinct conversations surfaced so far, each time
+   * the walk reveals new ones. Lets a caller show progress during a multi-minute load;
+   * omit it and the loop is unchanged.
+   */
+  onProgress?: (loaded: number) => void;
 }
 
 /** Polling knobs for `openConversation`'s wait-for-render loop. */

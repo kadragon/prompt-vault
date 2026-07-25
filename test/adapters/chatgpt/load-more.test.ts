@@ -243,6 +243,45 @@ describe('loadMoreConversations (history sidebar)', () => {
       loadMoreConversations(root, { stepDelayMs: 0, stableRounds: 3, maxSteps: 8 }),
     ).rejects.toBeInstanceOf(ExtractionError);
   });
+
+  it('reports onProgress with a non-decreasing sequence ending at the returned list length', async () => {
+    const { root } = makeRoot({ total: 18, windowSize: 6 });
+    const progress: number[] = [];
+    const result = await loadMoreConversations(root, { ...fast, onProgress: (n) => progress.push(n) });
+    expect(progress.length).toBeGreaterThan(0);
+    for (let i = 1; i < progress.length; i++) expect(progress[i]).toBeGreaterThan(progress[i - 1]);
+    expect(progress[progress.length - 1]).toBe(result.length);
+  });
+
+  it('does not call onProgress on a round that surfaces no new conversation', async () => {
+    // The gap holds the count flat for several rounds while the window steps across it
+    // (see the item-less-windows test above) — a stall-round call here would mean the
+    // panel's status line jumps backward or repeats a stale count.
+    const { root } = makeRoot({ total: 30, windowSize: 5, gap: [5, 20] });
+    const listRoot = (root as unknown as { querySelector: (s: string) => object }).querySelector('x') as {
+      scrollTop: number;
+    };
+    let rounds = 0;
+    const original = Object.getOwnPropertyDescriptor(listRoot, 'scrollTop')!;
+    Object.defineProperty(listRoot, 'scrollTop', {
+      get: (): number => original.get!.call(listRoot) as number,
+      set: (v: number) => {
+        rounds++;
+        original.set!.call(listRoot, v);
+      },
+    });
+    const progress: number[] = [];
+    await loadMoreConversations(root, { ...fast, onProgress: (n) => progress.push(n) });
+    expect(progress.length).toBeLessThan(rounds);
+  });
+
+  it('omitting onProgress leaves the loop behavior unchanged', async () => {
+    const { root: withCallback } = makeRoot({ total: 20, windowSize: 6 });
+    const { root: withoutCallback } = makeRoot({ total: 20, windowSize: 6 });
+    const a = await loadMoreConversations(withCallback, { ...fast, onProgress: () => {} });
+    const b = await loadMoreConversations(withoutCallback, fast);
+    expect(a.map((c) => c.id)).toEqual(b.map((c) => c.id));
+  });
 });
 
 describe('loadMoreProjectConversations (project list)', () => {

@@ -99,6 +99,15 @@
     "message": "All conversations loaded",
     "description": "Disabled label on the Load more button once every conversation has been loaded."
   },
+  "bulkLoadMoreProgressMessage": {
+    "message": "Loading… $count$ conversations",
+    "description": "Progress line while Load more walks the virtualized list.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "bulkEmptyMessage": {
     "message": "No conversations were found to export.",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
