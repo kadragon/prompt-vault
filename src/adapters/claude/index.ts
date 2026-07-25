@@ -22,12 +22,6 @@ const WALK_STEP_FRACTION = 0.5;
 // Consecutive rounds pinned at an end before it counts as reached, so a single stalled
 // frame is not mistaken for the end of the list.
 const END_SETTLE_ROUNDS = 2;
-// Consecutive rounds that must add and grow nothing before the declared-total early exit is
-// allowed to fire. Deliberately NOT `END_SETTLE_ROUNDS`, though it starts at the same value:
-// that one is about scroll/render frame timing, this one about how long a streaming response
-// may pause between tokens before the walk may call it finished. They answer to different
-// physics, and tuning one for its own reasons must not silently retune the other.
-const CONTENT_QUIET_ROUNDS = 2;
 // Hard anti-runaway ceiling, far above any real conversation's step count (the primary
 // bound is derived from the live scroll height each iteration).
 const WALK_ABSOLUTE_MAX_STEPS = 2000;
@@ -203,15 +197,8 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
   // measurement found rows go from absent straight to the full count, never through a
   // partial one (docs/live-dom-verification.md).
   let declaredTotal: number | null = null;
-  // Consecutive rounds that neither added a turn nor grew one already seen. Guards the early
-  // exit below: "every position is filled" is NOT the same as "there is nothing left to read",
-  // because a response still streaming when the export began fills its position with a
-  // fragment that later rounds upgrade. Counted rather than latched, and thresholded by
-  // `CONTENT_QUIET_ROUNDS`: one quiet round is a gap between tokens as easily as an end.
-  let quietRounds = 0;
 
   const record = (): void => {
-    let changed = false;
     for (const row of Array.from(doc.querySelectorAll(selectors.turnRow))) {
       const index = rowIndex(row);
       if (Number.isInteger(index)) seenRowIndices.add(index);
@@ -266,9 +253,7 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       const seen = turns.get(index);
       if (!seen) {
         turns.set(index, { role, content });
-        changed = true;
       } else if (content.length > seen.content.trim().length) {
-        changed = true;
         // Keep the fullest sighting of this turn, not merely the first non-empty one.
         // Upgrading only from empty would permanently pin a fragment captured while the
         // response was still streaming or hydrating: the walk would then go on to see the
@@ -278,32 +263,6 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
         seen.content = content;
       }
     }
-
-    quietRounds = changed ? 0 : quietRounds + 1;
-  };
-
-  // Every row the conversation declares has been collected AND the walk has gone quiet. That
-  // is a real termination condition: without it the walk can only guess it is finished by
-  // watching the scroll position stop moving, which costs `END_SETTLE_ROUNDS` extra rounds at
-  // each end plus a whole second pass, and cannot distinguish "the end" from "a stalled frame"
-  // at all.
-  //
-  // The quiet half is load-bearing, not belt-and-braces. A position being filled is not the
-  // same as a turn being finished: a response still streaming when the export began occupies
-  // its row with a fragment, and it is later rounds re-seeing that row that grow it (the "keep
-  // the fullest sighting" rule above). Stopping the moment every position held *something*
-  // would export the fragment and skip the upgrade — reintroducing the silent content
-  // truncation that rule exists to prevent (AGENTS.md #4). Waiting out `CONTENT_QUIET_ROUNDS`
-  // rounds in which nothing was added or grown costs a couple of rounds in the ordinary case
-  // and outlasts the streaming one.
-  //
-  // False until a total has been declared, so a markup change simply restores the old
-  // behavior rather than ending the walk early.
-  const collectedEverything = (): boolean => {
-    if (quietRounds < CONTENT_QUIET_ROUNDS) return false;
-    if (declaredTotal === null || turns.size !== declaredTotal) return false;
-    for (let i = 0; i < declaredTotal; i++) if (!turns.has(i)) return false;
-    return true;
   };
 
   // The walk drags the viewport across the whole conversation. Put the user back where they
@@ -313,20 +272,13 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
   try {
     // Pass 1 — up to the very first turn. Recording on the way means turns above the
     // starting window are captured here rather than waiting for the downward pass.
-    const reachedTop = await walk(
-      container,
-      stepDelayMs,
-      options.maxSteps,
-      record,
-      {
-        atEnd: (c) => c.scrollTop <= 0,
-        step: (c) => {
-          c.scrollTop = Math.max(0, c.scrollTop - stepPx);
-        },
-        stepPx,
+    const reachedTop = await walk(container, stepDelayMs, options.maxSteps, record, {
+      atEnd: (c) => c.scrollTop <= 0,
+      step: (c) => {
+        c.scrollTop = Math.max(0, c.scrollTop - stepPx);
       },
-      collectedEverything,
-    );
+      stepPx,
+    });
     if (!reachedTop) {
       throw new ExtractionError(
         'Timed out scrolling back to the start of the conversation. It may be unusually ' +
@@ -335,20 +287,13 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     }
 
     // Pass 2 — back down to the last turn.
-    const reachedBottom = await walk(
-      container,
-      stepDelayMs,
-      options.maxSteps,
-      record,
-      {
-        atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
-        step: (c) => {
-          c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
-        },
-        stepPx,
+    const reachedBottom = await walk(container, stepDelayMs, options.maxSteps, record, {
+      atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
+      step: (c) => {
+        c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
       },
-      collectedEverything,
-    );
+      stepPx,
+    });
     if (!reachedBottom) {
       throw new ExtractionError(
         'Timed out loading the full conversation while scrolling. The conversation may be ' +
@@ -364,18 +309,15 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
 
 /**
  * Step a scroll container toward one end, running `record` on every round (including
- * before the first step and after the last). Resolves true once `isComplete` reports the
- * conversation fully collected, or the end has held for `END_SETTLE_ROUNDS` consecutive
- * rounds; false if the step cap was hit first — the caller decides whether that is fatal.
- * The cap is recomputed from the live scroll height each round so a list that grows as it
- * hydrates is not cut short, while a stuck loop still terminates.
+ * before the first step and after the last). Resolves true once the end has held for
+ * `END_SETTLE_ROUNDS` consecutive rounds, false if the step cap was hit first — the
+ * caller decides whether that is fatal. The cap is recomputed from the live scroll height
+ * each round so a list that grows as it hydrates is not cut short, while a stuck loop
+ * still terminates.
  *
- * `isComplete` is checked before the end test because it is the stronger signal: reaching a
- * scroll boundary is only evidence that the viewport stopped moving, whereas having every
- * declared row in hand is proof there is nothing left to find. Nothing is lost by stopping
- * an upward pass that has already collected the conversation — the guards it feeds
- * (`reachedTop`, and `buildMessages`' leading-hole branch) fire only when something is
- * missing.
+ * Deliberately NOT ended early on the declared row total, even though `collectVirtualizedTurns`
+ * now reads one — "every position is filled" is not "every turn is finished". See
+ * docs/live-dom-verification.md → "a declared total is an oracle, not a termination condition".
  */
 async function walk(
   container: HTMLElement,
@@ -383,12 +325,10 @@ async function walk(
   maxSteps: number | undefined,
   record: () => void,
   motion: { atEnd: (c: HTMLElement) => boolean; step: (c: HTMLElement) => void; stepPx: number },
-  isComplete: () => boolean,
 ): Promise<boolean> {
   let atEndHits = 0;
   for (let step = 0; ; step++) {
     record();
-    if (isComplete()) return true;
     if (motion.atEnd(container)) {
       if (++atEndHits >= END_SETTLE_ROUNDS) return true;
     } else {

@@ -235,15 +235,34 @@ adapter depends on, so the numbers matter:
   smaller number: there is no partial state inside a conversation to latch onto, which is what makes
   reading the *smallest* declared total safe.
 
-`buildMessages` now fails loud when fewer rows were collected than the declared total, and the walk
-terminates once it holds every declared row *and* has gone quiet, instead of waiting out
-`END_SETTLE_ROUNDS` at each end and then running a second pass with nothing left to find. The quiet
-requirement is not decoration: a position being filled is not the same as a turn being finished, so
-ending on the count alone would export a still-streaming response at whatever fragment happened to be
-rendered. The adapter reads the **smallest** total observed during a walk: since the total tracks the live
-list, a message arriving mid-export raises it, and reading the largest would fail an export over
-turns that did not exist when it began. That costs nothing in the case the check exists for — a walk
-that stops short sees the true total on every row it did reach.
+`buildMessages` now fails loud when fewer rows were collected than the declared total. The adapter
+reads the **smallest** total observed during a walk: since the total tracks the live list, a message
+arriving mid-export raises it, and reading the largest would fail an export over turns that did not
+exist when it began. That costs nothing in the case the check exists for — a walk that stops short
+sees the true total on every row it did reach.
+
+#### A declared total is an oracle, not a termination condition
+
+Worth recording because it is the non-obvious half, and it cost this branch a P0 before review caught
+it. Ending the walk once every declared position is filled looks like the natural use of the number
+and is wrong: a position being *filled* is not a turn being *finished*.
+
+The bottom turn of a still-streaming response is captured as a fragment in the walk's first round.
+The walk then moves up and the virtualizer **recycles that row out of the DOM** — after which no
+later round can grow it, because the adapter can only re-read rows that are rendered. A "have we
+collected everything?" test is therefore satisfied at the top of the conversation, where the
+streaming turn does not exist in the DOM at all, and a walk that stopped there would never return to
+the bottom. Adding a quiescence requirement does not save it: "no turn grew this round" is equally
+true when the growing turn is off-screen. Measured on the test fake at 20 turns against a 250 px
+viewport: the early-exit version ended at round 17 and exported a 4-character fragment, where the
+unmodified walk ran 32 rounds and exported the whole answer — with the full suite green.
+
+So the walk still runs both passes to their scroll ends, and the downward pass — which finishes at
+the bottom, where streaming happens — is what gives the last turn its final sighting. Pinned by two
+tests in `test/adapters/claude/collect-virtualized.test.ts`: one that exports a recycled streaming
+turn in full, and one asserting the walk takes the *same* number of rounds with a declared total as
+without. A real termination condition needs a stream-completion signal, which has never been
+measured; tracked in `backlog.md`.
 
 Incidental, and NOT the scope of this session: `minIndex` was **0** in all four walks, which
 re-measures on n=4 the 0-based rule `buildMessages` had generalized from a single conversation.

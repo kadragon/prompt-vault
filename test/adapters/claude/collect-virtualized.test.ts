@@ -430,30 +430,36 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     expect(messages).toHaveLength(10);
   });
 
-  // The sharp edge of ending the walk on the declared total: a position being FILLED is not
-  // the same as a turn being FINISHED. A response still streaming when the export starts holds
-  // its row with a fragment, and it is later rounds that grow it. Ending the moment every
-  // position held something would export the fragment — the silent content truncation the
-  // "keep the fullest sighting" rule already exists to prevent. Every row here renders from
-  // round one, so completeness is reached while the turn is still mid-stream.
-  it('does not end the walk on a turn that is still streaming, even once every row is collected', async () => {
-    const turns = alternating(4);
-    turns[2] = { ...turns[2], partial: true, content: 'the complete assistant answer' };
-    const doc = makeWindowedDoc({ turns, clientHeight: 400, setSize: 4 });
-    const messages = await collectVirtualizedTurns(doc, fast);
-    expect(messages[2].content).toBe('the complete assistant answer');
+  // The declared total is an oracle, NOT a termination condition, and this is the test that
+  // keeps it that way. Ending the walk once every declared position is filled looks safe and
+  // is not: a position being FILLED is not a turn being FINISHED. The bottom turn of a
+  // still-streaming response is captured as a fragment in the first round, then RECYCLED out
+  // of the DOM as the walk moves up — after which no later round can grow it, because the
+  // adapter can only re-read rows that are rendered. A walk that stopped on the count would
+  // therefore never return to the bottom, and would export the fragment with no error
+  // (AGENTS.md #4). Reviewers caught exactly this: an earlier revision of this branch ended at
+  // round 17 exporting "the", where the undeclared path ran 32 rounds and exported the whole
+  // answer.
+  //
+  // The geometry matters — 20 turns against a 250px viewport genuinely recycles. A shape where
+  // every row stays rendered cannot reproduce it, which is why the first attempt at this test
+  // passed against the broken code.
+  it('does not let the declared total shorten the walk past a still-streaming turn', async () => {
+    const turns = alternating(20);
+    turns[19] = { ...turns[19], partial: true, content: 'the complete assistant answer' };
+    const declared = makeWindowedDoc({ turns, setSize: 20 });
+    const messages = await collectVirtualizedTurns(declared, fast);
+    expect(messages[19].content).toBe('the complete assistant answer');
   });
 
-  // Without the declared total the walk can only infer it is finished from the scroll
-  // position holding still, which costs END_SETTLE_ROUNDS at each end and a full second pass.
-  // Having every declared row in hand — and no round still changing them — is proof, not
-  // inference.
-  it('stops the walk as soon as every declared row is collected', async () => {
+  // The same invariant stated directly: knowing the total must not change how far the walk
+  // goes. Any future attempt to end early on the count trips this, whatever shape it takes.
+  it('walks exactly as far with a declared total as without one', async () => {
     const declared = makeWindowedDoc({ turns: alternating(20), setSize: 20 });
     const undeclared = makeWindowedDoc({ turns: alternating(20) });
     expect(await collectVirtualizedTurns(declared, fast)).toHaveLength(20);
     expect(await collectVirtualizedTurns(undeclared, fast)).toHaveLength(20);
-    expect(roundsOf(declared)).toBeLessThan(roundsOf(undeclared));
+    expect(roundsOf(declared)).toBe(roundsOf(undeclared));
   });
 
   // The declared total tracks the live list (live 2026-07-25: 2 -> 4 across one exchange), so

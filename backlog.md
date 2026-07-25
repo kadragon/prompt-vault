@@ -11,6 +11,24 @@ marker is removed by hand once the blocking ticket lands.
 
 - [ ] [HARNESS] Add `addons-linter` (web-ext lint) as a CI step — validates the MV3 manifest and flags extension-unsafe patterns (`eval`, remote scripts, over-broad permissions). *(deferred: addons-linter is Firefox/AMO-oriented — on our Chrome-only MV3 manifest it only emits Firefox false-positives (`ADDON_ID_REQUIRED` gecko id, `gecko/data_collection_permissions`). No real Chrome value now; static analysis is covered by CodeQL + type-checked eslint + the privacy gate. Revisit if Firefox support is ever added.)*
 
+## Extraction completeness
+
+- [ ] [FEAT] Give the Claude walk a real termination condition — one that can tell "the newest turn
+      stopped growing" from "the newest turn is off-screen". PR #36 established that
+      `aria-setsize` cannot do this on its own: the walk collects the bottom turn as a fragment,
+      the virtualizer recycles that row away, and every "is it complete / has it gone quiet?"
+      test then passes at the top of the conversation while the response is still streaming
+      (measured: early exit at round 17 exporting a 4-character fragment vs 32 rounds exporting
+      the full answer — see `docs/live-dom-verification.md` → "a declared total is an oracle, not
+      a termination condition"). Today the walk therefore runs both passes to their scroll ends,
+      which is correct but pays a full second traversal on every export. A fix needs a
+      **stream-completion signal** — whatever Claude renders while generating (a stop button, an
+      `aria-busy`, a streaming class on the turn) — and none of it has been measured, so it must
+      not be guessed at (AGENTS.md #5). Note the same signal would also improve on today's
+      behavior at the bottom, where the walk stops on scroll-settle regardless of whether the
+      last turn is still growing. *(blocked by: needs a live session capturing the markup of a
+      conversation mid-response — see `docs/live-dom-verification.md`)*
+
 ## Next (roadmap — not v1)
 
 - [ ] Gemini adapter (reuse core model + exporters via ConversationAdapter)
