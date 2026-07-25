@@ -4,6 +4,7 @@ import type { SidebarConversation } from '../../src/core/sidebar';
 import type { ExportFormat } from '../../src/content/save-conversation';
 import type { BulkExportSummary } from '../../src/content/bulk-export';
 import { openBulkPanel, BULK_PANEL_ID, type BulkPanelDeps } from '../../src/content/bulk-panel';
+import { bulkLoadMoreProgressMessage } from '../../src/strings';
 
 function freshDoc(): Document {
   const window = new Window();
@@ -274,6 +275,69 @@ describe('openBulkPanel', () => {
 
     expect(exportBtn.disabled).toBe(true); // still locked — no second batch can start
     expect(panel.textContent).not.toContain('Delta'); // no interactive row appended mid-batch
+  });
+
+  it('streams onProgress into the status line while a load is in flight, then clears it', async () => {
+    const doc = freshDoc();
+    let resolveLoad!: (list: SidebarConversation[]) => void;
+    let onProgress: ((loaded: number) => void) | undefined;
+    const d: BulkPanelDeps = {
+      listConversations: () => CONVS,
+      loadMore: (cb) => {
+        onProgress = cb;
+        return new Promise<SidebarConversation[]>((r) => (resolveLoad = r));
+      },
+      run: deps({ total: 0, succeeded: 0, failed: [] }).run,
+    };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    buttonByText(panel, 'Load more').click();
+    await flush();
+    onProgress?.(340);
+    expect(panel.textContent).toContain(bulkLoadMoreProgressMessage(340));
+
+    resolveLoad(CONVS);
+    await flush();
+    expect(panel.textContent).not.toContain(bulkLoadMoreProgressMessage(340));
+  });
+
+  it('a progress callback firing after a batch has started does not touch the status line', async () => {
+    const doc = freshDoc();
+    let resolveLoad!: (list: SidebarConversation[]) => void;
+    let onProgress: ((loaded: number) => void) | undefined;
+    const run = vi.fn(
+      (selected: SidebarConversation[], _f: ExportFormat, batchProgress: (c: number, t: number, title: string) => void) => {
+        batchProgress(0, selected.length, selected[0].title);
+        return new Promise<BulkExportSummary>(() => {}); // batch stays in flight
+      },
+    );
+    const d: BulkPanelDeps = {
+      listConversations: () => CONVS,
+      loadMore: (cb) => {
+        onProgress = cb;
+        return new Promise<SidebarConversation[]>((r) => (resolveLoad = r));
+      },
+      run,
+    };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    check(checkboxes(panel)[1]); // select Alpha
+    const exportBtn = buttonByText(panel, 'Export 1 selected');
+    buttonByText(panel, 'Load more').click(); // loadMore now pending
+    await flush();
+    exportBtn.click(); // batch takes over the modal while loadMore is still in flight
+    await flush();
+    const batchStatus = panel.textContent;
+
+    onProgress?.(340); // a late load-more tick must not clobber the batch's own progress line
+    expect(panel.textContent).toBe(batchStatus);
+    expect(panel.textContent).not.toContain(bulkLoadMoreProgressMessage(340));
+
+    resolveLoad(CONVS); // and the eventual settle must also stay inert
+    await flush();
+    expect(panel.textContent).toBe(batchStatus);
   });
 
   it('closes on Cancel', () => {

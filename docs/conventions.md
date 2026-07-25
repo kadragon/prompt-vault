@@ -49,3 +49,9 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   the live site, so tests are deterministic. Capture a fresh fixture when a site's DOM changes.
 - Fixtures freeze the DOM, so they cannot detect that the site's markup moved. Re-verify selectors
   against the logged-in live page per `docs/live-dom-verification.md`, and stamp the result.
+- A test guarding a loop/scroll invariant must be **verified to fail** under a targeted
+  neutralization of the exact guard it names — flip the condition, re-run, confirm red, revert.
+  Nothing enforces this mechanically, and a loosely-bounded assertion (`toBeLessThan(rounds)`,
+  where the bound has slack for a violation on every round) passes either way while reading as
+  proof. Assert the shape the violation would actually produce instead — e.g. a duplicate
+  progress count rather than merely "fewer ticks than rounds".

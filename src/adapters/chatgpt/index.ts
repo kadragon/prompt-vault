@@ -75,6 +75,15 @@ export interface AutoScrollOptions {
   maxSteps?: number;
 }
 
+/**
+ * `AutoScrollOptions` plus the conversation-list loaders' progress callback. Kept separate
+ * from `AutoScrollOptions` itself, which `extract`'s message-viewport walk also uses and has
+ * no use for a progress signal.
+ */
+export interface LoadMoreScrollOptions extends AutoScrollOptions {
+  onProgress?: (loaded: number) => void;
+}
+
 // ChatGPT's own icon-button classes — the same shape as the header's native square
 // icon controls (e.g. the conversation-options button): a 36px square, centered
 // glyph, rounded corners, and the surface-hover token. Wearing them makes the
@@ -710,7 +719,7 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
  */
 export async function loadMoreConversations(
   root: ParentNode = document,
-  options: AutoScrollOptions = {},
+  options: LoadMoreScrollOptions = {},
 ): Promise<SidebarConversation[]> {
   const history = root.querySelector(selectors.sidebarHistory);
   if (!history) return [];
@@ -730,6 +739,7 @@ export async function loadMoreConversations(
         'unusually long; try again, or report if this persists.',
       settled: endOfListGate(),
       defaults: SIDEBAR_SCROLL_DEFAULTS,
+      onProgress: options.onProgress,
     },
   );
   return [...acc.values()];
@@ -743,7 +753,7 @@ export async function loadMoreConversations(
  */
 export async function loadMoreProjectConversations(
   root: ParentNode = document,
-  options: AutoScrollOptions = {},
+  options: LoadMoreScrollOptions = {},
 ): Promise<SidebarConversation[]> {
   const section = projectListSection(root);
   if (!section) return [];
@@ -763,6 +773,7 @@ export async function loadMoreProjectConversations(
         'unusually long; try again, or report if this persists.',
       settled: endOfListGate(),
       defaults: SIDEBAR_SCROLL_DEFAULTS,
+      onProgress: options.onProgress,
     },
   );
   return [...acc.values()];
@@ -870,10 +881,13 @@ async function scrollUntilStable(
     timeoutMessage,
     settled = () => true,
     defaults = {},
+    onProgress,
   }: {
     timeoutMessage: string;
     settled?: (container: HTMLElement) => boolean;
     defaults?: AutoScrollOptions;
+    /** Fired with `count()`'s value, but only on a round that actually grew it. */
+    onProgress?: (count: number) => void;
   },
 ): Promise<void> {
   const {
@@ -891,6 +905,7 @@ async function scrollUntilStable(
     // call on a round where the count grew would leave it reading a stale position.
     const stillScrolling = !settled(container);
     if (current > lastCount || stillScrolling) {
+      if (current > lastCount) onProgress?.(current); // Report only genuine new-row rounds.
       stalls = 0; // Progress, or not yet at the end of the list — keep going.
     } else {
       stalls++;

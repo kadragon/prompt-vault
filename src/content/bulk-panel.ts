@@ -21,6 +21,7 @@ import {
   BULK_PANEL_SELECT_ALL,
   BULK_PANEL_TITLE,
   bulkExportButtonLabel,
+  bulkLoadMoreProgressMessage,
   bulkProgressMessage,
   bulkSummaryMessage,
 } from '../strings';
@@ -55,9 +56,11 @@ export interface BulkPanelDeps {
    * lazy-loading history sidebar) and resolve with the full, updated list. When
    * present, the panel shows a "Load more" button that invokes this and appends the
    * newly-revealed conversations to the checklist, preserving existing selections.
-   * Omit when the source is not virtualized — the button is then not shown.
+   * Omit when the source is not virtualized — the button is then not shown. Accepts an
+   * optional `onProgress(loaded)` reporting the running count surfaced so far, so the
+   * panel can stream a status line during the (potentially multi-minute) scroll.
    */
-  loadMore?: () => Promise<SidebarConversation[]>;
+  loadMore?: (onProgress?: (loaded: number) => void) => Promise<SidebarConversation[]>;
 }
 
 /**
@@ -404,7 +407,9 @@ interface LoadMoreArgs {
  * If an export batch was started while this load was in flight, the batch has taken over
  * the modal (controls locked, `status` streaming progress); this completion must then be
  * inert — it must not append interactive rows, re-enable controls, or clobber the batch's
- * progress line (which would otherwise let a second concurrent batch start).
+ * progress line (which would otherwise let a second concurrent batch start). The same guard
+ * applies to the in-flight `onProgress` callback, so a batch that starts mid-scroll cannot
+ * have its progress line overwritten by a late-arriving load-more tick either.
  */
 async function loadMore(args: LoadMoreArgs): Promise<void> {
   const { loadMoreBtn, appendRow, shown, refreshExport, syncSelectAll, status, deps, isBatchStarted } = args;
@@ -413,8 +418,12 @@ async function loadMore(args: LoadMoreArgs): Promise<void> {
   loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_BUSY;
   const before = shown.length;
   try {
-    const updated = await deps.loadMore();
+    const updated = await deps.loadMore((loaded) => {
+      if (isBatchStarted() || loaded <= 0) return;
+      status.textContent = bulkLoadMoreProgressMessage(loaded);
+    });
     if (isBatchStarted()) return; // A batch took over while loading — leave the modal to it.
+    status.textContent = ''; // Loading… line is stale now the scroll settled either way.
     for (const conversation of updated) appendRow(conversation);
     if (shown.length > before) {
       syncSelectAll();

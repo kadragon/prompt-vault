@@ -55,6 +55,11 @@ export const BULK_PANEL_LOAD_MORE = m('bulkPanelLoadMore');
 export const BULK_PANEL_LOAD_MORE_BUSY = m('bulkPanelLoadMoreBusy');
 export const BULK_PANEL_LOAD_MORE_DONE = m('bulkPanelLoadMoreDone');
 
+/** Progress line while "Load more" walks the list, e.g. "Loading conversations… 340 so far". */
+export function bulkLoadMoreProgressMessage(loaded: number): string {
+  return m('bulkLoadMoreProgressMessage', [String(loaded)]);
+}
+
 // Shown when the history sidebar lists no conversations to choose from (fail-loud:
 // the panel opens but makes clear there is nothing to export rather than showing an
 // empty, actionless list).

@@ -393,7 +393,7 @@ function openBulkExport(doc: Document): void {
     // row across rounds (a single post-scroll re-scan would drop rows a recycling
     // virtualizer trims off the top) and return the full list.
     loadMore: adapter.loadMoreConversations
-      ? () => adapter.loadMoreConversations!(doc)
+      ? (onProgress) => adapter.loadMoreConversations!(doc, { onProgress })
       : undefined,
   });
 }
@@ -424,7 +424,7 @@ function openProjectBulkExport(doc: Document): void {
     // "Load more": scroll the virtualized project list, accumulating every surfaced row
     // across rounds and returning the full list (see the history track above).
     loadMore: adapter.loadMoreProjectConversations
-      ? () => adapter.loadMoreProjectConversations!(doc)
+      ? (onProgress) => adapter.loadMoreProjectConversations!(doc, { onProgress })
       : undefined,
   });
 }
@@ -439,8 +439,9 @@ interface BulkTrack {
    * Optional: load not-yet-rendered conversations from a virtualized source and resolve
    * with the full updated list (wired to the adapter's `loadMore*` + `list*`). Absent
    * when the track's source is not virtualized — the panel then shows no "Load more".
+   * Accepts an optional `onProgress(loaded)`, forwarded into the adapter's options bag.
    */
-  loadMore?: () => Promise<SidebarConversation[]>;
+  loadMore?: (onProgress?: (loaded: number) => void) => Promise<SidebarConversation[]>;
 }
 
 /**
