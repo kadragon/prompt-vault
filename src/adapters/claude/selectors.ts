@@ -39,7 +39,11 @@ export const selectors = {
    * key and the sort key while accumulating across scroll rounds, and its numbering is
    * what lets extraction detect a gap instead of silently returning a partial.
    * Verified against the live page (2026-07-25): 50 distinct values were surfaced on a
-   * conversation that never rendered more than 16 turn nodes at once.
+   * conversation that never rendered more than 16 turn nodes at once. A second walk the
+   * same day confirmed the numbering is **0-based and dense** (0…55 on a 56-row
+   * conversation) — which is why `buildMessages` can treat a range starting above 0 as a
+   * hole. A row is NOT guaranteed to hold exactly one `turn`, or any: see
+   * docs/live-dom-verification.md → "not every indexed row is a readable turn".
    */
   turnRow: '[data-index]',
 
@@ -56,6 +60,34 @@ export const selectors = {
    * `scrollHeight 2922 > clientHeight 592`, carrying `data-autoscroll-container`.
    */
   scrollContainer: '[data-autoscroll-container]',
+
+  /**
+   * A file-attachment thumbnail inside a virtualizer row. Its `alt` carries the file name
+   * verbatim, which is what `[File: …]` reports — the same shape the ChatGPT adapter emits
+   * from its own attachment tiles. Verified against the live page (2026-07-25): a user turn
+   * holding one PDF rendered `<img alt="<name>.pdf">` inside the tile, and the tile's own
+   * `data-testid` was the file name too — `alt` is preferred because a test id whose *value*
+   * is user data is not a contract, while `alt` is the standard accessible name.
+   *
+   * Scoped to the measured `button > img` path rather than a bare `img[alt]`: the query runs
+   * against a whole virtualizer row, so any decorative or control image carrying an `alt`
+   * would otherwise be reported as a file — fabricating a name, the exact failure the
+   * `alt`-over-`data-testid` rationale above exists to avoid. Claude's `group/thumbnail`
+   * wrapper class is avoided in favour of the standard tags. If Claude restructures the tile,
+   * this stops matching and the row goes back to failing loud, which is the safe direction.
+   */
+  attachmentImage: 'button > img[alt]',
+
+  /**
+   * Claude's per-message "edit" control, which exists ONLY on the user's own messages.
+   * Verified against the live page (2026-07-25) by surveying every `data-testid` in the 54
+   * single-turn rows of a 56-row conversation and partitioning by role: `action-bar-edit`
+   * and `user-message` were user-exclusive, `action-bar-read-aloud`/`action-bar-retry`
+   * assistant-exclusive, `action-bar-copy` shared. That exclusivity is what lets an
+   * attachment-only row — which has no `user-message` node at all — be attributed to the
+   * user without guessing.
+   */
+  userActionBar: '[data-testid="action-bar-edit"]',
 
   /**
    * The header action bar holding Claude's native controls (Share, chat options). The

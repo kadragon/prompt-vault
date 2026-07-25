@@ -30,24 +30,31 @@
 ### Claude adapter — follow-ups from the 2026-07-25 live session
 
 - [ ] [VERIFY] Rendered Claude UI: load-unpacked per `docs/runbook.md`, open a real `claude.ai/chat/<id>`, and confirm (a) the export buttons mount inside `[data-testid="wiggle-controls-actions"]` to the left of Share and wear Claude's chrome in both light and dark, (b) each of MD/PDF/JSON/HTML downloads, and (c) a long (30+ turn) conversation exports every turn — the walk is unit-covered against a recycling fake but has never run against the real virtualizer. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session)*
-- [ ] [VERIFY] Attachment-only user turns. Raised on PR #34 (P1, conf 60) as the most likely
-      real-world extraction failure in the new adapter, and NOT closeable from code: the
-      2026-07-25 session captured only text turns. A user turn holding only an uploaded FILE
-      yields no text, so `buildMessages` throws "Some conversation turns could not be
-      read… wait for it to finish, then try again" — an error that never resolves, permanently
-      blocking export of any conversation containing one. (Image-only turns are already
-      handled: `readUserContent` emits `[Image]` off the standard `<img>` tag.) Capture the
-      markup of a file-attachment tile inside `[data-testid="user-message"]`, then add a
-      marker path mirroring the ChatGPT adapter's `fileMarkers` (`[File: name]`). Until then
-      the failure is at least loud, not silent.
-- [ ] [VERIFY] Indexed rows that are not plain text turns — extended-thinking blocks, artifact
-      cards, tool calls. Raised on PR #34 (P1 conf 55 / P2 conf 50). Two adapter assumptions
-      rest on one 50-turn conversation that contained none of these: (a) exactly one turn node
-      per `[data-index]` row, and (b) every indexed row is a turn the adapter can match.
-      Both now degrade safely rather than silently — several nodes in a row are joined, and a
-      gap whose row DID render reports "could not read" instead of blaming the walk — but a
-      conversation with an artifact still fails loud rather than exporting it. Measure
-      `turnsPerRow` and the matched-vs-indexed row counts on a conversation containing an
-      extended-thinking response, an artifact, and a tool call, then decide whether those rows
-      need their own selectors.
-- [ ] [VERIFY] Confirm whether Claude's `data-index` is 0-based. The 2026-07-25 snippet dropped `min`/`max` from its output, so `buildMessages` asserts only that the collected indices are **contiguous**, not that they start at 0. If the index is 0-based, a `min !== 0` check would additionally catch a walk that never reached the first turn — today only the reached-top guard covers that. One console snippet on a long conversation answers it.
+- [ ] [VERIFY] User turns holding BOTH text and a file attachment. The 2026-07-25 walk captured only
+      an attachment-ONLY turn (no `user-message` node, claimed at row level by `attachmentMarkers`);
+      a mixed turn was never seen, so where its tiles sit relative to `user-message` is unknown.
+      Today such a turn exports its text and reports nothing about the file — an omission, not a loud
+      failure, and the one place the Claude adapter is NOT at parity with the ChatGPT adapter, whose
+      `readTurn` joins `[base, files]`. Not fixed blind on purpose: running `attachmentMarkers` over a
+      claimed row would also sweep up a *pasted image* inside `user-message` and label it `[File: …]`.
+      Capture the markup of a mixed turn, then decide whether the row-level scan should also run on
+      claimed rows and how to exclude images belonging to the turn body. *(blocked by: needs a live
+      session on a conversation containing a text+attachment turn — see `docs/live-dom-verification.md`)*
+- [ ] [VERIFY] Re-measure `minIndex` on a second, longer conversation. `buildMessages` now fails the
+      whole export when the collected index range starts above 0, a rule generalized from **one**
+      56-row conversation. If any conversation renders a non-0-based `data-index` (a virtualizer
+      offset base when prepending older turns, say), every export of it would fail permanently with
+      advice that cannot help. One console snippet reporting `minIndex` answers it; until then the
+      n=1 basis is recorded in the code comment at `buildMessages`.
+- [ ] [VERIFY] Indexed rows carrying extended thinking, an artifact, or a tool call. Narrowed
+      from the original item by the 2026-07-25 second live walk, which settled the *structural*
+      half: a 56-row conversation measured 54 rows with one turn node, one with four, and one
+      with none, so neither 1:1 nor every-row-is-matchable holds (recorded in
+      `docs/live-dom-verification.md`). The 0-turn row was an attachment turn and is now
+      handled; the 4-node row is an assistant turn whose blocks the existing join path exports
+      intact. What remains unsettled is whether that conversation contained any of the three
+      features at all — nothing in the row distinguished them — so it is still unknown how an
+      artifact card or a tool call renders, and whether either yields a row the adapter cannot
+      claim. Re-run the row census on a conversation *known* to contain each, and only then
+      decide whether they need their own selectors. *(blocked by: needs a live session on a
+      conversation containing an artifact and a tool call — see `docs/live-dom-verification.md`)*

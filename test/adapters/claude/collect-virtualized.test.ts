@@ -9,9 +9,14 @@ import { ExtractionError } from '../../../src/core/errors';
 // This is the worst case for the walk: a single jump to either end renders only that
 // window, so the walk must STEP through every window to see every turn.
 //
-// Each turn sits in its own `[data-index]` row (live: exactly one turn node per row, zero
-// orphans), and its `data-index` is its conversation position (live: contiguous, and stable
-// across a full up-then-down walk — zero index→role conflicts).
+// Each turn sits in its own `[data-index]` row, and its `data-index` is its conversation
+// position (live: contiguous, 0-based, and stable across a full up-then-down walk — zero
+// index→role conflicts).
+//
+// One turn node per row is the COMMON case, not a guarantee: a 56-row conversation measured
+// live 2026-07-25 held 54 such rows, one row with four turn nodes, and one with none (an
+// attachment-only user turn). The `extraNodes` and `attachments` flags below model those two
+// shapes, so the default 1:1 turn here is a convenience, not an assumption under test.
 interface Turn {
   role: 'user' | 'assistant';
   content: string;
@@ -36,6 +41,18 @@ interface Turn {
   extraNodes?: string[];
   /** Row renders with this index instead of its position — used to punch a hole. */
   indexOverride?: number;
+  /**
+   * A user turn holding ONLY file attachments. Live (2026-07-25, row 50 of 56): such a row
+   * renders NO `user-message` node — the tiles sit beside the action bar — so the turn query
+   * matches nothing and the row must be read off its thumbnails instead. Values are the
+   * `alt` texts; an empty string models a tile that rendered without one.
+   */
+  attachments?: string[];
+  /**
+   * Suppress the user-exclusive edit control on an `attachments` row, so it cannot be
+   * attributed to the user. Such a row must stay unclaimed and fail loud, not be guessed at.
+   */
+  noEditBar?: boolean;
 }
 
 const TURN_H = 100;
@@ -85,6 +102,16 @@ function makeWindowedDoc({
   const makeRow = (t: Turn, i: number) => ({
     getAttribute: (name: string): string | null =>
       name === 'data-index' && !t.unindexed ? String(t.indexOverride ?? i) : null,
+    // Only an attachment row carries tiles and the user-exclusive edit control; every other
+    // row answers both queries empty, exactly as a prose row does live.
+    querySelector: (sel: string): unknown =>
+      sel === '[data-testid="action-bar-edit"]' && t.attachments && !t.noEditBar ? {} : null,
+    querySelectorAll: (sel: string): unknown[] =>
+      sel === 'button > img[alt]' && t.attachments
+        ? t.attachments.map((alt) => ({
+            getAttribute: (name: string): string | null => (name === 'alt' ? alt : null),
+          }))
+        : [],
   });
 
   const makeNode = (t: Turn, i: number, override?: string) => {
@@ -118,9 +145,12 @@ function makeWindowedDoc({
   };
 
   // Every turn node currently rendered, including any `extraNodes` sharing a turn's row.
+  // An `attachments` turn contributes NO turn node — that is the whole point of the shape.
   const visibleNodes = (): unknown[] =>
     turns.flatMap((t, i) =>
-      intersects(i) ? [makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c))] : [],
+      intersects(i) && !t.attachments
+        ? [makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c))]
+        : [],
     );
 
   return {
@@ -276,6 +306,75 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     for (let i = 8; i < turns.length; i++) turns[i] = { ...turns[i], indexOverride: i + 1 };
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
       /between positions 7 and 9/,
+    );
+  });
+
+  // Contiguity alone cannot see a range that is complete but starts late: turns 1..n are as
+  // contiguous as 0..n. Claude numbers rows from zero (live 2026-07-25: `minIndex` 0 on a
+  // 56-row conversation), so position 0 missing is a hole, not an offset.
+  it('fails loud when the collected range never reaches position 0', async () => {
+    const turns = alternating(12);
+    // Every row reports one position higher than it holds, so 0 is unclaimed while the rest
+    // stays contiguous — the exact shape a contiguity-only check waves through.
+    for (let i = 0; i < turns.length; i++) turns[i] = { ...turns[i], indexOverride: i + 1 };
+    await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
+      /first turn never loaded/,
+    );
+  });
+
+  // A leading hole splits the same two ways an interior one does, and pointing the user at
+  // the top of a conversation they already scrolled through would send them in circles.
+  it('blames unreadable markup when position 0 DID render as a row', async () => {
+    const turns = alternating(12);
+    turns.unshift({ role: 'user', content: '', neverFills: true });
+    const doc = makeWindowedDoc({ turns });
+    // Leave row 0 visible (so it lands in seenRowIndices) but hide its turn node, the shape
+    // of a row holding something the adapter does not recognize at all.
+    const original = doc.querySelectorAll.bind(doc);
+    (doc as unknown as { querySelectorAll: (sel: string) => unknown[] }).querySelectorAll = (
+      sel: string,
+    ) => {
+      const out = original(sel) as unknown as {
+        closest?: (s: string) => { getAttribute(n: string): string | null } | null;
+      }[];
+      if (sel === '[data-index]') return out;
+      return out.filter((n) => n.closest?.('[data-index]')?.getAttribute('data-index') !== '0');
+    };
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/position 0 that this/);
+  });
+
+  // The failure this shape used to cause was total: one attachment-only turn made the whole
+  // conversation unexportable, because its row claimed a position no turn could fill.
+  it('describes an attachment-only user turn instead of failing the whole export', async () => {
+    const turns = alternating(9);
+    turns[4] = { role: 'user', content: '', attachments: ['report.pdf'] };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(9);
+    expect(messages[4]).toEqual({ role: 'user', content: '[File: report.pdf]' });
+  });
+
+  it('lists every attachment on a turn holding several', async () => {
+    const turns = alternating(9);
+    turns[4] = { role: 'user', content: '', attachments: ['a.pdf', 'b.png'] };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages[4].content).toBe('[File: a.pdf]\n\n[File: b.png]');
+  });
+
+  // The recognizer is deliberately narrow: it claims a row only on the evidence that was
+  // actually measured. Anything else keeps the old loud failure rather than being guessed at.
+  it('leaves a turnless row unclaimed when it cannot be attributed to the user', async () => {
+    const turns = alternating(9);
+    turns[4] = { role: 'user', content: '', attachments: ['report.pdf'], noEditBar: true };
+    await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
+      /could not read/,
+    );
+  });
+
+  it('leaves a turnless row unclaimed when its tiles carry no name to report', async () => {
+    const turns = alternating(9);
+    turns[4] = { role: 'user', content: '', attachments: [''] };
+    await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
+      /could not read/,
     );
   });
 

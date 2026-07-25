@@ -157,8 +157,14 @@ interface CollectedTurn {
  * indices of a fully-walked conversation are contiguous, so a hole proves turns were
  * missed and extraction fails loud instead of returning a plausible-looking partial
  * (AGENTS.md #4). Verified live (2026-07-25): a full up-then-down walk produced a
- * contiguous range with zero index→role conflicts, exactly one turn node per indexed row,
- * and no turn lacking an indexed ancestor.
+ * contiguous range starting at 0, with zero index→role conflicts and no turn lacking an
+ * indexed ancestor.
+ *
+ * One turn node per row is NOT safe to assume, though — a second live walk the same day
+ * over a 56-row conversation measured 54 rows with one turn node, one row with FOUR, and
+ * one row with NONE (an attachment-only user turn). Both off-nominal shapes are handled:
+ * several nodes in a row are joined, and a row that yields no turn surfaces as a gap that
+ * `buildMessages` reports against the rendered-row set. See docs/live-dom-verification.md.
  *
  * Falls back to a one-shot snapshot when there is no scroll container, or when it has zero
  * height (a hidden/background tab never scrolls, so the walk would crawl to the step cap).
@@ -188,8 +194,9 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     // joined rather than fighting each other. Dedupe across rounds happens after: same row
     // seen again → keep whichever round rendered more of it. Collapsing both steps into one
     // map would make a second node in a row look like a re-sighting of the first and drop it
-    // silently (AGENTS.md #4). Live data showed exactly one turn node per row, but that was
-    // one conversation with no extended-thinking or artifact turns.
+    // silently (AGENTS.md #4). This is not a defensive hypothetical: a 56-row conversation
+    // measured live 2026-07-25 held a row with FOUR `.standard-markdown` blocks, all of them
+    // one assistant turn's content.
     const round = new Map<number, { role: Role; parts: string[] }>();
     for (const el of Array.from(doc.querySelectorAll(selectors.turn))) {
       const index = rowIndex(el.closest(selectors.turnRow));
@@ -202,6 +209,24 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       const existing = round.get(index);
       if (existing) existing.parts.push(readTurn(el));
       else round.set(index, { role: roleOf(el), parts: [readTurn(el)] });
+    }
+
+    // A user turn holding ONLY attachments renders no `user-message` node at all — the
+    // tiles sit in the row beside the action bar, with nothing the turn query can match
+    // (verified live 2026-07-25 on row 50 of a 56-row conversation). Left alone, that row
+    // is a position no turn claims, so `buildMessages` reports it as unreadable and the
+    // WHOLE conversation fails to export. Describe it instead, the way the ChatGPT adapter
+    // describes its attachment tiles.
+    //
+    // Deliberately narrow: a row qualifies only if it carries attachment images AND the
+    // user-exclusive edit control. A row failing either test is left unclaimed and still
+    // fails loud (AGENTS.md #4) — this recognizes the one shape that was measured rather
+    // than guessing at every row the turn query happens to miss.
+    for (const row of Array.from(doc.querySelectorAll(selectors.turnRow))) {
+      const index = rowIndex(row);
+      if (!Number.isInteger(index) || round.has(index)) continue;
+      const files = attachmentMarkers(row);
+      if (files) round.set(index, { role: 'user', parts: [files] });
     }
 
     for (const [index, { role, parts }] of round) {
@@ -305,8 +330,8 @@ function rowIndex(row: Element | null): number {
 /**
  * Turn the accumulated index→turn map into an ordered message list, failing loud on any
  * evidence of incompleteness rather than returning a partial conversation (AGENTS.md #4):
- * a gap in the index range, a turn that never yielded content, or a turn with no usable
- * index.
+ * a gap in the index range, a range that does not start at position 0, a turn that never
+ * yielded content, or a turn with no usable index.
  *
  * `seenRowIndices` makes the gap message honest. A missing position whose row was never
  * rendered means the walk did not reach it — retrying can help. A missing position whose row
@@ -323,17 +348,37 @@ function buildMessages(
 ): Message[] {
   const indices = [...turns.keys()].sort((a, b) => a - b);
 
-  for (let k = 1; k < indices.length; k++) {
-    if (indices[k] === indices[k - 1] + 1) continue;
+  // Claude numbers virtualizer rows from zero (verified live 2026-07-25: `minIndex` 0 on a
+  // 56-row conversation — n=1, re-measurement tracked as a `[VERIFY]` in tasks.md, because a
+  // conversation that legitimately started above 0 would fail here permanently), so a
+  // collected range that starts above zero is a hole exactly like
+  // an interior one — it means the first turns were never collected, which contiguity alone
+  // cannot see. Seeding the scan at -1 puts that leading range through the same check
+  // instead of duplicating it. The reached-top guard in `collectVirtualizedTurns` covers only
+  // the case where scrolling itself timed out; a walk that reaches the top and still misses
+  // position 0 (a row holding something unreadable, say) gets past it.
+  for (let k = 0; k < indices.length; k++) {
+    const previous = k === 0 ? -1 : indices[k - 1];
+    if (indices[k] === previous + 1) continue;
     const missing: number[] = [];
-    for (let i = indices[k - 1] + 1; i < indices[k]; i++) missing.push(i);
+    for (let i = previous + 1; i < indices[k]; i++) missing.push(i);
     const allRendered = missing.every((i) => seenRowIndices.has(i));
-    throw new ExtractionError(
-      allRendered
-        ? `The conversation contains ${missing.length === 1 ? 'a message' : 'messages'} at ` +
+    if (allRendered) {
+      throw new ExtractionError(
+        `The conversation contains ${missing.length === 1 ? 'a message' : 'messages'} at ` +
           `position ${missing.join(', ')} that this extension could not read — Claude’s markup ` +
-          'may have changed, or the message may be a type it does not support yet. Please report this.'
-        : `The conversation is missing turns between positions ${indices[k - 1]} and ${indices[k]}. ` +
+          'may have changed, or the message may be a type it does not support yet. Please report this.',
+      );
+    }
+    // A leading hole is NOT a "scroll further" problem, even though its rows never rendered:
+    // this runs only after the walk proved it reached `scrollTop <= 0`, so the user repeating
+    // that scroll by hand does exactly what just failed. Ask for a report instead of sending
+    // them in circles — the same reasoning that split the interior gap into two messages.
+    throw new ExtractionError(
+      k === 0
+        ? `The conversation’s first ${missing.length === 1 ? 'turn' : `${missing.length} turns`} never ` +
+          'loaded, even after scrolling to the top. Claude’s markup may have changed — please report this.'
+        : `The conversation is missing turns between positions ${previous} and ${indices[k]}. ` +
           'Scroll through the whole conversation and try again.',
     );
   }
@@ -404,11 +449,32 @@ function readUserContent(el: Element): string {
   // A turn holding only a pasted image has no readable text node. Describe it rather than
   // yielding empty — an empty turn fails the WHOLE export (AGENTS.md #4), so one
   // image-only message would block the conversation entirely. `img` is a standard tag, not
-  // a guessed Claude selector. File-attachment tiles are NOT covered: their markup was not
-  // in the 2026-07-25 capture and is tracked as a `[VERIFY]` in tasks.md — a turn holding
-  // only an attachment still fails loud rather than exporting a wrong description.
+  // a guessed Claude selector.
+  //
+  // What was measured (2026-07-25) is narrower than "attachments are handled": an
+  // attachment-ONLY user turn renders no `user-message` node at all, and `attachmentMarkers`
+  // claims that row a level up. A turn holding text AND a file was never captured, so where
+  // its tiles sit relative to this node is unknown — such a turn still exports its text with
+  // the attachment unreported. Tracked as a `[VERIFY]` in tasks.md; guessing at the mixed
+  // layout would risk labelling a pasted image as a file, which is worse than the omission.
   if (el.querySelector('img')) return '[Image]';
   return '';
+}
+
+/**
+ * `[File: name]` for each attachment thumbnail in a row that holds no readable turn node,
+ * or an empty string when the row is not an identifiable user attachment turn. The names
+ * come from each thumbnail's `alt`, so a tile that renders without one is skipped rather
+ * than reported under a fabricated name — and a row whose tiles are ALL nameless yields no
+ * markers, leaving it to fail loud rather than exporting a contentless turn.
+ */
+function attachmentMarkers(row: Element): string {
+  if (!row.querySelector(selectors.userActionBar)) return '';
+  return Array.from(row.querySelectorAll(selectors.attachmentImage))
+    .map((img) => img.getAttribute('alt')?.trim())
+    .filter((name): name is string => Boolean(name))
+    .map((name) => `[File: ${name}]`)
+    .join('\n\n');
 }
 
 /** Map one turn node to a normalized Message, or null if it has no content. */
