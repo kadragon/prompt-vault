@@ -79,9 +79,56 @@ describe('geminiAdapter.extract', () => {
     expect(convo.messages.some((m) => m.content.includes('말씀하신'))).toBe(false);
   });
 
-  it('joins a prompt’s rendered lines with newlines', async () => {
+  it('keeps the blank lines that separate a prompt’s paragraphs', async () => {
+    // Live (2026-07-25) on two real prompts: a blank line the user typed renders as an EMPTY
+    // `p.query-text-line` holding a `<br>` (136 lines / 42 empty, and 16 / 4). Dropping those
+    // empties — as the first revision did with `.filter(Boolean)` — flattens every paragraph
+    // break in the prompt, which on the 136-line prompt meant losing all 42 of them.
     const convo = await geminiAdapter.extract(loadFixture('short.html'));
-    expect(convo.messages[2].content).toBe('A follow-up question.\nWith a second line.');
+    expect(convo.messages[2].content).toBe('A follow-up question.\n\nWith a second line.');
+  });
+
+  it('joins adjacent lines with a single newline', async () => {
+    const html = exchange(
+      '<user-query><div class="query-text">' +
+        '<span class="cdk-visually-hidden">말씀하신 내용</span>' +
+        '<p class="query-text-line">first line</p>' +
+        '<p class="query-text-line">second line</p>' +
+        '</div></user-query>' +
+        modelResponse('<p>reply</p>'),
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[0].content).toBe('first line\nsecond line');
+  });
+
+  it('trims leading and trailing blank lines but not interior ones', async () => {
+    const html = exchange(
+      '<user-query><div class="query-text">' +
+        '<span class="cdk-visually-hidden">말씀하신 내용</span>' +
+        '<p class="query-text-line"><br></p>' +
+        '<p class="query-text-line">para one</p>' +
+        '<p class="query-text-line"><br></p>' +
+        '<p class="query-text-line"><br></p>' +
+        '<p class="query-text-line">para two</p>' +
+        '<p class="query-text-line"><br></p>' +
+        '</div></user-query>' +
+        modelResponse('<p>reply</p>'),
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[0].content).toBe('para one\n\n\npara two');
+  });
+
+  it('falls through to the fallback read when every line element is blank', async () => {
+    const html = exchange(
+      '<user-query><div class="query-text">' +
+        '<span class="cdk-visually-hidden">말씀하신 내용</span>' +
+        '<p class="query-text-line"><br></p>' +
+        '<img src="x.png">' +
+        '</div></user-query>' +
+        modelResponse('<p>reply</p>'),
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[0].content).toBe('[Image]');
   });
 
   it('falls back to the block’s own text, minus the label, when no line element exists', async () => {
@@ -180,8 +227,21 @@ describe('geminiAdapter.extract', () => {
   });
 
   it('fails loud when a response container is present but empty', async () => {
+    // An empty prose container is consistent with a half-rendered page, so retrying can help
+    // and the message says so.
     const html = exchange(userQuery('a question') + modelResponse(''));
-    await expect(geminiAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+    await expect(geminiAdapter.extract(docFrom(html))).rejects.toThrow(/still be loading/);
+  });
+
+  it('tells the user to report a response that renders no text area at all', async () => {
+    // Distinct from the empty case: a `model-response` with no `.markdown` anywhere is a shape
+    // this adapter does not know (a generated image or canvas panel are the unmeasured
+    // candidates), so "wait for it to finish and try again" would be advice that never clears.
+    const html = exchange(
+      userQuery('a question') + '<model-response><div class="something-else">?</div></model-response>',
+    );
+    await expect(geminiAdapter.extract(docFrom(html))).rejects.toThrow(/could not read/);
+    await expect(geminiAdapter.extract(docFrom(html))).rejects.not.toThrow(/still be loading/);
   });
 
   it('fails loud when a prompt is present but unreadable', async () => {

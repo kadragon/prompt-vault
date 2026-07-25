@@ -5,11 +5,11 @@ import { pickAdapter } from '../../../src/adapters';
 describe('geminiAdapter.matches', () => {
   it('matches a conversation page', () => {
     // Live shape (2026-07-25): /app/<16-hex-id>.
-    expect(geminiAdapter.matches('https://gemini.google.com/app/0ed512bdd038cdd9')).toBe(true);
+    expect(geminiAdapter.matches('https://gemini.google.com/app/a1b2c3d4e5f60001')).toBe(true);
   });
 
   it('matches a trailing-slashed conversation page', () => {
-    expect(geminiAdapter.matches('https://gemini.google.com/app/0ed512bdd038cdd9/')).toBe(true);
+    expect(geminiAdapter.matches('https://gemini.google.com/app/a1b2c3d4e5f60001/')).toBe(true);
   });
 
   it('ignores the id shape, since extraction is DOM-based once on the page', () => {
@@ -55,7 +55,7 @@ describe('geminiAdapter.matches', () => {
 describe('adapter registry', () => {
   it('routes a Gemini conversation URL to the Gemini adapter', () => {
     // Registration is half the work: an adapter nobody can reach exports nothing.
-    expect(pickAdapter('https://gemini.google.com/app/0ed512bdd038cdd9')?.provider).toBe('gemini');
+    expect(pickAdapter('https://gemini.google.com/app/a1b2c3d4e5f60001')?.provider).toBe('gemini');
   });
 
   it('still routes the other providers to their own adapters', () => {

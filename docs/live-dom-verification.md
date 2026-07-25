@@ -377,12 +377,27 @@ new-chat route. Facts the adapter depends on:
   all 16 containers held exactly one `user-query`, one `model-response` and one `.markdown` —
   **1:1:1, 16/16**. Containers are direct children of the scroll port.
 - **The container `id` is the only per-exchange identity** (an opaque 16-hex value, e.g.
-  `35f2c6a901f73243`), and it is shared by both turns in the exchange. There is no per-message id.
+  `a1b2c3d4e5f60001`), and it is shared by both turns in the exchange. There is no per-message id.
 - **A naive read of the user's prompt captures a screen-reader label.** `.query-text` holds
   `span.cdk-visually-hidden.screen-reader-user-query-label` *before* the prompt text, so
   `textContent` returned `"말씀하신 내용 Line one of my question."`. The label text is localized and
   therefore not matchable; the adapter reads `p.query-text-line` elements instead and strips the
   span on the fallback path.
+- **A multi-line prompt is one `p.query-text-line` per line, and a blank line is an EMPTY one
+  holding a single `<br>`.** Measured on two prompts the user had typed by hand: **136 line
+  elements of which 42 were exactly empty**, with `querySelectorAll('br').length` also **42**; and
+  **16 of which 4 were empty**, all four containing a `<br>`. Neither prompt had a whitespace-only
+  line. Those empties are the paragraph breaks, so extraction must keep the interior ones — the
+  first revision of the adapter dropped them with `.filter(Boolean)` and flattened all 42
+  paragraph breaks of the 136-line prompt into one undifferentiated block (caught in review).
+  Leading and trailing empties are trimmed, being padding rather than content.
+
+  Worth recording for the next session: this was measured only after the *synthetic* route failed
+  outright. Gemini's Quill composer rejected every attempt to inject a newline —
+  `execCommand('insertLineBreak')` cleared the composer, a synthetic `paste` event was ignored as
+  untrusted, and a `\n` inside `insertText` submitted the first line only. Reading the shape off
+  conversations the user had already typed cost two page loads and settled it; do that first next
+  time.
 - **Response chrome sits outside the prose container**: `sources-list`, `thinking-overlay` and
   `message-actions` are siblings of the `.markdown`, not descendants (measured: none appear among
   its descendants), so serializing `.markdown` excludes them with no filtering.
@@ -452,14 +467,33 @@ and walk (copied, not imported) was run against the live 17-exchange conversatio
 | Toolbar mount / anchor resolved | yes; insertion point `div.buttons-container`, anchor inside the mount |
 | `toolbarButtonClass` tokens absent from the native button | 0 of 4 |
 
-**Still unverified, and deliberately not guessed at** (tracked in `backlog.md`):
+Re-probed a second time after review changed the walk, on the same 17-exchange conversation. Same
+completeness result (10 one-shot → 17 walked, 34 messages, 0 unreadable, 0 label leaks), and two
+numbers that turned review arguments into measurements:
 
-- **Multi-line prompts.** Whether an N-line prompt renders N `p.query-text-line` elements was never
-  captured: every attempt to put a newline into Gemini's Quill composer through synthetic events
-  failed — `execCommand('insertLineBreak')` cleared the composer, a synthetic `paste` was ignored as
-  untrusted, and a `\n` inside `insertText` submitted the first line only. The adapter joins however
-  many line elements exist and otherwise falls back to the label-stripped block text, which is
-  correct for either shape.
+- **A batch stalls for up to 4 rounds** (`maxStallRoundsSeen: 4` — 2 s at the 500 ms step). The walk
+  spent 27 rounds of which only **21 covered distance**. The first revision charged every round to a
+  distance-derived cap with a fixed ~13 rounds of slack, 6 of which the settle dwell always consumes;
+  at 4 stall rounds per batch, a conversation needing nine batches would exhaust that and report
+  "timed out" on a page where nothing was wrong. Travel and stalling are now separate budgets
+  (`travelSteps 21` against `travelCapAtEnd 35`), and only movement is charged.
+- **Restoring the pre-walk `scrollTop` would have moved the reader 5046 px** (`beforeTop 4111`,
+  restored `9157`) — because paging grew the list from 5019 to 10065 ABOVE them. The walk restores
+  distance from the bottom instead, which is invariant under prepending.
+
+**Still unverified, and deliberately not guessed at** (tracked in `backlog.md` / `tasks.md`):
+
+- **What a landing batch does to `scrollTop`.** A browser preserving visual position shifts the
+  viewport down by the prepended height; scroll anchoring turned off, or a virtualizer managing its
+  own spacer, would leave `scrollTop` at 0. The live walks only ever observed batches landing while
+  the walk was still climbing, so neither outcome was isolated. The walk is written to survive both
+  — that is what the settle condition's "is the list still changing?" term is for, and the test
+  fake models both shapes explicitly (`batchLandingShiftsViewport`).
+- **Responses that render no `.markdown` at all.** Every measured response was prose and code. A
+  generated image or a canvas/immersive panel plausibly renders outside the prose container, and one
+  such response currently fails the whole export — loudly, with a "please report this" message
+  rather than the retry advice that could never clear it, but it does block the conversation.
+  Tracked as a `[VERIFY]` in `tasks.md`.
 - **Prompts carrying files or images.** `user-query img` was 0 across every measured conversation,
   so how an attachment tile renders — and whether it sits inside `user-query` at all — is unknown.
   Guessing a tile selector would risk reporting a fabricated file name (AGENTS.md #5).

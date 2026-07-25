@@ -41,15 +41,19 @@ export const selectors = {
   /**
    * One rendered line of the user's prompt. Read INSTEAD of `userQueryText`'s own
    * `textContent`, because that text also contains the screen-reader label below.
-   * Verified against the live page (2026-07-25) on a single-line prompt:
-   * `.query-text` > `span.cdk-visually-hidden` + `p.query-text-line`.
+   * Verified against the live page (2026-07-25): `.query-text` >
+   * `span.cdk-visually-hidden` + one `p.query-text-line` per line.
    *
-   * NOT verified: that an N-line prompt renders N of these. Every attempt to type a newline
-   * into Gemini's Quill editor through synthetic events failed (`insertLineBreak` cleared
-   * the composer; a synthetic paste was ignored as untrusted), so the multi-line shape was
-   * never captured — tracked as a `[VERIFY]` in tasks.md. `readUserContent` therefore joins
-   * however many of these exist and falls back to the container text with the label removed,
-   * which is correct for either shape rather than betting on one.
+   * An **N-line prompt renders N of these, and a blank line is an EMPTY one holding a single
+   * `<br>`** — measured on two real user-typed prompts: 136 line elements of which 42 were
+   * exactly empty with `querySelectorAll('br').length === 42`, and 16 of which 4 were empty,
+   * all four containing a `<br>`. Neither prompt had a whitespace-only line. Those empties are
+   * the paragraph breaks, so `readUserContent` must keep the interior ones; the first revision
+   * of this adapter filtered them out and flattened every paragraph in the prompt.
+   *
+   * (Measured only after a synthetic route failed: Gemini's Quill composer rejected every
+   * attempt to inject a newline — `insertLineBreak` cleared it, a synthetic paste was ignored
+   * as untrusted — so the shape was read off prompts the user had typed by hand instead.)
    */
   userQueryLine: 'p.query-text-line',
 

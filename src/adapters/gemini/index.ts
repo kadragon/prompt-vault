@@ -26,9 +26,33 @@ const WALK_STEP_FRACTION = 0.5;
 // delay above is ~3 s, chosen to exceed the slowest comparable page load measured in this
 // repo (2830 ms) rather than the one fast sample seen on Gemini itself.
 const END_SETTLE_ROUNDS = 6;
-// Hard anti-runaway ceiling, far above any real conversation's step count (the primary bound
-// is derived from the live scroll height each iteration).
+// Hard anti-runaway ceiling on total rounds, far above any real conversation's count (the
+// primary bounds are the travel cap and the stall cap below).
 const WALK_ABSOLUTE_MAX_STEPS = 2000;
+// Spare travel steps beyond the distance the walk has to cover, absorbing rounding and a
+// re-render that shifts the position slightly. Waiting for a batch is NOT charged here — see
+// `walkToTop`, where only rounds that moved or grew the list consume travel budget.
+const TRAVEL_SLACK_STEPS = 10;
+// Rounds the list may go completely inert — no scroll movement AND no growth — before the walk
+// gives up. This is what catches a container that refuses to scroll at all; at the default step
+// delay it is 20 s, far above the slowest comparable page load this repo has measured
+// (ChatGPT's `#history` at 2830 ms). It is reset by any movement or growth, so a conversation
+// that pages in slowly is never cut short by it.
+const MAX_STALL_ROUNDS = 40;
+// Treat a scroll position within this many pixels of 0 as "at the top". Defensive, not measured:
+// the live walk reached exactly 0 (docs/live-dom-verification.md → Gemini re-probe), but a
+// fractional `scrollTop` — browser zoom, a fractional device pixel ratio, a scroll-snap that
+// refuses the last pixel — would otherwise make `<= 0` unsatisfiable and fail every export on
+// such a display. It cannot weaken the stuck-container guard, which sits thousands of pixels away.
+const AT_TOP_EPSILON_PX = 1;
+// Exchanges a fresh page load renders before any scrolling — verified live 2026-07-25 on
+// conversations of 11, 16 and 17 exchanges, every one of which rendered exactly 10.
+//
+// Used ONLY as a safety threshold on the unwalkable path (`readUnwalkable`): a page holding
+// fewer than this cannot be hiding older exchanges, because a load renders `min(pageSize, total)`.
+// Nothing else depends on the number, and a Gemini change to it errs toward failing loud rather
+// than toward a silent partial.
+const INITIAL_PAGE_SIZE = 10;
 
 // Gemini's own icon-button classes, taken verbatim from the native header text-to-speech
 // button (verified live 2026-07-25). Three tokens are dropped, each because it is wrong for
@@ -141,20 +165,32 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
  * read yields fewer exchanges than the most this walk ever saw at once, rows were dropped and
  * extraction fails loud instead of exporting the remainder (AGENTS.md #4).
  *
- * Falls back to a one-shot snapshot when there is no scroll container, or when it has zero
- * height (a hidden/background tab never scrolls, so the walk would crawl to the step cap).
+ * When the list cannot be walked at all, `readUnwalkable` decides whether a one-shot read is
+ * safe — it usually is not.
  */
 export async function collectPagedExchanges(doc: Document, options: WalkOptions = {}): Promise<Message[]> {
   const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
-  if (!container || container.clientHeight === 0) return readSnapshot(doc);
+  if (!container || container.clientHeight === 0) return readUnwalkable(doc, container === null);
+
+  // Before the walk, not only on the final read: on a long conversation the walk takes seconds
+  // to minutes with every export button disabled, and telling the user "wait for the response
+  // to finish" only afterwards wastes all of it.
+  assertNotStreaming(doc);
 
   const { stepDelayMs = SCROLL_STEP_DELAY_MS } = options;
   const stepPx = Math.max(1, Math.floor(container.clientHeight * WALK_STEP_FRACTION));
 
   // The walk drags the viewport across the whole conversation. Put the user back where they
-  // were reading — including on the fail-loud paths, so a failed export does not also cost
-  // them their place.
-  const restoreScrollTop = container.scrollTop;
+  // were reading — including on the fail-loud paths, so a failed export does not also cost them
+  // their place.
+  //
+  // Restore the distance from the BOTTOM, not the absolute offset. Paging inserts older
+  // exchanges ABOVE the reader and grows `scrollHeight` (live: 5019 → 10065 on a 17-exchange
+  // conversation), so the message that was at offset X is afterwards at X + everything-prepended;
+  // writing X back would drop the user thousands of pixels earlier in the conversation. Distance
+  // from the bottom is invariant under prepending, which is the only growth this walk causes —
+  // and content arriving at the bottom mid-export raises `aria-busy`, which fails the export.
+  const restoreFromBottom = container.scrollHeight - container.scrollTop;
   try {
     const seen = await walkToTop(doc, container, stepDelayMs, options.maxSteps, stepPx);
     if (!seen.reachedTop) {
@@ -165,8 +201,36 @@ export async function collectPagedExchanges(doc: Document, options: WalkOptions 
     }
     return readSnapshot(doc, seen.maxRendered);
   } finally {
-    container.scrollTop = restoreScrollTop;
+    container.scrollTop = Math.max(0, container.scrollHeight - restoreFromBottom);
   }
+}
+
+/**
+ * The read for a page whose exchange list cannot be scrolled — the scroll-port selector matched
+ * nothing, or the port has zero height (a hidden ancestor, a mid-route transition, a background
+ * tab). Neither state can page in the older exchanges Gemini withholds, so completeness is
+ * unknowable here, and a one-shot read would hand back the newest page as if it were the whole
+ * conversation: the silent partial download AGENTS.md #4 forbids, on the one path in this adapter
+ * where nothing else would catch it (Gemini declares no total, so there is no shortfall to
+ * detect).
+ *
+ * Short conversations are still exportable, and that is not a compromise: a fresh load renders
+ * `min(INITIAL_PAGE_SIZE, total)` exchanges, so a page holding FEWER than a full page cannot be
+ * hiding any — the read is provably complete. At a full page or more it may or may not be, and
+ * "may" is not good enough to export silently.
+ */
+function readUnwalkable(doc: Document, missingContainer: boolean): Message[] {
+  const rendered = doc.querySelectorAll(selectors.exchange).length;
+  if (rendered >= INITIAL_PAGE_SIZE) {
+    throw new ExtractionError(
+      missingContainer
+        ? 'Could not find Gemini’s message list to scroll, so older messages in this ' +
+          'conversation may not have loaded. Gemini’s markup may have changed — please report this.'
+        : 'Gemini’s message list cannot be scrolled right now, so older messages in this ' +
+          'conversation may not have loaded. Bring the conversation into view and try again.',
+    );
+  }
+  return readSnapshot(doc);
 }
 
 /** What the upward walk observed: whether it settled at the top, and the most exchanges rendered at once. */
@@ -193,12 +257,22 @@ interface WalkResult {
  * same residual hazard the ChatGPT sidebar loaders carry, recorded in
  * docs/live-dom-verification.md rather than papered over.
  *
- * The step cap is derived from the scroll height, recomputed each round so a list that grows
- * as it pages in is not cut short, while a stuck container still terminates. It is taken from
- * the LARGEST height seen rather than the current one: a height that shrinks mid-walk (the
- * list dropping rows it had already loaded) would otherwise pull the cap below the distance
- * already travelled and abort as a timeout — masking that shortfall behind the wrong error,
- * and hiding it from the guard in `collectPagedExchanges` that exists to name it.
+ * Two independent budgets end a walk that is not progressing, and keeping them separate is the
+ * point. **Travel** is bounded by the distance to cover — from the LARGEST scroll height seen,
+ * not the current one, since a height that shrinks mid-walk (the list dropping rows it had
+ * already loaded) would otherwise pull the cap below the distance already travelled and abort as
+ * a timeout, masking that shortfall behind the wrong error and hiding it from the guard in
+ * `collectPagedExchanges` that exists to name it. **Stalling** is bounded separately by
+ * `MAX_STALL_ROUNDS`, reset by any movement or growth.
+ *
+ * Only rounds that moved the viewport or grew the list are charged to the travel budget. Rounds
+ * spent WAITING for a batch cover no distance, and charging them to a distance-derived cap made
+ * long conversations fail on healthy pages: the cap allowed a fixed ~13 spare rounds regardless
+ * of length, the settle dwell always consumed 6 of them, and a conversation needing nine batches
+ * at even two stall rounds each would exhaust the rest and report "timed out" with nothing wrong.
+ * (Raised in review; the arithmetic is `ceil(maxHeight/stepPx) + 11` allowed against
+ * `ceil(maxHeight/stepPx) - 2` needed to climb.) Waiting is now bounded only by the stall cap,
+ * which is per-wait rather than per-walk.
  */
 async function walkToTop(
   doc: Document,
@@ -210,28 +284,56 @@ async function walkToTop(
   let maxRendered = 0;
   let maxHeight = 0;
   let quietRounds = 0;
+  let travelSteps = 0;
+  let stallRounds = 0;
   let lastHeight = -1;
   let lastCount = -1;
+  let lastTop = -1;
 
-  for (let step = 0; ; step++) {
+  for (let round = 0; ; round++) {
     const count = doc.querySelectorAll(selectors.exchange).length;
     const height = container.scrollHeight;
+    const top = container.scrollTop;
     if (count > maxRendered) maxRendered = count;
     if (height > maxHeight) maxHeight = height;
 
     const unchanged = height === lastHeight && count === lastCount;
-    if (container.scrollTop <= 0 && unchanged) {
+    if (top <= AT_TOP_EPSILON_PX && unchanged) {
       if (++quietRounds >= END_SETTLE_ROUNDS) return { reachedTop: true, maxRendered };
     } else {
       quietRounds = 0;
     }
+
+    // First round establishes the baseline; it can be neither progress nor a stall.
+    const first = lastTop < 0;
+    const moved = !first && Math.abs(top - lastTop) > AT_TOP_EPSILON_PX;
+    const grew = !first && (height > lastHeight || count > lastCount);
+    // Only MOVEMENT consumes the travel budget, because only movement covers distance. Growth is
+    // progress — it proves a batch landed — so it clears the stall counter without being charged
+    // to a budget derived from distance.
+    if (moved) {
+      travelSteps++;
+      stallRounds = 0;
+    } else if (grew) {
+      stallRounds = 0;
+    } else if (!first) {
+      stallRounds++;
+    }
+
     lastHeight = height;
     lastCount = count;
+    lastTop = top;
 
-    const cap = maxSteps ?? Math.ceil(maxHeight / stepPx) + END_SETTLE_ROUNDS + 5;
-    if (step >= cap || step >= WALK_ABSOLUTE_MAX_STEPS) return { reachedTop: false, maxRendered };
+    const travelCap = maxSteps ?? Math.ceil(maxHeight / stepPx) + TRAVEL_SLACK_STEPS;
+    if (
+      travelSteps >= travelCap ||
+      stallRounds >= MAX_STALL_ROUNDS ||
+      round >= WALK_ABSOLUTE_MAX_STEPS
+    ) {
+      return { reachedTop: false, maxRendered };
+    }
 
-    container.scrollTop = Math.max(0, container.scrollTop - stepPx);
+    container.scrollTop = Math.max(0, top - stepPx);
     await delay(stepDelayMs);
   }
 }
@@ -248,7 +350,7 @@ function readSnapshot(root: ParentNode, minExpected = 0): Message[] {
   const exchanges = Array.from(root.querySelectorAll(selectors.exchange));
   if (exchanges.length < minExpected) {
     throw new ExtractionError(
-      `Only ${exchanges.length} of ${minExpected} loaded messages are still on the page — ` +
+      `Only ${exchanges.length} of ${minExpected} loaded exchanges are still on the page — ` +
         'Gemini removed some while they were being read. Scroll through the whole ' +
         'conversation and try again.',
     );
@@ -266,9 +368,10 @@ function readSnapshot(root: ParentNode, minExpected = 0): Message[] {
  * `true` for a beat AFTER the text stops growing (verified live 2026-07-25), so it catches
  * pauses that a "has the content changed?" heuristic would read as finished.
  *
- * Checked before the walk as well as on the final read: before, so a user who clicks export
- * mid-answer is told immediately instead of after a scroll walk; again after, so an answer
- * that *started* during the export cannot slip into the output half-written.
+ * Called twice on the live path, from `collectPagedExchanges` before the walk and from
+ * `readSnapshot` on the final read. Before, so a user who clicks export mid-answer is told
+ * immediately instead of after a walk that can run for minutes with the buttons disabled; again
+ * after, so an answer that *started* during the export cannot slip into the output half-written.
  */
 function assertNotStreaming(root: ParentNode): void {
   for (const markdown of Array.from(root.querySelectorAll(selectors.assistantMarkdown))) {
@@ -286,10 +389,13 @@ function assertNotStreaming(root: ParentNode): void {
  * is the interleaving. Verified live 2026-07-25: exactly one `user-query` and one
  * `model-response` per container, 16/16.
  *
- * Every failure here is loud, because each is a message we can see but cannot read:
- * - a container with neither half — markup this adapter does not understand;
- * - a `user-query` that yields no content;
- * - a `model-response` whose prose container is missing or empty.
+ * Every failure here is loud, because each is a message we can see but cannot read. They are
+ * split by whether retrying can possibly help, so the advice is never a dead end:
+ * - a `model-response` with no prose container AT ALL — a shape this adapter does not know, so
+ *   waiting will never clear it (`unreadableResponseError`);
+ * - a prose container that is present but empty, or a `user-query` that yields no content —
+ *   consistent with a half-rendered page, where retrying does help (`unreadableExchangeError`);
+ * - a container with neither half — markup this adapter does not understand.
  *
  * A container holding a prompt and NO `model-response` is not a failure: that is an exchange
  * whose answer was stopped or never started, and exporting the prompt alone drops nothing.
@@ -307,6 +413,7 @@ function readExchange(exchange: Element): Message[] {
   const response = exchange.querySelector(selectors.modelResponse);
   if (response) {
     const content = readAssistantContent(response);
+    if (content === null) throw unreadableResponseError();
     if (!content) throw unreadableExchangeError();
     messages.push({ role: 'assistant', content });
   }
@@ -323,25 +430,47 @@ function unreadableExchangeError(): ExtractionError {
 }
 
 /**
+ * A response that rendered no prose container at all. Deliberately worded differently from
+ * `unreadableExchangeError`: this shape does not resolve by waiting, so telling the user the
+ * conversation "may still be loading" would send them into a retry loop that can never clear.
+ * Which shapes reach here is unmeasured — a generated image or a canvas/immersive panel are the
+ * plausible candidates, and neither was present in the measured conversations — so it is tracked
+ * as a `[VERIFY]` rather than guessed at with a selector (AGENTS.md #5).
+ */
+function unreadableResponseError(): ExtractionError {
+  return new ExtractionError(
+    'This conversation contains a response this extension could not read — it may be a kind ' +
+      'Gemini renders outside its normal text area, or Gemini’s markup may have changed. ' +
+      'Please report this.',
+  );
+}
+
+/**
  * The user's prompt as typed. Read from the per-line `p.query-text-line` elements rather
  * than the block's `textContent`, because Gemini renders an Angular Material screen-reader
  * label inside that block — a naive read came back as `"말씀하신 내용 <the prompt>"` live
  * (2026-07-25), which would have been exported as part of the user's own words.
  *
- * Lines are joined with single newlines: they are rendered lines of one prompt, not separate
- * paragraphs. Only the single-line case was measurable (Gemini's composer rejected every
- * synthetic attempt to type a newline), so this deliberately does not depend on the number
- * of line elements — it joins however many exist and otherwise falls back to the block's own
- * text with the label stripped, which is right whether a multi-line prompt turns out to be
- * N line elements or one element with `<br>`s. Tracked as a `[VERIFY]` in tasks.md.
+ * A multi-line prompt renders one `p.query-text-line` per line, and **a blank line the user
+ * typed is an EMPTY one holding a single `<br>`** — measured on two real prompts (2026-07-25:
+ * 136 line elements of which 42 were empty with 42 `<br>`s; and 16 of which 4 were empty, all
+ * four with a `<br>`). Those empties are what separate paragraphs, so they are kept: dropping
+ * them (as an earlier revision did, via `.filter(Boolean)`) flattened every paragraph break in
+ * the prompt — on the 136-line prompt, all 42 of them — turning the user's own words into one
+ * undifferentiated block. Interior blanks survive; leading and trailing ones are trimmed off the
+ * joined result, since they are padding rather than content.
  */
 function readUserContent(query: Element): string {
   const scope = query.querySelector(selectors.userQueryText) ?? query;
 
-  const lines = Array.from(scope.querySelectorAll(selectors.userQueryLine))
-    .map((line) => (line.textContent ?? '').trim())
-    .filter(Boolean);
-  if (lines.length > 0) return lines.join('\n');
+  const lines = Array.from(scope.querySelectorAll(selectors.userQueryLine));
+  if (lines.length > 0) {
+    const text = lines
+      .map((line) => (line.textContent ?? '').trim())
+      .join('\n')
+      .trim();
+    if (text) return text;
+  }
 
   const fallback = textWithoutScreenReaderLabel(scope);
   if (fallback) return fallback;
@@ -372,10 +501,13 @@ function textWithoutScreenReaderLabel(scope: Element): string {
  * The model's reply as Markdown. Gemini's response chrome (sources, thinking overlay, the
  * feedback action bar) lives OUTSIDE the prose container, so serializing that container
  * needs no filtering — with the one exception normalized below.
+ *
+ * Returns **null** when the response has no prose container at all, which is a different failure
+ * from an empty one and gets a different error: see `readExchange`.
  */
-function readAssistantContent(response: Element): string {
+function readAssistantContent(response: Element): string | null {
   const markdown = response.querySelector(selectors.assistantMarkdown);
-  if (!markdown) return '';
+  if (!markdown) return null;
   // Serialize a CLONE: the normalization below mutates the tree, and the live page is the
   // user's, not ours to rewrite.
   const clone = markdown.cloneNode(true) as Element;
