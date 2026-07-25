@@ -11,6 +11,18 @@ marker is removed by hand once the blocking ticket lands.
 
 - [ ] [HARNESS] Add `addons-linter` (web-ext lint) as a CI step — validates the MV3 manifest and flags extension-unsafe patterns (`eval`, remote scripts, over-broad permissions). *(deferred: addons-linter is Firefox/AMO-oriented — on our Chrome-only MV3 manifest it only emits Firefox false-positives (`ADDON_ID_REQUIRED` gecko id, `gecko/data_collection_permissions`). No real Chrome value now; static analysis is covered by CodeQL + type-checked eslint + the privacy gate. Revisit if Firefox support is ever added.)*
 
+## Extraction completeness
+
+- [ ] [FEAT] Use Claude's `aria-setsize` as a completeness oracle. Each virtualizer row wraps its
+      message in `div[role="article"]` carrying `aria-setsize` (total messages in the conversation)
+      and `aria-posinset` (1-based position) — measured 2026-07-25, `aria-setsize="56"` /
+      `aria-posinset="51"` on the row whose `data-index` was 50 (see
+      `docs/live-dom-verification.md`). This is a *declared total*, strictly stronger than the
+      contiguity check `buildMessages` uses today: contiguity cannot detect turns missing off both
+      ends of the range, whereas `collected !== aria-setsize` catches it outright. Would also give
+      the walk a real termination condition instead of the settle-rounds heuristic. Verify the
+      attribute is present on every row and stable mid-stream before depending on it.
+
 ## Next (roadmap — not v1)
 
 - [ ] Gemini adapter (reuse core model + exporters via ConversationAdapter)

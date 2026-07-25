@@ -118,6 +118,76 @@ cannot be a one-shot `querySelectorAll`: such a read would have captured 16 of 5
 silent truncation** (AGENTS.md #4). Do not generalize either provider's virtualization model to the
 other.
 
+### 2026-07-25 (second walk) — `data-index` is 0-based and dense
+
+Measured on a **56-row** conversation, via a console snippet that reproduced the adapter's
+up-then-down walk and censused every row it saw. `minIndex 0`, `maxIndex 55`, `indexedRows 56`,
+`contiguous true`, no gaps. The numbering therefore starts at zero and skips nothing, which is what
+lets `buildMessages` treat a collected range starting above 0 as a hole rather than an offset —
+contiguity alone cannot distinguish "turns 1…n" from "turns 0…n−1".
+
+Scope limit: one conversation. It is evidence that the index IS 0-based, not that a first row can
+never be something other than a turn — and the finding below shows non-turn rows exist.
+
+### 2026-07-25 (second walk) — not every indexed row is a readable turn
+
+Same conversation. Turn nodes per indexed row came out as **54 rows with 1, one row with 4, one row
+with 0**. This disproves the first session's "exactly one turn node per indexed row", which rested on
+a 50-turn conversation that happened to contain only plain text turns. Both off-nominal shapes are
+real at ordinary scale, so neither the walk nor `buildMessages` may assume 1:1.
+
+- **The 0-turn row (index 50) is an attachment-only user turn.** It matched neither
+  `[data-testid="user-message"]` nor `.standard-markdown` anywhere in its subtree — the user-message
+  node is **absent**, not present-and-empty. A second, structure-only dump of that row (text nodes
+  redacted to lengths) gave the markup:
+
+  ```
+  div[data-index="50"] > div[role="article"] > … > div.gap-2.mx-0.5.mb-3.flex.flex-wrap.justify-end
+    > div.group/thumbnail.relative
+      > div[data-testid="<file name>.pdf"].rounded-lg…cursor-pointer  (120×120 inline size)
+        > button > img[alt="<file name>.pdf" src="/api/…/files/…/thumbnail"]
+  ```
+
+  Two places carry the file name: the tile's `data-testid` **value**, and the thumbnail's `alt`. The
+  adapter reads `alt` — a test id whose value is user data is not a contract, while `alt` is the
+  standard accessible name.
+- **Mechanism note:** this is a *different* failure from the one `tasks.md` predicted. The prediction
+  was an empty `user-message` yielding "some turns could not be read"; in reality position 50 is
+  claimed by no turn at all, so it surfaces through the **gap** branch of `buildMessages`. Either way
+  it was loud, not silent (AGENTS.md #4) — but it blocked export of the whole conversation until the
+  attachment path landed.
+- **The 4-turn row (index 55) is an assistant turn.** Four sibling `.standard-markdown` containers,
+  each alone in its own wrapper (`prevSibTag: null`), text lengths 52 / 25 / 29 / 323. It carries
+  `action-bar-copy`, `action-bar-read-aloud`, `action-bar-retry` and no `user-message`. The adapter's
+  existing join-nodes-within-a-row path handles it, so all four blocks export.
+- **Unverified:** what those four blocks *are* — extended thinking, tool calls, and artifacts were the
+  hypothesis, but nothing in the row distinguishes them, so it is not established that any of those
+  three features was present in the measured conversation at all. What IS established: a multi-block
+  assistant turn exists and exports intact.
+
+### 2026-07-25 (second walk) — role is decidable from the action bar, and `aria-setsize` declares the total
+
+Same conversation. Partitioning every `data-testid` in the 54 single-turn rows by the role of the
+turn they contained:
+
+| Scope | Test ids |
+|-------|----------|
+| User only | `user-message`, `action-bar-edit` |
+| Assistant only | `action-bar-read-aloud`, `action-bar-retry` |
+| Both | `action-bar-copy` |
+
+`action-bar-edit` being user-exclusive is what lets an attachment-only row — which has no
+`user-message` node — be attributed to the user without guessing. Scope limit: measured on one
+conversation, and Claude could plausibly add an edit affordance to assistant turns; the adapter
+therefore uses it only to *claim* an otherwise-unreadable row, never to override a turn node's own
+role, so a change degrades to the pre-existing loud failure.
+
+Separately, each row wraps its message in **`div[role="article"]` carrying `aria-setsize="56"` and
+`aria-posinset="51"`** (1-based, against a 0-based `data-index` of 50). `aria-setsize` is a
+server-declared **total message count** — a true completeness oracle, and strictly stronger than the
+contiguity check the adapter uses today, which cannot detect turns missing off *both* ends. Not yet
+used by any code; tracked in `backlog.md`.
+
 ### 2026-07-25 — Claude's structural facts, as used by `src/adapters/claude/selectors.ts`
 
 Same session. Conversation URLs are `claude.ai/chat/<uuid>`. Facts the adapter depends on:
