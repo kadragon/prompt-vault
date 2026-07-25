@@ -17,15 +17,31 @@ interface Turn {
   content: string;
   /** Renders hollow until fully inside the viewport — content arrives on a later sighting. */
   skeleton?: boolean;
+  /**
+   * Renders a TRUNCATED prefix for the first few record() rounds, then the whole thing —
+   * the shape of a response still streaming when the export started. Deliberately keyed to
+   * elapsed rounds, NOT to scroll position: a real response grows with wall time whether or
+   * not the walk is looking at it, and a position-keyed fake can miss the bug entirely
+   * (a turn whose first sighting already lands fully inside the viewport is never seen
+   * mid-stream).
+   */
+  partial?: boolean;
   /** Empty at every scroll position: genuinely unreadable, must fail loud. */
   neverFills?: boolean;
   /** Row renders without a `data-index`, so the turn has no stable key. */
   unindexed?: boolean;
+  /** A user turn holding only a pasted image: no text node, but an `<img>`. */
+  imageOnly?: boolean;
+  /** Extra turn nodes rendered inside the SAME indexed row as this turn. */
+  extraNodes?: string[];
   /** Row renders with this index instead of its position — used to punch a hole. */
   indexOverride?: number;
 }
 
 const TURN_H = 100;
+// How many record() rounds a `partial` turn stays mid-stream. Kept low enough that the
+// walk is guaranteed to see the turn again after it finishes.
+const STREAMING_ROUNDS = 2;
 
 function makeWindowedDoc({
   turns,
@@ -40,6 +56,8 @@ function makeWindowedDoc({
 }): Document {
   const scrollHeight = turns.length * TURN_H;
   let top = startAtBottom ? Math.max(0, scrollHeight - clientHeight) : 0;
+  // One `record()` call = one `querySelectorAll` for the turn selector = one round.
+  let rounds = 0;
   const container = {
     clientHeight,
     scrollHeight,
@@ -61,16 +79,24 @@ function makeWindowedDoc({
     return t >= container.scrollTop && t + TURN_H <= container.scrollTop + container.clientHeight;
   };
 
-  const makeNode = (t: Turn, i: number) => {
+  // The virtualizer row wrapping turn `i`. Rows are what carry `data-index`; the adapter
+  // reads them both directly (to learn which positions rendered at all) and via
+  // `turnNode.closest('[data-index]')`.
+  const makeRow = (t: Turn, i: number) => ({
+    getAttribute: (name: string): string | null =>
+      name === 'data-index' && !t.unindexed ? String(t.indexOverride ?? i) : null,
+  });
+
+  const makeNode = (t: Turn, i: number, override?: string) => {
     const hydrated = (): boolean => (t.skeleton ? fullyInside(i) : true);
     const text = (): string => {
-      if (t.neverFills) return '';
+      if (override !== undefined) return override;
+      if (t.neverFills || t.imageOnly) return '';
+      // Still streaming for the first `STREAMING_ROUNDS` rounds, regardless of scroll.
+      if (t.partial && rounds <= STREAMING_ROUNDS) return t.content.slice(0, 4);
       return hydrated() ? t.content : '';
     };
-    const row = {
-      getAttribute: (name: string): string | null =>
-        name === 'data-index' && !t.unindexed ? String(t.indexOverride ?? i) : null,
-    };
+    const row = makeRow(t, i);
     // The turn node itself: a user bubble matches `[data-testid="user-message"]`; an
     // assistant node is the `.standard-markdown` container and matches neither.
     return {
@@ -78,6 +104,9 @@ function makeWindowedDoc({
       closest: (sel: string) => (sel === '[data-index]' && !t.unindexed ? row : null),
       // `readUserContent` walks `children`; giving it none makes it fall back to textContent.
       children: [] as Element[],
+      // Consulted only when a user turn has no readable text: an image-only turn must be
+      // described rather than left empty (an empty turn fails the whole export).
+      querySelector: (sel: string) => (sel === 'img' && t.imageOnly ? ({} as Element) : null),
       get textContent(): string {
         return text();
       },
@@ -88,12 +117,23 @@ function makeWindowedDoc({
     };
   };
 
+  // Every turn node currently rendered, including any `extraNodes` sharing a turn's row.
+  const visibleNodes = (): unknown[] =>
+    turns.flatMap((t, i) =>
+      intersects(i) ? [makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c))] : [],
+    );
+
   return {
     querySelector: (sel: string) => (sel === '[data-autoscroll-container]' ? container : null),
-    querySelectorAll: (sel: string) =>
-      sel === '[data-testid="user-message"], .standard-markdown'
-        ? turns.map(makeNode).filter((_, i) => intersects(i))
-        : [],
+    querySelectorAll: (sel: string) => {
+      // Rows carry data-index; the adapter reads them to learn which positions rendered.
+      if (sel === '[data-index]') {
+        return turns.flatMap((t, i) => (intersects(i) && !t.unindexed ? [makeRow(t, i)] : []));
+      }
+      if (sel !== '[data-testid="user-message"], .standard-markdown') return [];
+      rounds++;
+      return visibleNodes();
+    },
   } as unknown as Document;
 }
 
@@ -142,12 +182,74 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     expect(messages[5].content).toBe('content 5');
   });
 
+  // Upgrading only from *empty* would pin the fragment captured while the response was
+  // still streaming: the walk goes on to see the finished turn and would still export the
+  // truncated text — a silent content truncation, which is worse than a visible failure.
+  it('replaces a partially-rendered turn once a fuller sighting appears', async () => {
+    // The last turn is the one that can still be streaming when an export starts, and the
+    // walk begins at the bottom — so it is observed mid-stream on the very first round.
+    const turns = alternating(12);
+    turns[11] = { ...turns[11], partial: true };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(12);
+    expect(messages[11].content).toBe('content 11');
+  });
+
   it('fails loud when a turn never yields content (never silently drops it)', async () => {
     const turns = alternating(12);
     turns[4] = { ...turns[4], neverFills: true };
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toBeInstanceOf(
       ExtractionError,
     );
+  });
+
+  // The whole design keys one turn per indexed row, which live data confirmed for a
+  // conversation with no extended-thinking or artifact turns. If a row ever holds two turn
+  // nodes, keeping only the longer would silently drop the other.
+  it('joins several turn nodes rendered inside one indexed row instead of dropping one', async () => {
+    const turns = alternating(12);
+    turns[3] = { ...turns[3], extraNodes: ['a second block in the same row'] };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(12);
+    expect(messages[3].content).toBe('content 3\n\na second block in the same row');
+  });
+
+  it('describes a user turn holding only an image rather than failing the whole export', async () => {
+    // An empty turn fails the ENTIRE conversation, so one image-only message would block it.
+    const turns = alternating(12);
+    turns[2] = { ...turns[2], imageOnly: true };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(12);
+    expect(messages[2].content).toBe('[Image]');
+  });
+
+  // A gap has two very different causes, and the wrong message sends the user in circles.
+  it('blames the walk when the missing position never rendered', async () => {
+    const turns = alternating(12);
+    for (let i = 8; i < turns.length; i++) turns[i] = { ...turns[i], indexOverride: i + 1 };
+    await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
+      /Scroll through the whole conversation/,
+    );
+  });
+
+  it('blames unreadable markup when the missing position DID render as a row', async () => {
+    // Position 8's row renders (so it is in seenRowIndices) but holds no recognizable turn.
+    const turns = alternating(12);
+    const unreadable: Turn = { role: 'assistant', content: '', neverFills: true };
+    turns.splice(8, 0, unreadable);
+    const doc = makeWindowedDoc({ turns });
+    // Neutralize only the turn-node side for that row, leaving its row visible.
+    const original = doc.querySelectorAll.bind(doc);
+    (doc as unknown as { querySelectorAll: (sel: string) => unknown[] }).querySelectorAll = (
+      sel: string,
+    ) => {
+      const out = original(sel) as unknown as {
+        closest?: (s: string) => { getAttribute(n: string): string | null } | null;
+      }[];
+      if (sel === '[data-index]') return out;
+      return out.filter((n) => n.closest?.('[data-index]')?.getAttribute('data-index') !== '8');
+    };
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/could not read/);
   });
 
   it('fails loud when a turn has no stable index to dedupe on', async () => {

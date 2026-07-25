@@ -36,8 +36,11 @@ import an exporter. The `Conversation` model is the single contract between scra
   `matches(url): boolean`, `extract(): Conversation`, plus centralized `selectors`. ChatGPT and
   Claude ship today; Gemini is added as a sibling directory with zero changes to core/export.
   Only `provider`/`matches`/`extract` are required — a provider implements as much of the rest
-  (toolbar mount, sidebar bulk, projects) as its DOM has been *verified* to support, and the
-  features keyed off the absent members simply do not mount for it.
+  (toolbar mount, sidebar bulk, projects) as its DOM has been *verified* to support. An optional
+  member being absent does NOT by itself hide the feature: the content layer must check for it.
+  `src/content/mount.ts` gates the bulk icon on `listConversations` + `openConversation` and the
+  project trigger on `matchesProject`. Adding an optional member to the interface means adding
+  that check too, or a provider will advertise a control it cannot service.
 - `src/core/html-to-markdown.ts` — the shared DOM→GFM serializer every adapter feeds its own
   prose container to. It lives in core, not in an adapter, because adapter isolation forbids one
   adapter importing another's module; it must stay free of provider-specific selectors.

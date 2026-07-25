@@ -27,23 +27,39 @@ const END_SETTLE_ROUNDS = 2;
 const WALK_ABSOLUTE_MAX_STEPS = 2000;
 
 // Claude's own icon-button classes, taken verbatim from its native header Share button
-// (verified live 2026-07-25) minus `px-md`, which is horizontal padding for a *labeled*
-// control — the export buttons are icon-only squares — and minus the `disabled:`/
-// `aria-*` variants, which never apply to them. Wearing these makes the buttons
-// indistinguishable from Claude's chrome in both themes. Owned by the adapter (not the
-// content layer) to keep provider CSS knowledge here; if Claude renames these tokens the
-// buttons degrade to unstyled-but-functional.
+// (verified live 2026-07-25). Only two tokens are dropped, and only because they are wrong
+// for THIS button rather than merely unused:
+//   - `px-md` — horizontal padding for a *labeled* control; the export buttons are
+//     icon-only squares.
+//   - `aria-pressed:text-accent` — a toggle-button style; these buttons are not toggles and
+//     never carry `aria-pressed`.
+// The `disabled:` variants are deliberately KEPT: `runExport` (src/content/mount.ts) sets
+// `disabled` on every button for the duration of an export, and on Claude that export is a
+// two-pass scroll walk lasting seconds to minutes — these tokens are the only in-flight
+// feedback the user gets. The cursor token is kept for the same reason: under Claude's
+// `cds-reset` it is what restores an interactive cursor.
+//
+// Owned by the adapter (not the content layer) to keep provider CSS knowledge here; if
+// Claude renames these tokens the buttons degrade to unstyled-but-functional.
 const TOOLBAR_BUTTON_CLASS =
   'cds-reset group/btn relative isolate inline-flex shrink-0 items-center justify-center ' +
-  'gap-1.5 whitespace-nowrap select-none border-0 outline-none focus-visible:outline-hidden ' +
-  'rounded h-control font-sans text-body font-medium transition-shadow duration-fast ' +
-  'focus-visible:shadow-focus text-primary';
+  'gap-1.5 whitespace-nowrap select-none cursor-[var(--cds-cursor-interactive)] ' +
+  'aria-disabled:cursor-default data-[disabled]:cursor-default border-0 outline-none ' +
+  'focus-visible:outline-hidden rounded h-control font-sans text-body font-medium ' +
+  '[&:disabled:not([aria-busy])]:opacity-50 disabled:pointer-events-none ' +
+  'transition-shadow duration-fast focus-visible:shadow-focus text-primary';
 
 /**
  * Claude adapter — single-conversation export only. Every other `ConversationAdapter`
  * member is optional and deliberately unimplemented: the sidebar bulk track and the
  * project track would each need their own live-DOM verification, and an unverified
- * implementation is worse than an absent one (the feature simply does not mount).
+ * implementation is worse than an absent one.
+ *
+ * Absence alone is not enough to hide a feature, though — the content layer has to *read*
+ * it. `syncConversationButtons` gates the bulk icon on `listConversations` +
+ * `openConversation` being present, and `pickProjectAdapter` gates the project trigger on
+ * `matchesProject`; without the former, registering this adapter rendered a bulk button on
+ * every Claude chat that answered a click with "not supported".
  */
 export const claudeAdapter: ConversationAdapter = {
   provider: PROVIDER,
@@ -155,62 +171,99 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
   const stepPx = Math.max(1, Math.floor(container.clientHeight * WALK_STEP_FRACTION));
 
   const turns = new Map<number, CollectedTurn>();
+  // Every `data-index` seen on a ROW, whether or not the adapter recognized a turn inside it.
+  // A gap in `turns` whose index appears here means the row rendered but held nothing this
+  // adapter understands — a different failure from "the walk never reached that turn", and
+  // the two deserve different errors (see `buildMessages`).
+  const seenRowIndices = new Set<number>();
   let sawUnindexedTurn = false;
 
   const record = (): void => {
+    for (const row of Array.from(doc.querySelectorAll(selectors.turnRow))) {
+      const index = rowIndex(row);
+      if (Number.isInteger(index)) seenRowIndices.add(index);
+    }
+
+    // Group this round's sightings by row FIRST, so several turn nodes inside one row are
+    // joined rather than fighting each other. Dedupe across rounds happens after: same row
+    // seen again → keep whichever round rendered more of it. Collapsing both steps into one
+    // map would make a second node in a row look like a re-sighting of the first and drop it
+    // silently (AGENTS.md #4). Live data showed exactly one turn node per row, but that was
+    // one conversation with no extended-thinking or artifact turns.
+    const round = new Map<number, { role: Role; parts: string[] }>();
     for (const el of Array.from(doc.querySelectorAll(selectors.turn))) {
-      const row = el.closest(selectors.turnRow);
-      const raw = row?.getAttribute(selectors.turnIndexAttr);
-      const index = raw === null || raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+      const index = rowIndex(el.closest(selectors.turnRow));
       if (!Number.isInteger(index)) {
         // No stable key to dedupe this turn across windows, so it can never be collected
         // reliably. Flag it and fail loud rather than silently omit it (AGENTS.md #4).
         sawUnindexedTurn = true;
         continue;
       }
-      const content = readTurn(el);
+      const existing = round.get(index);
+      if (existing) existing.parts.push(readTurn(el));
+      else round.set(index, { role: roleOf(el), parts: [readTurn(el)] });
+    }
+
+    for (const [index, { role, parts }] of round) {
+      const content = parts
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join('\n\n');
       const seen = turns.get(index);
       if (!seen) {
-        turns.set(index, { role: roleOf(el), content });
-      } else if (!seen.content.trim() && content.trim()) {
-        // Upgrade a turn first captured before its content rendered.
+        turns.set(index, { role, content });
+      } else if (content.length > seen.content.trim().length) {
+        // Keep the fullest sighting of this turn, not merely the first non-empty one.
+        // Upgrading only from empty would permanently pin a fragment captured while the
+        // response was still streaming or hydrating: the walk would then go on to see the
+        // finished turn and still export the truncated text — a silent content truncation
+        // (AGENTS.md #4). Length is the ordering because a fuller render is a superset of
+        // a partial one; a node caught mid-teardown renders shorter and is ignored.
         seen.content = content;
       }
     }
   };
 
-  // Pass 1 — up to the very first turn. Recording on the way means turns above the
-  // starting window are captured here rather than waiting for the downward pass.
-  const reachedTop = await walk(container, stepDelayMs, options.maxSteps, record, {
-    atEnd: (c) => c.scrollTop <= 0,
-    step: (c) => {
-      c.scrollTop = Math.max(0, c.scrollTop - stepPx);
-    },
-    stepPx,
-  });
-  if (!reachedTop) {
-    throw new ExtractionError(
-      'Timed out scrolling back to the start of the conversation. It may be unusually ' +
-        'long; try again, or report if this persists.',
-    );
-  }
+  // The walk drags the viewport across the whole conversation. Put the user back where they
+  // were reading — including on the fail-loud paths, so a failed export does not also cost
+  // them their place.
+  const restoreScrollTop = container.scrollTop;
+  try {
+    // Pass 1 — up to the very first turn. Recording on the way means turns above the
+    // starting window are captured here rather than waiting for the downward pass.
+    const reachedTop = await walk(container, stepDelayMs, options.maxSteps, record, {
+      atEnd: (c) => c.scrollTop <= 0,
+      step: (c) => {
+        c.scrollTop = Math.max(0, c.scrollTop - stepPx);
+      },
+      stepPx,
+    });
+    if (!reachedTop) {
+      throw new ExtractionError(
+        'Timed out scrolling back to the start of the conversation. It may be unusually ' +
+          'long; try again, or report if this persists.',
+      );
+    }
 
-  // Pass 2 — back down to the last turn.
-  const reachedBottom = await walk(container, stepDelayMs, options.maxSteps, record, {
-    atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
-    step: (c) => {
-      c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
-    },
-    stepPx,
-  });
-  if (!reachedBottom) {
-    throw new ExtractionError(
-      'Timed out loading the full conversation while scrolling. The conversation may be ' +
-        'unusually long; try again, or report if this persists.',
-    );
-  }
+    // Pass 2 — back down to the last turn.
+    const reachedBottom = await walk(container, stepDelayMs, options.maxSteps, record, {
+      atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
+      step: (c) => {
+        c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
+      },
+      stepPx,
+    });
+    if (!reachedBottom) {
+      throw new ExtractionError(
+        'Timed out loading the full conversation while scrolling. The conversation may be ' +
+          'unusually long; try again, or report if this persists.',
+      );
+    }
 
-  return buildMessages(turns, sawUnindexedTurn);
+    return buildMessages(turns, seenRowIndices, sawUnindexedTurn);
+  } finally {
+    container.scrollTop = restoreScrollTop;
+  }
 }
 
 /**
@@ -243,22 +296,46 @@ async function walk(
   }
 }
 
+/** The `data-index` of a virtualizer row as a number, or NaN when it has none. */
+function rowIndex(row: Element | null): number {
+  const raw = row?.getAttribute(selectors.turnIndexAttr);
+  return raw === null || raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+}
+
 /**
  * Turn the accumulated index→turn map into an ordered message list, failing loud on any
  * evidence of incompleteness rather than returning a partial conversation (AGENTS.md #4):
  * a gap in the index range, a turn that never yielded content, or a turn with no usable
  * index.
+ *
+ * `seenRowIndices` makes the gap message honest. A missing position whose row was never
+ * rendered means the walk did not reach it — retrying can help. A missing position whose row
+ * DID render means it holds something this adapter does not recognize (an artifact card, a
+ * tool call, a divider), and retrying never helps; that is a selector gap to report, not a
+ * scroll problem. Both still fail loud — we cannot export what we cannot read — but telling
+ * the user to "scroll through the whole conversation" when that is not the problem sends
+ * them in circles.
  */
-function buildMessages(turns: Map<number, CollectedTurn>, sawUnindexedTurn: boolean): Message[] {
+function buildMessages(
+  turns: Map<number, CollectedTurn>,
+  seenRowIndices: Set<number>,
+  sawUnindexedTurn: boolean,
+): Message[] {
   const indices = [...turns.keys()].sort((a, b) => a - b);
 
   for (let k = 1; k < indices.length; k++) {
-    if (indices[k] !== indices[k - 1] + 1) {
-      throw new ExtractionError(
-        `The conversation is missing turns between positions ${indices[k - 1]} and ${indices[k]}. ` +
+    if (indices[k] === indices[k - 1] + 1) continue;
+    const missing: number[] = [];
+    for (let i = indices[k - 1] + 1; i < indices[k]; i++) missing.push(i);
+    const allRendered = missing.every((i) => seenRowIndices.has(i));
+    throw new ExtractionError(
+      allRendered
+        ? `The conversation contains ${missing.length === 1 ? 'a message' : 'messages'} at ` +
+          `position ${missing.join(', ')} that this extension could not read — Claude’s markup ` +
+          'may have changed, or the message may be a type it does not support yet. Please report this.'
+        : `The conversation is missing turns between positions ${indices[k - 1]} and ${indices[k]}. ` +
           'Scroll through the whole conversation and try again.',
-      );
-    }
+    );
   }
 
   const messages: Message[] = [];
@@ -322,7 +399,16 @@ function readUserContent(el: Element): string {
   if (blocks.length > 0) return blocks.join('\n\n');
   // No block children (or all empty): fall back to the container's own text so a markup
   // change degrades to readable content rather than an empty turn.
-  return (el.textContent ?? '').trim();
+  const text = (el.textContent ?? '').trim();
+  if (text) return text;
+  // A turn holding only a pasted image has no readable text node. Describe it rather than
+  // yielding empty — an empty turn fails the WHOLE export (AGENTS.md #4), so one
+  // image-only message would block the conversation entirely. `img` is a standard tag, not
+  // a guessed Claude selector. File-attachment tiles are NOT covered: their markup was not
+  // in the 2026-07-25 capture and is tracked as a `[VERIFY]` in tasks.md — a turn holding
+  // only an attachment still fails loud rather than exporting a wrong description.
+  if (el.querySelector('img')) return '[Image]';
+  return '';
 }
 
 /** Map one turn node to a normalized Message, or null if it has no content. */

@@ -68,25 +68,38 @@ describe('claudeAdapter.toolbarButtonClass', () => {
     expect(used.filter((token) => !native.has(token))).toEqual([]);
   });
 
-  it('drops the tokens that do not apply to an icon-only button', () => {
+  it('drops only the tokens that are wrong for an icon-only, non-toggle button', () => {
     const used = new Set((claudeAdapter.toolbarButtonClass ?? '').split(/\s+/).filter(Boolean));
-    // `px-md` is horizontal padding for a *labeled* control; the rest are state variants
-    // that never apply to the export buttons. All three are present on the native button,
-    // so this is a deliberate exclusion, not an omission.
     const native = shareButtonClasses();
-    for (const token of ['px-md', 'disabled:pointer-events-none', 'aria-pressed:text-accent']) {
+    // `px-md` pads a *labeled* control; `aria-pressed:` styles a toggle. Both are present on
+    // the native button, so excluding them is a deliberate choice, not an omission.
+    for (const token of ['px-md', 'aria-pressed:text-accent']) {
       expect(native.has(token)).toBe(true);
       expect(used.has(token)).toBe(false);
+    }
+  });
+
+  it('keeps the disabled-state tokens, which are the only in-flight export feedback', () => {
+    // `runExport` disables every button for the whole export, and on Claude that is a
+    // multi-second scroll walk. Dropping these as "variants that never apply" was wrong.
+    const used = new Set((claudeAdapter.toolbarButtonClass ?? '').split(/\s+/).filter(Boolean));
+    for (const token of [
+      'disabled:pointer-events-none',
+      '[&:disabled:not([aria-busy])]:opacity-50',
+      'cursor-[var(--cds-cursor-interactive)]',
+    ]) {
+      expect(used.has(token)).toBe(true);
     }
   });
 });
 
 describe('claudeAdapter shape', () => {
   it('implements only the verified single-conversation members', () => {
-    // The bulk and project tracks each need their own live-DOM verification. Leaving
-    // their members ABSENT is what keeps those features from mounting for Claude, so the
-    // member set is the contract — asserting it whole also catches a member added later
-    // without the verification that must come with it.
+    // The bulk and project tracks each need their own live-DOM verification, so their
+    // members stay absent. The content layer reads that absence to hide the corresponding
+    // controls (see the bulk-icon gate in `src/content/mount.ts`, covered by
+    // `test/content/mount.test.ts`). Asserting the member set whole catches a member added
+    // later without the live verification — and without the UI gate — that must come with it.
     expect(claudeAdapter.provider).toBe('claude');
     expect(Object.keys(claudeAdapter).sort()).toEqual([
       'extract',

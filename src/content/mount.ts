@@ -217,6 +217,7 @@ export function createButtons(
   doc: Document,
   placement: 'native' | 'overlay',
   buttonClass?: string,
+  bulkSupported = true,
 ): HTMLDivElement {
   const container = doc.createElement('div');
   container.id = CONTAINER_ID;
@@ -244,8 +245,12 @@ export function createButtons(
   }
   // The bulk action sits after the per-format buttons: it opens a selection panel
   // instead of downloading the current conversation, so it carries its own handler.
-  // Shown only when the user keeps the bulk icon enabled.
-  if (cachedSettings.bulk) {
+  // Shown only when the user keeps the bulk icon enabled AND the page's adapter actually
+  // implements the bulk track — a provider that lists no conversations (Claude today) would
+  // otherwise show the icon and answer a click with BULK_UNSUPPORTED_MESSAGE, advertising a
+  // feature it does not have. `openBulkExport` still re-checks the same members, since it is
+  // reachable independently of this render.
+  if (cachedSettings.bulk && bulkSupported) {
     const bulkSpec: ButtonSpec = {
       label: DOWNLOAD_BULK_LABEL,
       ariaLabel: DOWNLOAD_BULK_ARIA_LABEL,
@@ -546,10 +551,19 @@ function syncConversationButtons(doc: Document, href: string, allowOverlayFallba
     }
   }
 
+  // Bulk export needs BOTH members — the same pair `openBulkExport` requires — so an
+  // adapter implementing only one never gets the icon.
+  const bulkSupported =
+    typeof adapter?.listConversations === 'function' && typeof adapter?.openConversation === 'function';
+
   if (mount) {
-    positionBeforeAnchor(createButtons(doc, 'native', adapter?.toolbarButtonClass), mount, anchor);
+    positionBeforeAnchor(
+      createButtons(doc, 'native', adapter?.toolbarButtonClass, bulkSupported),
+      mount,
+      anchor,
+    );
   } else if (allowOverlayFallback) {
-    doc.body.appendChild(createButtons(doc, 'overlay'));
+    doc.body.appendChild(createButtons(doc, 'overlay', undefined, bulkSupported));
   }
 }
 

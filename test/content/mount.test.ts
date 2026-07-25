@@ -44,6 +44,20 @@ function bareDoc(): Document {
   return window.document as unknown as Document;
 }
 
+const CLAUDE_CONV_URL = 'https://claude.ai/chat/abc-123';
+const CLAUDE_ACTIONS_ID = 'wiggle-controls-actions';
+
+// Claude's header action bar, whose only child is its native Share button.
+function docWithClaudeHeader(): Document {
+  const window = new Window();
+  window.document.write(
+    `<body><header><div data-testid="${CLAUDE_ACTIONS_ID}">` +
+      `<button data-testid="${CLAUDE_ACTIONS_ID}-share"></button>` +
+      '</div></header></body>',
+  );
+  return window.document as unknown as Document;
+}
+
 describe('syncButtons', () => {
   it('injects the buttons inside the header bar on a conversation page', () => {
     const doc = docWithHeader();
@@ -56,6 +70,34 @@ describe('syncButtons', () => {
     // Native buttons wear the ChatGPT adapter's icon-button class so they blend with
     // the header's native square icon controls.
     expect(container?.querySelector('button')?.className).toContain('rounded-lg');
+  });
+
+  // Regression: registering an adapter that implements no bulk track used to still render
+  // the bulk icon (it was gated on the user setting alone), so every Claude chat advertised
+  // a button whose only response to a click was "not supported".
+  it('omits the bulk icon on a provider whose adapter has no bulk track', () => {
+    const doc = docWithClaudeHeader();
+    syncButtons(doc, CLAUDE_CONV_URL);
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container).not.toBeNull();
+    expect(container?.parentElement?.getAttribute('data-testid')).toBe(CLAUDE_ACTIONS_ID);
+    // Four format downloads and nothing else.
+    expect(container?.querySelectorAll('button').length).toBe(4);
+    const labels = Array.from(container?.querySelectorAll('button') ?? []).map((b) =>
+      b.getAttribute('aria-label'),
+    );
+    expect(labels).not.toContain('Export multiple conversations');
+  });
+
+  it('still renders the bulk icon on a provider whose adapter implements the bulk track', () => {
+    const doc = docWithHeader();
+    syncButtons(doc, CONV_URL);
+
+    const labels = Array.from(doc.getElementById(CONTAINER_ID)?.querySelectorAll('button') ?? []).map(
+      (b) => b.getAttribute('aria-label'),
+    );
+    expect(labels).toContain('Export multiple conversations');
   });
 
   it('places the buttons immediately to the left of the native Share button, leaving it in place', () => {
@@ -338,6 +380,27 @@ describe('createButtons', () => {
     expect(Array.from(buttons).some((b) => b.getAttribute('aria-label') === 'Export multiple conversations')).toBe(
       false,
     );
+  });
+
+  // A provider that does not implement the bulk track (Claude today) must not advertise it:
+  // the icon would render on every one of its conversation pages and answer a click with
+  // "not supported", which is worse than the feature being absent.
+  it('omits the bulk button when the page’s adapter does not support bulk', () => {
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: true });
+    const buttons = createButtons(bareDoc(), 'native', 'icon-btn', false).querySelectorAll('button');
+
+    expect(buttons.length).toBe(4);
+    expect(Array.from(buttons).some((b) => b.getAttribute('aria-label') === 'Export multiple conversations')).toBe(
+      false,
+    );
+  });
+
+  it('keeps the bulk button for an adapter that does support bulk', () => {
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: true });
+    const buttons = createButtons(bareDoc(), 'native', 'icon-btn', true).querySelectorAll('button');
+
+    expect(buttons.length).toBe(5);
+    expect(buttons[4].getAttribute('aria-label')).toBe('Export multiple conversations');
   });
 });
 

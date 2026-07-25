@@ -11,7 +11,7 @@ Developer Dashboard access.
 | **Name** | Prompt Vault — AI Chat Backup |
 | **Category** | Productivity |
 | **Language** | English (default); Korean listing optional |
-| **Summary** (≤132 chars) | Back up your ChatGPT conversations to local Markdown, PDF, JSON, or HTML files. 100% local — nothing leaves your browser. |
+| **Summary** (≤132 chars) | Back up ChatGPT and Claude conversations to local Markdown, PDF, JSON, or HTML files. 100% local — nothing leaves your browser. |
 
 ### Description (English)
 
@@ -19,8 +19,8 @@ Developer Dashboard access.
 Prompt Vault saves your AI chat conversations as local files so you own a durable,
 portable copy — no account, no cloud, no data leaving your browser.
 
-On a ChatGPT conversation page, export buttons appear in the header. One click saves the
-open conversation to your computer in the format you choose:
+On a ChatGPT or Claude conversation page, export buttons appear in the header. One click
+saves the open conversation to your computer in the format you choose:
 
 • Markdown (.md) — clean, portable text with headings and code blocks preserved
 • PDF (.pdf) — selectable text, with Korean/CJK glyphs and monospace code blocks
@@ -48,8 +48,8 @@ Supported providers: ChatGPT and Claude. Bulk export is currently ChatGPT-only.
 Prompt Vault는 AI 채팅 대화를 로컬 파일로 저장해 계정이나 클라우드 없이 영구 사본을
 보관하게 해 줍니다. 대화 데이터는 브라우저 밖으로 전송되지 않습니다.
 
-ChatGPT 대화 페이지 헤더에 내보내기 버튼이 나타납니다. 클릭 한 번으로 현재 대화를
-원하는 형식으로 컴퓨터에 저장합니다.
+ChatGPT 또는 Claude 대화 페이지 헤더에 내보내기 버튼이 나타납니다. 클릭 한 번으로
+현재 대화를 원하는 형식으로 컴퓨터에 저장합니다.
 
 • Markdown (.md) — 제목과 코드 블록이 보존된 이식성 좋은 텍스트
 • PDF (.pdf) — 선택 가능한 텍스트, 한글/CJK 글꼴과 고정폭 코드 블록 지원
@@ -73,11 +73,11 @@ ChatGPT 대화 페이지 헤더에 내보내기 버튼이 나타납니다. 클�
 ### Single-purpose statement (Privacy tab)
 
 ```
-Prompt Vault has one purpose: to export the user's own ChatGPT conversations to local
-Markdown, PDF, JSON, or HTML files. The user exports the open conversation or selects a
-set of sidebar conversations through the optional bulk action. The extension reads
-conversation content only in response to that user action and only to create local
-downloads.
+Prompt Vault has one purpose: to export the user's own AI chat conversations to local
+Markdown, PDF, JSON, or HTML files. It supports ChatGPT and Claude. The user exports the
+open conversation or, on ChatGPT, selects a set of sidebar conversations through the
+optional bulk action. The extension reads conversation content only in response to that
+user action and only to create local downloads.
 ```
 
 ## Privacy and permission declarations
@@ -98,8 +98,8 @@ Data-use declarations:
   processing website content as handling user data even when everything stays on the
   user's device.
 - Select **Website content** and **Personal communications**: the extension reads the
-  ChatGPT conversations the user explicitly chooses to export. If the current dashboard
-  offers **User-generated content** as a separate category, select it as well.
+  ChatGPT and Claude conversations the user explicitly chooses to export. If the current
+  dashboard offers **User-generated content** as a separate category, select it as well.
 - The extension uses this data only to create the requested local download. It does not
   retain, transmit, sell, or share conversation content. `chrome.storage.sync` contains
   only toolbar-visibility preferences, never conversation content.
