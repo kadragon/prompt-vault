@@ -13,16 +13,21 @@ marker is removed by hand once the blocking ticket lands.
 
 ## Extraction completeness
 
-- [ ] [FEAT] Use Claude's `aria-setsize` as a completeness oracle. One virtualizer row was dumped in
-      full on 2026-07-25 and wrapped its message in `div[role="article"]` carrying `aria-setsize="56"`
-      and `aria-posinset="51"` (the row whose `data-index` was 50) — the `aria-setsize` value matched
-      the observed row count exactly (see `docs/live-dom-verification.md`). If it holds generally, it
-      is a declared total and `collected !== aria-setsize` would catch turns missing off the trailing
-      end, which the contiguity check cannot — that check now covers the leading end but nothing
-      bounds the tail. Would also give the walk a real termination condition instead of the
-      settle-rounds heuristic. Verify first, and treat none of it as established: presence on every
-      row, stability mid-stream, and whether it counts rows or messages (one measured row held four
-      assistant blocks, so the two are not interchangeable).
+- [ ] [FEAT] Give the Claude walk a real termination condition — one that can tell "the newest turn
+      stopped growing" from "the newest turn is off-screen". PR #36 established that
+      `aria-setsize` cannot do this on its own: the walk collects the bottom turn as a fragment,
+      the virtualizer recycles that row away, and every "is it complete / has it gone quiet?"
+      test then passes at the top of the conversation while the response is still streaming
+      (measured: early exit at round 17 exporting a 4-character fragment vs 32 rounds exporting
+      the full answer — see `docs/live-dom-verification.md` → "a declared total is an oracle, not
+      a termination condition"). Today the walk therefore runs both passes to their scroll ends,
+      which is correct but pays a full second traversal on every export. A fix needs a
+      **stream-completion signal** — whatever Claude renders while generating (a stop button, an
+      `aria-busy`, a streaming class on the turn) — and none of it has been measured, so it must
+      not be guessed at (AGENTS.md #5). Note the same signal would also improve on today's
+      behavior at the bottom, where the walk stops on scroll-settle regardless of whether the
+      last turn is still growing. *(blocked by: needs a live session capturing the markup of a
+      conversation mid-response — see `docs/live-dom-verification.md`)*
 
 ## Next (roadmap — not v1)
 
