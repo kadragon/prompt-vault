@@ -15,8 +15,10 @@
       is scriptable, so the drop-rebuild-reload-confirm experiment below is scriptable once the
       session is set up (`docs/live-dom-verification.md` → Tooling reality). What it actually
       needs from a human, every session, because the MCP profile is temporary: load `dist/`
-      unpacked by hand, and log in to `chatgpt.com`, `chat.openai.com` and `claude.ai` so a
-      conversation page exists on each host to confirm the toolbar against.
+      unpacked by hand, and log in to **all four** hosts — `chatgpt.com`, `chat.openai.com`,
+      `claude.ai` and `gemini.google.com` — so a conversation page exists on each to confirm the
+      toolbar against. The experiment must cover **every** host in `HOSTS`; dropping the grant after
+      testing a subset would leave the untested hosts unverified.
       Raised by the security reviewer on PR #34 (P3, conf 70) and recorded as
       **out of scope for that PR** because it is pre-existing: `manifest.config.ts` feeds one
       `HOSTS` list into both `content_scripts.matches` and `host_permissions`, but under MV3 a
@@ -24,11 +26,13 @@
       needed for cross-origin fetch/cookie access from an extension context — and this
       extension has no background service worker, makes no network calls, and downloads via
       `URL.createObjectURL` + `<a download>`. If that analysis holds, the grant is wider than
-      necessary on **all three** hosts, not just the newly added `claude.ai`. Do not "fix" this
+      necessary on **all four** hosts, not just the more recently added `claude.ai` and
+      `gemini.google.com`. Do not "fix" this
       by writing a rationale into the HOSTS comment — nobody currently knows why the entry is
       there, and inventing a justification is worse than the redundancy. Resolve it by
       experiment: drop `host_permissions`, build, load-unpacked, and confirm the toolbar still
-      mounts and exports on chatgpt.com, chat.openai.com, and claude.ai. If it does, remove the
+      mounts and exports on chatgpt.com, chat.openai.com, claude.ai and gemini.google.com — every
+      host in `HOSTS`, so the set never drifts behind a newly added adapter. If it does, remove the
       grant; if it does not, record the actual reason it is required. Either outcome is a
       one-line comment plus a Web Store permission-justification update
       (`docs/store-listing.md`, `docs/PRIVACY.md`).

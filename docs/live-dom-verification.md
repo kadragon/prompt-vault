@@ -54,9 +54,13 @@ and re-read its config rather than assuming the flags below.
   *after* it. Three consequences, each measured in the sessions recorded below:
   - `chrome://extensions/` **is scriptable**. The extension's id, version and enabled state read
     out of `extensions-manager`'s nested shadow roots, and `#dev-reload-button` can be clicked to
-    pick up a fresh `npm run build` — so "does the loaded build match HEAD?" is checkable rather
-    than assumed. Reload the *content* tab too: an extension reload orphans the content script
-    already living in it.
+    pick up a fresh `npm run build`. Be precise about what that buys, because it is less than it
+    looks: the **version read proves almost nothing** — in the session below it was 1.7.0 both
+    before and after the rebuild, since a `[DOCS]` change does not bump it — so what establishes
+    which code is running is the build-then-reload *sequence*, not the number. And `npm run build`
+    builds the **working tree**, so the sequence proves working-tree parity; that is HEAD parity
+    only when the tree is clean, which is worth a `git status` if the distinction matters. Reload
+    the *content* tab too: an extension reload orphans the content script already living in it.
   - **Exports are verifiable as real files.** Click a toolbar button and await Playwright's
     `download` event, then `saveAs` and measure on disk. This is the only route that also covers
     PDF, whose bytes come from pdfmake's own internal blob URL.
@@ -369,11 +373,16 @@ from a fresh `npm run build` before measuring), on a 56-row conversation opened 
   fails loud on a shortfall against the declared total, which makes a *successful* export already a
   completeness proof; the equality is the stronger form of the same statement.
 - A one-shot `querySelectorAll` on that cold load would have exported **6 of 56 rows** — 8 turn
-  nodes. The 68% figure recorded further up is **not directly comparable**: it counted *turn nodes*
-  (16 of ~50), and it was measured at the bottom of a page whose prior scroll state that session
-  never recorded — this cold load rendered only 8 turn nodes at that same position, so the 16 most
-  likely came from an already-scrolled list. The comparable number here is 8 turn nodes, so the
-  hazard is worse still — but say it in the right unit, and on a different conversation.
+  nodes. That 6 was read twice, by two probes seconds apart, so it is not one instantaneous
+  sample; no settle delay was applied beyond waiting for the toolbar to mount.
+- The 68% figure recorded further up is **not directly comparable**, and the reason is worth
+  stating rather than glossing. It counted *turn nodes* (16 of ~50) where this counts rows, it came
+  from a different conversation, and neither session recorded the conditions its number was sampled
+  under. Here a cold load rendered 8 turn nodes across 6 rows, while a **post-walk bottom rendered
+  17 rows at the very same `scrollTop`** — so the earlier 16 is consistent with either an
+  already-scrolled page *or* a virtualizer window warmed by walking, and nothing measured
+  distinguishes the two. Both numbers support the only claim that matters — a one-shot read loses
+  most of a long conversation — so use them as two independent instances of it, not as a trend.
 - **The attachment path works against the real page.** Exactly one message came out as
   `[File: …]` — the attachment-only row that carries no `user-message` node, the case that made
   this conversation unexportable before PR #35. Until now it had only ever been exercised against
