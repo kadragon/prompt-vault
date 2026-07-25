@@ -47,13 +47,17 @@ import an exporter. The `Conversation` model is the single contract between scra
 - `src/export/markdown.ts` / `pdf.ts` — pure functions `Conversation → Blob/string`. No DOM access.
 - `src/content/` — content-script entry: pick the adapter whose `matches()` is true, mount the
   download button, wire it to the exporters.
-- `manifest.json` — MV3. `content_scripts` matches only supported hosts; `host_permissions` narrow.
+- `manifest.json` — MV3. `content_scripts.matches` lists only supported hosts and is the *only*
+  thing granting host access: there is no `host_permissions` (dropped 2026-07-25 by experiment —
+  see `manifest.config.ts` and `docs/live-dom-verification.md`).
 
 ## Adding a provider (the extension path)
 
 1. Create `src/adapters/{provider}/` with a `ConversationAdapter` + selectors.
 2. Register it in the adapter registry.
-3. Add the host to `manifest.json` `content_scripts.matches` + `host_permissions`.
+3. Add the host to the `HOSTS` list in `manifest.config.ts` — that feeds `content_scripts.matches`,
+   which is all a statically declared content script needs. Do **not** add `host_permissions`;
+   `test/privacy/manifest-least-privilege.test.ts` fails if you do.
 4. No change to `src/core/` or `src/export/` — if you need to, the boundary is wrong.
 
 ## Resolved / open design decisions

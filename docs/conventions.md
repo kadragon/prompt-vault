@@ -7,7 +7,9 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 - Manifest V3 only. No `background.page`, no MV2-era APIs; use a service worker if a background
   context is needed.
 - Least privilege: add a permission only when a feature needs it, and justify it in the PR body.
-  Never request `<all_urls>`. `host_permissions` and `content_scripts.matches` list explicit hosts.
+  Never request `<all_urls>`. `content_scripts.matches` lists explicit hosts and is the only host
+  grant — do not add `host_permissions`, which this extension does not need and which
+  `test/privacy/manifest-least-privilege.test.ts` fails on (background in `manifest.config.ts`).
 - CSP: no remote code. Everything the extension runs is bundled in the package.
 
 ## Adapters
