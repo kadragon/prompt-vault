@@ -107,7 +107,7 @@ function makeWindowedDoc({
     querySelector: (sel: string): unknown =>
       sel === '[data-testid="action-bar-edit"]' && t.attachments && !t.noEditBar ? {} : null,
     querySelectorAll: (sel: string): unknown[] =>
-      sel === 'img[alt]' && t.attachments
+      sel === 'button > img[alt]' && t.attachments
         ? t.attachments.map((alt) => ({
             getAttribute: (name: string): string | null => (name === 'alt' ? alt : null),
           }))
@@ -318,7 +318,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     // stays contiguous — the exact shape a contiguity-only check waves through.
     for (let i = 0; i < turns.length; i++) turns[i] = { ...turns[i], indexOverride: i + 1 };
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
-      /missing its first turn/,
+      /first turn never loaded/,
     );
   });
 

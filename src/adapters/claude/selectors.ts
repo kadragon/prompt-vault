@@ -69,11 +69,14 @@ export const selectors = {
    * `data-testid` was the file name too — `alt` is preferred because a test id whose *value*
    * is user data is not a contract, while `alt` is the standard accessible name.
    *
-   * Deliberately the bare standard tag rather than Claude's `group/thumbnail` wrapper class:
-   * it is only ever queried inside a row already known to hold no readable turn, so it does
-   * not have to discriminate against prose images.
+   * Scoped to the measured `button > img` path rather than a bare `img[alt]`: the query runs
+   * against a whole virtualizer row, so any decorative or control image carrying an `alt`
+   * would otherwise be reported as a file — fabricating a name, the exact failure the
+   * `alt`-over-`data-testid` rationale above exists to avoid. Claude's `group/thumbnail`
+   * wrapper class is avoided in favour of the standard tags. If Claude restructures the tile,
+   * this stops matching and the row goes back to failing loud, which is the safe direction.
    */
-  attachmentImage: 'img[alt]',
+  attachmentImage: 'button > img[alt]',
 
   /**
    * Claude's per-message "edit" control, which exists ONLY on the user's own messages.

@@ -13,15 +13,16 @@ marker is removed by hand once the blocking ticket lands.
 
 ## Extraction completeness
 
-- [ ] [FEAT] Use Claude's `aria-setsize` as a completeness oracle. Each virtualizer row wraps its
-      message in `div[role="article"]` carrying `aria-setsize` (total messages in the conversation)
-      and `aria-posinset` (1-based position) — measured 2026-07-25, `aria-setsize="56"` /
-      `aria-posinset="51"` on the row whose `data-index` was 50 (see
-      `docs/live-dom-verification.md`). This is a *declared total*, strictly stronger than the
-      contiguity check `buildMessages` uses today: contiguity cannot detect turns missing off both
-      ends of the range, whereas `collected !== aria-setsize` catches it outright. Would also give
-      the walk a real termination condition instead of the settle-rounds heuristic. Verify the
-      attribute is present on every row and stable mid-stream before depending on it.
+- [ ] [FEAT] Use Claude's `aria-setsize` as a completeness oracle. One virtualizer row was dumped in
+      full on 2026-07-25 and wrapped its message in `div[role="article"]` carrying `aria-setsize="56"`
+      and `aria-posinset="51"` (the row whose `data-index` was 50) — the `aria-setsize` value matched
+      the observed row count exactly (see `docs/live-dom-verification.md`). If it holds generally, it
+      is a declared total and `collected !== aria-setsize` would catch turns missing off the trailing
+      end, which the contiguity check cannot — that check now covers the leading end but nothing
+      bounds the tail. Would also give the walk a real termination condition instead of the
+      settle-rounds heuristic. Verify first, and treat none of it as established: presence on every
+      row, stability mid-stream, and whether it counts rows or messages (one measured row held four
+      assistant blocks, so the two are not interchangeable).
 
 ## Next (roadmap — not v1)
 

@@ -349,7 +349,9 @@ function buildMessages(
   const indices = [...turns.keys()].sort((a, b) => a - b);
 
   // Claude numbers virtualizer rows from zero (verified live 2026-07-25: `minIndex` 0 on a
-  // 56-row conversation), so a collected range that starts above zero is a hole exactly like
+  // 56-row conversation — n=1, re-measurement tracked as a `[VERIFY]` in tasks.md, because a
+  // conversation that legitimately started above 0 would fail here permanently), so a
+  // collected range that starts above zero is a hole exactly like
   // an interior one — it means the first turns were never collected, which contiguity alone
   // cannot see. Seeding the scan at -1 puts that leading range through the same check
   // instead of duplicating it. The reached-top guard in `collectVirtualizedTurns` covers only
@@ -368,10 +370,14 @@ function buildMessages(
           'may have changed, or the message may be a type it does not support yet. Please report this.',
       );
     }
+    // A leading hole is NOT a "scroll further" problem, even though its rows never rendered:
+    // this runs only after the walk proved it reached `scrollTop <= 0`, so the user repeating
+    // that scroll by hand does exactly what just failed. Ask for a report instead of sending
+    // them in circles — the same reasoning that split the interior gap into two messages.
     throw new ExtractionError(
       k === 0
-        ? `The conversation is missing its first ${missing.length === 1 ? 'turn' : `${missing.length} turns`}. ` +
-          'Scroll to the top of the conversation and try again.'
+        ? `The conversation’s first ${missing.length === 1 ? 'turn' : `${missing.length} turns`} never ` +
+          'loaded, even after scrolling to the top. Claude’s markup may have changed — please report this.'
         : `The conversation is missing turns between positions ${previous} and ${indices[k]}. ` +
           'Scroll through the whole conversation and try again.',
     );
@@ -443,9 +449,14 @@ function readUserContent(el: Element): string {
   // A turn holding only a pasted image has no readable text node. Describe it rather than
   // yielding empty — an empty turn fails the WHOLE export (AGENTS.md #4), so one
   // image-only message would block the conversation entirely. `img` is a standard tag, not
-  // a guessed Claude selector. File attachments do not reach here: they render OUTSIDE the
-  // `user-message` node entirely (verified live 2026-07-25), so they are claimed a level up
-  // by `attachmentMarkers` against the virtualizer row.
+  // a guessed Claude selector.
+  //
+  // What was measured (2026-07-25) is narrower than "attachments are handled": an
+  // attachment-ONLY user turn renders no `user-message` node at all, and `attachmentMarkers`
+  // claims that row a level up. A turn holding text AND a file was never captured, so where
+  // its tiles sit relative to this node is unknown — such a turn still exports its text with
+  // the attachment unreported. Tracked as a `[VERIFY]` in tasks.md; guessing at the mixed
+  // layout would risk labelling a pasted image as a file, which is worse than the omission.
   if (el.querySelector('img')) return '[Image]';
   return '';
 }

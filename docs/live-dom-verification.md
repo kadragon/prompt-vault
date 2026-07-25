@@ -56,6 +56,14 @@ Recurring pattern: the user is on the live page and pastes DevTools console outp
 not ask for conversation content, and do not ask them to run several snippets in sequence — each
 round trip costs them a turn.
 
+Keep the snippet's syntax conservative, because a round trip is exactly what a syntax error costs.
+On 2026-07-25 a probe using optional chaining came back `Uncaught SyntaxError: Unexpected token '.'`
+— the signature a parser without `?.` produces — while `node --check` parsed the same text fine; a
+rewrite with no `?.`, no `Object.fromEntries`, and no non-ASCII characters (a `…` inside a string
+literal was the other suspect) ran first try. The exact cause was never isolated, so treat this as a
+cheap precaution rather than a diagnosis: prefer `async`/`await`, arrow functions, `Array.from`, and
+plain loops, and verify with `node --check` before sending.
+
 ## Recording the result
 
 A verification that isn't recorded gets redone next month.
@@ -133,8 +141,9 @@ never be something other than a turn — and the finding below shows non-turn ro
 
 Same conversation. Turn nodes per indexed row came out as **54 rows with 1, one row with 4, one row
 with 0**. This disproves the first session's "exactly one turn node per indexed row", which rested on
-a 50-turn conversation that happened to contain only plain text turns. Both off-nominal shapes are
-real at ordinary scale, so neither the walk nor `buildMessages` may assume 1:1.
+a 50-turn conversation in which no row happened to hold more than one turn node — *why* it did not is
+unknown, since that session never recorded what kinds of turn it contained. Both off-nominal shapes
+are real at ordinary scale, so neither the walk nor `buildMessages` may assume 1:1.
 
 - **The 0-turn row (index 50) is an attachment-only user turn.** It matched neither
   `[data-testid="user-message"]` nor `.standard-markdown` anywhere in its subtree — the user-message
@@ -182,11 +191,17 @@ conversation, and Claude could plausibly add an edit affordance to assistant tur
 therefore uses it only to *claim* an otherwise-unreadable row, never to override a turn node's own
 role, so a change degrades to the pre-existing loud failure.
 
-Separately, each row wraps its message in **`div[role="article"]` carrying `aria-setsize="56"` and
-`aria-posinset="51"`** (1-based, against a 0-based `data-index` of 50). `aria-setsize` is a
-server-declared **total message count** — a true completeness oracle, and strictly stronger than the
-contiguity check the adapter uses today, which cannot detect turns missing off *both* ends. Not yet
-used by any code; tracked in `backlog.md`.
+Separately, the row dumped in full wrapped its message in **`div[role="article"]` carrying
+`aria-setsize="56"` and `aria-posinset="51"`** (1-based, against a 0-based `data-index` of 50). The
+`aria-setsize` value matched the observed row count exactly, which makes it a **candidate**
+completeness oracle — stronger than the contiguity check, which even after the leading-range check
+added 2026-07-25 still cannot detect turns missing off the *trailing* end.
+
+Deliberately not called more than that. Only one row was dumped, so presence on every row is
+unverified; where the number originates is unverified (and the adapter's own measurement that turns
+are already client-side argues against calling it server-declared); and 56 is a count of *rows*, not
+messages — one of those rows held four assistant blocks, so the two differ under any counting rule
+that is not one-row-one-message. Not used by any code; tracked in `backlog.md`.
 
 ### 2026-07-25 — Claude's structural facts, as used by `src/adapters/claude/selectors.ts`
 

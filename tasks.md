@@ -30,6 +30,22 @@
 ### Claude adapter — follow-ups from the 2026-07-25 live session
 
 - [ ] [VERIFY] Rendered Claude UI: load-unpacked per `docs/runbook.md`, open a real `claude.ai/chat/<id>`, and confirm (a) the export buttons mount inside `[data-testid="wiggle-controls-actions"]` to the left of Share and wear Claude's chrome in both light and dark, (b) each of MD/PDF/JSON/HTML downloads, and (c) a long (30+ turn) conversation exports every turn — the walk is unit-covered against a recycling fake but has never run against the real virtualizer. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session)*
+- [ ] [VERIFY] User turns holding BOTH text and a file attachment. The 2026-07-25 walk captured only
+      an attachment-ONLY turn (no `user-message` node, claimed at row level by `attachmentMarkers`);
+      a mixed turn was never seen, so where its tiles sit relative to `user-message` is unknown.
+      Today such a turn exports its text and reports nothing about the file — an omission, not a loud
+      failure, and the one place the Claude adapter is NOT at parity with the ChatGPT adapter, whose
+      `readTurn` joins `[base, files]`. Not fixed blind on purpose: running `attachmentMarkers` over a
+      claimed row would also sweep up a *pasted image* inside `user-message` and label it `[File: …]`.
+      Capture the markup of a mixed turn, then decide whether the row-level scan should also run on
+      claimed rows and how to exclude images belonging to the turn body. *(blocked by: needs a live
+      session on a conversation containing a text+attachment turn — see `docs/live-dom-verification.md`)*
+- [ ] [VERIFY] Re-measure `minIndex` on a second, longer conversation. `buildMessages` now fails the
+      whole export when the collected index range starts above 0, a rule generalized from **one**
+      56-row conversation. If any conversation renders a non-0-based `data-index` (a virtualizer
+      offset base when prepending older turns, say), every export of it would fail permanently with
+      advice that cannot help. One console snippet reporting `minIndex` answers it; until then the
+      n=1 basis is recorded in the code comment at `buildMessages`.
 - [ ] [VERIFY] Indexed rows carrying extended thinking, an artifact, or a tool call. Narrowed
       from the original item by the 2026-07-25 second live walk, which settled the *structural*
       half: a 56-row conversation measured 54 rows with one turn node, one with four, and one
