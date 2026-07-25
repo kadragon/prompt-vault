@@ -55,3 +55,13 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   where the bound has slack for a violation on every round) passes either way while reading as
   proof. Assert the shape the violation would actually produce instead — e.g. a duplicate
   progress count rather than merely "fewer ticks than rounds".
+- **That verification expires when the fake changes.** A neutralization result is a property of the
+  guard *and* the fake together, so editing the fake silently invalidates it. This has now bitten
+  three times across adapters: a streaming test keyed to scroll position instead of elapsed time
+  (Claude, PR #34); a paging test at two batches deep, where position-only termination collects
+  everything by luck (Gemini, PR #37); and the same Gemini test again after the fake was taught to
+  shift the viewport on a batch landing, which quietly turned it green. Re-run the neutralization
+  for every guard whose fake you touched, in the same pass — not just for the guard you were aiming
+  at. Corollary: when a shape is unmeasured (here, whether a landing batch moves `scrollTop`), model
+  BOTH outcomes rather than picking one; a single arbitrary choice will silently stop testing
+  whichever guard the other shape covered.

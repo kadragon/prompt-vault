@@ -35,9 +35,13 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Next (roadmap — not v1)
 
-- [ ] Gemini adapter (reuse core model + exporters via ConversationAdapter)
 - [ ] *(blocked by: needs its own live-DOM session — the sidebar's list structure, its scroll port, and whether it pages from the server were never measured; the 2026-07-25 session covered only the conversation view)*
       Claude adapter: bulk/sidebar export (`listConversations` / `openConversation` /
       `loadMoreConversations`)
 - [ ] *(blocked by: Claude's project routes and project-home list markup are unmeasured — same session gap as the sidebar item above)*
       Claude adapter: Projects track (`matchesProject` + the project bulk members)
+- [ ] *(blocked by: needs its own live-DOM session — only the conversation view was measured on 2026-07-25; the sidebar was seen in passing (33 `[data-test-id="conversation"]` anchors in their own `infinite-scroller`) but its paging shape, scroll port, and whether it loads from the server were never measured)*
+      Gemini adapter: bulk/sidebar export (`listConversations` / `openConversation` /
+      `loadMoreConversations`)
+- [ ] *(blocked by: Gemini's Gems and project routes and their list markup are unmeasured — `matches` deliberately excludes them, so those pages currently mount nothing)*
+      Gemini adapter: Gems / Projects track (`matchesProject` + the project bulk members)
