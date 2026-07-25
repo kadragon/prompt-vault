@@ -33,8 +33,17 @@ import an exporter. The `Conversation` model is the single contract between scra
   createdAt?, messages: Message[] }`, `Message { role: 'user'|'assistant'|'system', content,
   parts? }`. This is the ONLY type exporters and adapters share.
 - `src/adapters/{provider}/` — one directory per provider. Must export a `ConversationAdapter`:
-  `matches(url): boolean`, `extract(): Conversation`, plus centralized `selectors`. ChatGPT first;
-  Gemini and Claude are added as sibling directories with zero changes to core/export.
+  `matches(url): boolean`, `extract(): Conversation`, plus centralized `selectors`. ChatGPT and
+  Claude ship today; Gemini is added as a sibling directory with zero changes to core/export.
+  Only `provider`/`matches`/`extract` are required — a provider implements as much of the rest
+  (toolbar mount, sidebar bulk, projects) as its DOM has been *verified* to support. An optional
+  member being absent does NOT by itself hide the feature: the content layer must check for it.
+  `src/content/mount.ts` gates the bulk icon on `listConversations` + `openConversation` and the
+  project trigger on `matchesProject`. Adding an optional member to the interface means adding
+  that check too, or a provider will advertise a control it cannot service.
+- `src/core/html-to-markdown.ts` — the shared DOM→GFM serializer every adapter feeds its own
+  prose container to. It lives in core, not in an adapter, because adapter isolation forbids one
+  adapter importing another's module; it must stay free of provider-specific selectors.
 - `src/export/markdown.ts` / `pdf.ts` — pure functions `Conversation → Blob/string`. No DOM access.
 - `src/content/` — content-script entry: pick the adapter whose `matches()` is true, mount the
   download button, wire it to the exporters.

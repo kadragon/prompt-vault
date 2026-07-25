@@ -2,7 +2,7 @@ import type { Conversation, Message, Role } from '../../core/conversation';
 import type { SidebarConversation } from '../../core/sidebar';
 import { ExtractionError } from '../../core/errors';
 import type { ConversationAdapter, OpenConversationOptions } from '../types';
-import { htmlToMarkdown } from './html-to-markdown';
+import { htmlToMarkdown } from '../../core/html-to-markdown';
 import { matches, matchesProject } from './matches';
 import { selectors } from './selectors';
 

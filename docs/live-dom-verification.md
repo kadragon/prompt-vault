@@ -1,12 +1,15 @@
-# Live-DOM Verification (ChatGPT)
+# Live-DOM Verification
 
-Unit tests run against frozen fixtures, so they can never tell you that ChatGPT's markup moved.
-Only a session against the live, logged-in page can. Entries in
-`src/adapters/chatgpt/selectors.ts` should carry a `Verified against the live page (YYYY-MM-DD)`
-stamp — this doc is how that stamp gets earned. Coverage is currently partial: some entries are
-stamped only `verified against the captured fixtures` (weaker — a fixture cannot detect drift), and
-the oldest ones carry no per-entry stamp at all, inheriting only the file header. Treat an unstamped
-or fixture-only entry as unverified, not as verified-by-default.
+Unit tests run against frozen fixtures, so they can never tell you that a provider's markup moved.
+Only a session against the live, logged-in page can. Entries in each adapter's `selectors.ts`
+should carry a `Verified against the live page (YYYY-MM-DD)` stamp — this doc is how that stamp
+gets earned. Coverage is currently partial: some ChatGPT entries are stamped only `verified against
+the captured fixtures` (weaker — a fixture cannot detect drift), and the oldest ones carry no
+per-entry stamp at all, inheriting only the file header. Treat an unstamped or fixture-only entry as
+unverified, not as verified-by-default.
+
+Most of the procedure below was written for ChatGPT and reads that way; it applies unchanged to any
+provider. Per-provider facts live in **Verified findings**, which is grouped by provider.
 
 ## When to run one
 
@@ -72,6 +75,8 @@ Results worth keeping after the `tasks.md` `[VERIFY]` item that produced them is
 measurement of live behavior that adapter code now depends on. Numbers, not impressions; each
 entry names the account scale it was measured at, because these are not scale-invariant.
 
+## ChatGPT
+
 ### 2026-07-24 — `#history` sidebar is append-only, not a recycling virtualizer
 
 Measured on a 1042-conversation account. The rendered node count grew **monotonically from 28 to
@@ -97,6 +102,64 @@ scroll port — `overflow-y: auto`, `scrollHeight 730 > clientHeight 400`, merel
 section — with `stepDown` moving it 0→330. A downward walk therefore cannot assume the container's
 arithmetic bottom is the list's end; see `endOfListGate` in the adapter. `.text-sm.font-medium`
 extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-snippet mis-picks.
+
+## Claude
+
+### 2026-07-25 — the message list IS a recycling virtualizer (unlike ChatGPT's `#history`)
+
+Measured on a ~50-turn conversation, via a console snippet the user ran on the live logged-in page.
+Rendered turn nodes (`[data-testid="user-message"]` + `.standard-markdown`) numbered **16 at the
+bottom (7 user + 9 assistant)** and **8 after scrolling to the top (3 + 5)** — the count *fell*, and
+surfaced different turns, so nodes are trimmed off both ends rather than accumulated. Across the
+walk, **50 distinct `data-index` values** were surfaced.
+
+This is the opposite of the `#history` finding above, and it is the reason `extract` for Claude
+cannot be a one-shot `querySelectorAll`: such a read would have captured 16 of 50 turns — a **68%
+silent truncation** (AGENTS.md #4). Do not generalize either provider's virtualization model to the
+other.
+
+### 2026-07-25 — Claude's structural facts, as used by `src/adapters/claude/selectors.ts`
+
+Same session. Conversation URLs are `claude.ai/chat/<uuid>`. Facts the adapter depends on:
+
+- **Only the user side is labeled.** `[data-testid="user-message"]` marks user turns; assistant
+  turns carry no test id, so the adapter identifies them by their prose container
+  `.standard-markdown` and takes document order as the interleaving. The two sets are disjoint —
+  zero `.standard-markdown` elements are nested inside a user turn.
+- **No per-message id.** There is no `data-message-id` analogue. The virtualizer row's `data-index`
+  is the only stable per-turn identity, which is why it serves as the dedupe key, the sort key, and
+  (via contiguity) a completeness oracle — something the ChatGPT adapter has never had.
+- **Scroll port is attribute-addressable**: `[data-autoscroll-container]`, so no class-soup
+  selector is needed. It was the only content scroll port (`scrollHeight 2922 > clientHeight 592`).
+- **`.markdown` and `[class*="prose"]` resolve to zero elements** — no ChatGPT selector transfers.
+- **Code fences declare their language on the `<code>`**: `class="language-sql"`, with no header
+  label. ChatGPT is the reverse (header label, no class), so `codeLanguage()` in
+  `src/core/html-to-markdown.ts` reads the class first and falls back to the label.
+- **User turns preserve newlines**: the body is `p.whitespace-pre-wrap`, so user content must NOT
+  be pushed through the serializer's whitespace-collapsing inline path.
+- **`document.title` is `"<conversation title> - Claude"`** — the suffix is stripped to recover the
+  title.
+- **Header bar**: `[data-testid="wiggle-controls-actions"]` had `childCount 1` and
+  `contains(shareButton) === true`, so the export buttons can be inserted ahead of Share rather
+  than replacing it.
+- **Native button classes** (the source of `TOOLBAR_BUTTON_CLASS`), captured in full from the
+  Share button:
+
+  ```
+  cds-reset group/btn relative isolate inline-flex shrink-0 items-center justify-center gap-1.5
+  whitespace-nowrap select-none cursor-[var(--cds-cursor-interactive)] aria-disabled:cursor-default
+  data-[disabled]:cursor-default border-0 outline-none focus-visible:outline-hidden rounded
+  h-control font-sans text-body font-medium [&:disabled:not([aria-busy])]:opacity-50
+  disabled:pointer-events-none transition-shadow duration-fast focus-visible:shadow-focus
+  text-primary aria-pressed:text-accent px-md
+  ```
+
+  The adapter uses a subset (dropping `px-md`, a *labeled* control's padding, plus the
+  `disabled:`/`aria-*` state variants). A class string is the one kind of captured value nothing
+  type-checks, and an embellished token would surface only as unstyled buttons on the live page —
+  so `test/adapters/claude/toolbar-mount.test.ts` pins every token of `toolbarButtonClass` to the
+  fixture's reproduction of this string. Keep the fixture's copy FULL; abbreviating it turns that
+  guard into a tautology.
 
 ## Capturing a fixture
 

@@ -1,9 +1,18 @@
 import { defineManifest } from '@crxjs/vite-plugin';
 import pkg from './package.json';
 
-// Supported ChatGPT hosts. Kept minimal (least privilege): these are the only
-// origins the extension may read or inject into. New providers add sibling hosts.
-const HOSTS = ['https://chatgpt.com/*', 'https://chat.openai.com/*'];
+// Supported provider hosts. Kept minimal (least privilege): these are the only
+// origins the extension may read or inject into. Each entry must correspond to a
+// registered adapter in src/adapters/index.ts — a host without an adapter is an
+// unjustified grant. New providers add sibling hosts.
+const HOSTS = [
+  'https://chatgpt.com/*',
+  'https://chat.openai.com/*',
+  // Claude — conversation pages live at https://claude.ai/chat/<id>. Host-broad for
+  // the same reason as ChatGPT below (client-routed SPA); narrowed in JS by
+  // isConversationPage().
+  'https://claude.ai/*',
+];
 
 export default defineManifest({
   manifest_version: 3,
@@ -23,9 +32,9 @@ export default defineManifest({
     48: 'icons/icon48.png',
     128: 'icons/icon128.png',
   },
-  // Matches are host-broad because ChatGPT is a client-routed SPA (the script
-  // must already be present when the user navigates into a /c/<id> page); the
-  // conversation-page gate is enforced in JS via isConversationPage(), and SPA
+  // Matches are host-broad because these are client-routed SPAs (the script must
+  // already be present when the user navigates into a /c/<id> or /chat/<id> page);
+  // the conversation-page gate is enforced in JS via isConversationPage(), and SPA
   // route changes are picked up by polling location in the content script.
   content_scripts: [
     {

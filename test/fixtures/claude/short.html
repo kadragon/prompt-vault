@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  Synthetic Claude conversation fixture.
+
+  NOT a page dump. This repo is public, so the markup below was reconstructed from the
+  text-free structural skeleton captured during the 2026-07-25 live-DOM verification
+  session (see docs/live-dom-verification.md → Claude): element tags, class strings, and
+  data-attributes are the live ones; every piece of text is invented placeholder content.
+
+  Structure reproduced verbatim from that capture:
+    - a `[data-testid="chat-header"]` holding `[data-testid="wiggle-controls-actions"]`,
+      whose single child is the native `[data-testid="wiggle-controls-actions-share"]`
+      button (childCount 1, containsShare true).
+    - a `[data-autoscroll-container]` scroll port wrapping one `[data-index]` row per turn,
+      exactly one turn node per row, indices contiguous, roles strictly alternating.
+    - user turns: `div[data-testid="user-message"] > p.whitespace-pre-wrap`.
+    - assistant turns: `div.standard-markdown` with `p.font-claude-response-body`,
+      `ol > li.font-claude-response-body`, and `pre > code.language-*`.
+-->
+<html lang="en">
+  <head>
+    <title>Fixture conversation - Claude</title>
+  </head>
+  <body>
+    <div data-testid="chat-header" class="df-titlebar draggable h-11 shrink-0 flex items-center px-2">
+      <div data-testid="chat-title-split" class="flex min-w-0 shrink items-center">
+        <button aria-label="Rename chat">Fixture conversation</button>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <div
+          data-testid="wiggle-controls-actions"
+          class="flex items-center gap-1 empty:hidden transition-opacity duration-150 ease-in-out opacity-100 delay-300"
+        >
+          <!--
+            Share button class reproduced in FULL from the 2026-07-25 capture, not
+            abbreviated: `toolbar-mount.test.ts` asserts that every token of the adapter's
+            `toolbarButtonClass` appears here, so shortening this string would silently
+            weaken that guard into a tautology.
+          -->
+          <button
+            data-testid="wiggle-controls-actions-share"
+            class="cds-reset group/btn relative isolate inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap select-none cursor-[var(--cds-cursor-interactive)] aria-disabled:cursor-default data-[disabled]:cursor-default border-0 outline-none focus-visible:outline-hidden rounded h-control font-sans text-body font-medium [&:disabled:not([aria-busy])]:opacity-50 disabled:pointer-events-none transition-shadow duration-fast focus-visible:shadow-focus text-primary aria-pressed:text-accent px-md"
+          >
+            Share
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      data-autoscroll-container
+      class="overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable] mt-12 pt-2 flex-1"
+    >
+      <div data-index="0" data-rs-index="0" class="mb-1 mt-[var(--msg-gap,1.5rem)] group group/message-row">
+        <div
+          data-testid="user-message"
+          data-user-message-bubble
+          class="font-large !font-user-message py-0.5 grid grid-cols-1 gap-2 relative [&_ul]:pl-8 [&_ol]:pl-8"
+        >
+          <p class="whitespace-pre-wrap break-words">First user question.
+Second line of the same paragraph.</p>
+          <p class="whitespace-pre-wrap break-words">A separate paragraph.</p>
+        </div>
+      </div>
+
+      <div data-index="1" data-rs-index="1" class="group relative pb-[var(--msg-assistant-pb,0.75rem)]">
+        <div
+          class="standard-markdown grid-cols-1 grid [&_>_*]:min-w-0 gap-3 [&_>_*:last-child]:mb-0 standard-markdown"
+        >
+          <p class="font-claude-response-body break-words whitespace-normal">
+            Here is an answer with <strong>bold</strong> and <code>inline code</code>.
+          </p>
+          <ol class="list-decimal flex flex-col gap-1 pl-8 mb-3">
+            <li class="font-claude-response-body whitespace-normal break-words pl-2">First step</li>
+            <li class="font-claude-response-body whitespace-normal break-words pl-2">Second step</li>
+          </ol>
+          <pre class="code-block__code !my-0 !rounded-lg !text-sm !leading-relaxed p-3.5"><code class="language-sql">SELECT id
+FROM users;</code></pre>
+        </div>
+      </div>
+
+      <div data-index="2" data-rs-index="2" class="mb-1 mt-[var(--msg-gap,1.5rem)] group group/message-row">
+        <div
+          data-testid="user-message"
+          data-user-message-bubble
+          class="font-large !font-user-message py-0.5 grid grid-cols-1 gap-2 relative [&_ul]:pl-8 [&_ol]:pl-8"
+        >
+          <p class="whitespace-pre-wrap break-words">A follow-up with a list:</p>
+          <ul class="list-disc flex flex-col gap-1 pl-8">
+            <li>alpha</li>
+            <li>beta</li>
+          </ul>
+        </div>
+      </div>
+
+      <div data-index="3" data-rs-index="3" class="group relative pb-[var(--msg-assistant-pb,0.75rem)]">
+        <div
+          class="standard-markdown grid-cols-1 grid [&_>_*]:min-w-0 gap-3 [&_>_*:last-child]:mb-0 standard-markdown"
+        >
+          <p class="font-claude-response-body break-words whitespace-normal">Closing reply.</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
