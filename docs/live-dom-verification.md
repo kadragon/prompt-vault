@@ -25,7 +25,7 @@ above should re-check the ones adapter code depends on:
 | Number | Where it is relied on | What drift does |
 |--------|----------------------|-----------------|
 | Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
-| ChatGPT `#history` page latency (**1418–2830 ms**) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers (the standing residual recorded below). |
+| ChatGPT `#history` page latency (**1418–2830 ms**) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run (recorded below). |
 
 ## Tooling reality (read before promising anything)
 
@@ -140,6 +140,63 @@ range. This is why the list loaders carry their own scroll tuning (`SIDEBAR_SCRO
 adapter) instead of the message viewport's much shorter stall window. A patient replay (1500 ms per
 step, 8 stable rounds) reached all 852 top-level `/c/` conversations (1042 counting project- and
 GPT-scoped rows) and settled at the true bottom, confirming the list itself loads fine.
+
+### 2026-07-25 — the bulk panel's rendered "Load more" done state, and a MEASURED silent truncation
+
+First run of the **built extension**'s bulk panel (1.7.0, loaded unpacked into the MCP browser and
+reloaded from a fresh `npm run build`; working tree clean, so `dist/` was at HEAD). Same
+1042-conversation account as the 2026-07-24 entries. Opened from a conversation page's toolbar
+(`data-prompt-vault-placement: native`, 5 buttons — 4 formats plus bulk). No export was run: this
+session measured the load-more UI only. The profile's locale rendered every `chrome.i18n` string in
+Korean; labels below are quoted by their English message values (`bulkPanelLoadMore`,
+`bulkPanelLoadMoreDone`, …), as the other provider sections do.
+
+The panel opened with **19 rows** (the `#history` rows rendered at load, plus its select-all
+checkbox — a structural detail worth stating because a `div > label > input` selector counts 20).
+Three rows were checked, then "Load more" was clicked repeatedly:
+
+| Run | Rows before → after | Progress line reached | Settled button | Status line | Checked |
+|---|---|---|---|---|---|
+| 1 | 19 → **725** | 725 | `Load more`, **enabled** | cleared to `''` | 3 |
+| 2 | 725 → **852** | 852 | `Load more`, **enabled** | cleared to `''` | 3 |
+| 3 | 852 → 852 | 852 | **`All conversations loaded`, disabled** | cleared to `''` | 3 |
+
+**Run 1 truncated at 725 of 852 — 127 conversations, 14.9%, missing with no error.** 852 is ground
+truth: it matches the top-level `/c/` count measured 2026-07-24, and it is where runs 2 and 3
+converged. Run 1 did not fail — it cleared its status line and re-enabled the button, exactly as a
+complete run does. This is the **first measured instance** of the residual hazard the review backlog
+records as theoretical (a `#history` page slower than the 5 s dwell — `SIDEBAR_STABLE_ROUNDS 10` ×
+`SIDEBAR_STEP_DELAY_MS 500`). Be precise about what was and was not established: the *outcome* is
+measured, the *mechanism* is not. Nothing here isolated which exit fired (dwell expiry vs
+`endOfListGate`), and no per-round timing was captured. What is certain is that the exit was
+**silent** (AGENTS.md #4).
+
+Rate, for sizing future dwells: the progress line climbed at roughly 5–10 conversations/second
+(19→213 in ~20 s; 388→725 over ~64 s), so the walk is not uniformly slow — a stall long enough to
+end it is a local event at one page boundary, not a slow link.
+
+**The done state itself is correct, and reaching it is stronger evidence than one run.** Run 3 grew
+nothing, which is the only path to `All conversations loaded` + `disabled` — so a user who clicks
+until the button disables has survived one more full walk than a user who clicks once. It is **not**
+a completeness oracle: a confirming run that stalls at its first page boundary also grows nothing
+and would latch the same done state falsely. It strengthens the guarantee; it does not prove it.
+
+Everything the `[VERIFY]` item asked about held at the done state, on 852 rows:
+
+| Measurement | Result |
+|---|---|
+| Load more label / `disabled` | `All conversations loaded` / **true** |
+| Rows / distinct ids / duplicates | 852 / 852 / **0** — the `seen` dedupe held across three runs |
+| Pre-load selection preserved | **yes** — exactly the 3 ids checked before run 1, 0 missing, 0 extra |
+| Export button | `Export 3 selected`, enabled |
+| Select-all | unchecked (correct: 3 of 852) |
+| Status line | `''` |
+| Cancel | still `Cancel`, enabled — never repurposed to `Close`, since no batch ran |
+| Row DOM order vs checkbox order | identical |
+
+Selections survived **two** list growths (19→725→852), not one, so preservation is not an artifact of
+a single append. Scope limit: one account, one track (`#history`; the project-home track was not
+exercised), and no export was run from the loaded list.
 
 ### 2026-07-24 — project home scroll port is taller than the list it contains
 
