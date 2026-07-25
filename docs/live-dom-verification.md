@@ -310,6 +310,168 @@ Same session. Conversation URLs are `claude.ai/chat/<uuid>`. Facts the adapter d
   fixture's reproduction of this string. Keep the fixture's copy FULL; abbreviating it turns that
   guard into a tautology.
 
+## Gemini
+
+### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
+
+Measured through Playwright MCP against the live logged-in page, on a conversation grown to 17
+exchanges for the purpose. This is the finding the whole adapter is shaped around:
+
+- **A fresh load renders only the newest 10 exchanges.** Measured three times, on conversations of
+  11, 16 and 17 exchanges — every one rendered **10** (`scrollHeight` 6231, 5019 and 5019 against a
+  `clientHeight` of 836). The page size did not vary with conversation length.
+- **The rest arrive in batches as the walk nears the top of the loaded range.** On the 16-exchange
+  conversation the rendered count went **10 → 16 in a single round** with `scrollHeight` 5019 →
+  9129 (settling at 9614 as content laid out); on the 11-exchange one, 10 → 11 with 6231 → 7333.
+- **Nothing is ever trimmed.** A 35-round up-then-down walk on an 11-exchange conversation held
+  11/11 rendered on every round (`windowed: false`), and after a fresh load grew to the full count
+  it never fell. So the list is **append-only**, like ChatGPT's `#history` — *not* a recycling
+  virtualizer like Claude's message list, despite the element being named `infinite-scroller`. Do
+  not generalize any provider's virtualization model to another.
+
+Consequence: a one-shot `querySelectorAll` sees only the newest page. On the 17-exchange
+conversation that is **10 of 17 exchanges — 41% silently missing** (AGENTS.md #4), which is why
+`extract` walks the scroll port to the top before reading.
+
+Because nothing is trimmed, the adapter does **one ordered read after** the walk rather than
+accumulating across rounds. That is not merely simpler, it is the only option that preserves
+order: Gemini's sole per-exchange identity is the container's opaque hex `id`, which cannot be
+sorted. Document order is the conversation order.
+
+### 2026-07-25 — Gemini offers no completeness oracle
+
+Same session. `aria-setsize` resolved to **0 elements document-wide**, there is no `aria-posinset`,
+and no numeric index attribute anywhere on the exchange containers — so none of the checks the
+Claude adapter relies on (contiguity, starts-at-zero, declared total) are available here, and the
+ids being opaque means a collected set cannot be compared against anything.
+
+**The walk's settle dwell is therefore the only bound on completeness.** The adapter requires
+`scrollTop === 0` **and** an unchanged `scrollHeight` **and** an unchanged rendered count, held for
+6 consecutive rounds at 500 ms (~3 s of quiet). Position alone is not usable as a stop condition —
+arriving at the top is precisely what *triggers* the next batch. The residual hazard is the same
+shape as the ChatGPT `#history` dwell item in the review backlog: **a batch slower than ~3 s would
+still truncate silently.** The dwell was sized against the only comparable latency this repo has
+measured (ChatGPT's `#history` pages at 1418–2830 ms); the one Gemini batch that was timed landed
+inside a single 350 ms round, so this errs slow deliberately. It is a heuristic, not a proof.
+
+### 2026-07-25 — `aria-busy` on the response is a real stream-completion signal
+
+Same session, sampling every 300 ms across a generating response. The streaming turn's `.markdown`
+carried **`aria-busy="true"`**, flipping to `"false"` on completion — and it stayed `true` for
+**~2.4 s after the response text stopped growing** (length frozen at 2697 characters while the
+attribute was still `true`). So it is strictly stronger than a "has the content changed?"
+heuristic, which would have declared that response finished 2.4 s early.
+
+The input area simultaneously carried `button[aria-label="대답 생성 중지"]`, which disappeared on
+completion — the same state, but behind a localized label, so the attribute is the machine-readable
+form. The adapter fails loud on it rather than exporting a half-written answer; neither the ChatGPT
+nor the Claude adapter has an equivalent signal to use.
+
+### 2026-07-25 — Gemini's structural facts, as used by `src/adapters/gemini/selectors.ts`
+
+Same session. Conversation URLs are `gemini.google.com/app/<16-hex-id>`; `/app` alone is the
+new-chat route. Facts the adapter depends on:
+
+- **An exchange, not a message, is the unit of structure.** `div.conversation-container` wraps a
+  prompt *and* its reply; there is no per-message element. Measured on a 16-exchange conversation:
+  all 16 containers held exactly one `user-query`, one `model-response` and one `.markdown` —
+  **1:1:1, 16/16**. Containers are direct children of the scroll port.
+- **The container `id` is the only per-exchange identity** (an opaque 16-hex value, e.g.
+  `35f2c6a901f73243`), and it is shared by both turns in the exchange. There is no per-message id.
+- **A naive read of the user's prompt captures a screen-reader label.** `.query-text` holds
+  `span.cdk-visually-hidden.screen-reader-user-query-label` *before* the prompt text, so
+  `textContent` returned `"말씀하신 내용 Line one of my question."`. The label text is localized and
+  therefore not matchable; the adapter reads `p.query-text-line` elements instead and strips the
+  span on the fallback path.
+- **Response chrome sits outside the prose container**: `sources-list`, `thinking-overlay` and
+  `message-actions` are siblings of the `.markdown`, not descendants (measured: none appear among
+  its descendants), so serializing `.markdown` excludes them with no filtering.
+- **Code fences declare their language in a header label that is a SIBLING of the `<pre>`** —
+  `div.code-block-decoration` holding "Python" / "JSON" / "Markdown" — and tag **no `language-*`
+  class** on the `<code>` (live: `class="code-container formatted …"`, with highlight.js `hljs-*`
+  spans inside). This is a third convention, distinct from both Claude (class on the `<code>`) and
+  ChatGPT (label *inside* the `<pre>`), and `codeLanguage()` in `src/core/html-to-markdown.ts` sees
+  neither. The Gemini adapter therefore copies the label onto the `<code>` as a `language-…` class
+  in a clone, and deletes the label and the copy-button row — left in place, being ordinary
+  siblings, they would serialize as a paragraph of prose above the fence. One block in the same
+  response rendered with **no decoration at all**, so an absent label is a normal case.
+- **The code block's control row is `div.buttons`, a sibling of the `<pre>` holding two
+  `gem-icon-button`s** (each wrapping a `button.mdc-icon-button > gem-icon > mat-icon`). Measured
+  by dumping every descendant of all four `code-block`s in one response: the three labelled blocks
+  had 31, 27 and 28 descendant elements including exactly two `gem-icon-button`s each, while the
+  unlabelled block had **5** descendants total — `div.code-block > div.formatted-code-block-internal-container
+  > div.animated-opacity > pre > code` and nothing else, no decoration and no control row. The
+  adapter removes every matched `div.buttons` within a block regardless of count, so this number
+  is a record of what was seen rather than something the code depends on.
+- **`.markdown` is the prose container**, the same class name ChatGPT uses — the only selector that
+  happens to coincide between providers. It carries `aria-live="polite"` and the `aria-busy` above.
+- **Scroll port is attribute-addressable**: `infinite-scroller[data-test-id="chat-history-container"]`.
+  Scoping by the test id is required, not cosmetic: the document contains a **second**
+  `infinite-scroller` (the history sidebar) that also overflows.
+- **`document.title` is `"<conversation title> - Google Gemini"`**, and while a conversation loads
+  it is `"‎Google Gemini"` — prefixed with an invisible **U+200E** (charCode 8206). Stripped before
+  the untitled-state comparison, which would otherwise silently fail to match.
+- **Header bar**: `top-bar-actions > div.top-bar-actions > div.left-section | div.center-section |
+  div.right-section`. The right section holds an empty upsell `div.buttons-container` followed by
+  the real one, whose first control is `tts-control-v2` ("듣기"), then the conversation-actions
+  menu. **Gemini has no Share button**, so unlike the other two providers there is no share control
+  to sit beside; the export buttons are inserted before the `div.buttons-container` holding the TTS
+  control.
+- **Native button classes** (the source of `TOOLBAR_BUTTON_CLASS`), captured in full from the TTS
+  button:
+
+  ```
+  mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-mdc-tooltip-trigger tts-button
+  mat-unthemed ng-star-inserted
+  ```
+
+  The adapter uses a subset, dropping `tts-button` (the speech control's own identity),
+  `mat-mdc-tooltip-trigger` (an Angular Material directive these buttons do not use) and
+  `ng-star-inserted` (a framework marker). Angular's per-build scoping attributes
+  (`_ngcontent-ng-c…`, `ng-tns-c…`) appear on nearly every node and MUST NOT be selected on — they
+  are regenerated on each Gemini deploy. As with Claude, a class string is the one kind of captured
+  value nothing type-checks, so `test/adapters/gemini/toolbar-mount.test.ts` pins every token
+  against the fixture's full reproduction of the string above. Keep the fixture's copy FULL;
+  abbreviating it turns that guard into a tautology.
+
+### 2026-07-25 — re-probe of the shipped adapter
+
+Same session, after implementation: a self-contained probe reproducing the shipped selector strings
+and walk (copied, not imported) was run against the live 17-exchange conversation.
+
+| Measurement | Result |
+|---|---|
+| One-shot read on a fresh load | **10** exchanges (of 17) |
+| Walk reached the settled top | yes, in 27 rounds |
+| `scrollHeight` during the walk | 5019 → 10065 |
+| Final ordered read | **17** exchanges → **34 messages** (17 user + 17 assistant) |
+| Unreadable turns | 0 |
+| Screen-reader label leaked into a prompt | 0 |
+| Shortfall guard would fire | no |
+| Scroll position restored | yes |
+| Toolbar mount / anchor resolved | yes; insertion point `div.buttons-container`, anchor inside the mount |
+| `toolbarButtonClass` tokens absent from the native button | 0 of 4 |
+
+**Still unverified, and deliberately not guessed at** (tracked in `backlog.md`):
+
+- **Multi-line prompts.** Whether an N-line prompt renders N `p.query-text-line` elements was never
+  captured: every attempt to put a newline into Gemini's Quill composer through synthetic events
+  failed — `execCommand('insertLineBreak')` cleared the composer, a synthetic `paste` was ignored as
+  untrusted, and a `\n` inside `insertText` submitted the first line only. The adapter joins however
+  many line elements exist and otherwise falls back to the label-stripped block text, which is
+  correct for either shape.
+- **Prompts carrying files or images.** `user-query img` was 0 across every measured conversation,
+  so how an attachment tile renders — and whether it sits inside `user-query` at all — is unknown.
+  Guessing a tile selector would risk reporting a fabricated file name (AGENTS.md #5).
+- **The Gems and project routes**, and the **sidebar bulk track**. The sidebar was observed only in
+  passing (33 `[data-test-id="conversation"]` anchors inside its own `infinite-scroller`); its
+  paging shape was never measured.
+- **The rendered extension UI** — buttons in Gemini's real top bar, light/dark, actual downloads.
+  The MCP browser cannot load an unpacked extension; this needs a manual load-unpacked session.
+- Measurements come from **one account and one conversation shape** (prose and code, no attachments,
+  no Gems). The page size of 10 was stable at 11/16/17 exchanges but is not established at, say,
+  200.
+
 ## Capturing a fixture
 
 - Fixtures are whole-page HTML (`document.documentElement.outerHTML`) in

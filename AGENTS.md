@@ -5,8 +5,9 @@
 # prompt-vault Agent Rules
 
 Browser extension (Manifest V3) that backs up AI chat conversations to local files
-(Markdown / PDF). First target: ChatGPT. Designed to extend to Gemini and Claude via
-per-site adapters. All processing is local — conversation data never leaves the browser.
+(Markdown / PDF). Supports ChatGPT, Claude and Gemini via per-site adapters; bulk and
+project export are ChatGPT-only so far. All processing is local — conversation data never
+leaves the browser.
 
 ## Docs Index (read on demand)
 

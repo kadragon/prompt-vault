@@ -11,7 +11,7 @@ Developer Dashboard access.
 | **Name** | Prompt Vault — AI Chat Backup |
 | **Category** | Productivity |
 | **Language** | English (default); Korean listing optional |
-| **Summary** (≤132 chars) | Back up ChatGPT and Claude conversations to local Markdown, PDF, JSON, or HTML files. 100% local — nothing leaves your browser. |
+| **Summary** (≤132 chars) | Back up ChatGPT, Claude & Gemini chats to local Markdown, PDF, JSON, or HTML files. 100% local — nothing leaves your browser. |
 
 ### Description (English)
 
@@ -19,8 +19,8 @@ Developer Dashboard access.
 Prompt Vault saves your AI chat conversations as local files so you own a durable,
 portable copy — no account, no cloud, no data leaving your browser.
 
-On a ChatGPT or Claude conversation page, export buttons appear in the header. One click
-saves the open conversation to your computer in the format you choose:
+On a ChatGPT, Claude, or Gemini conversation page, export buttons appear in the header. One
+click saves the open conversation to your computer in the format you choose:
 
 • Markdown (.md) — clean, portable text with headings and code blocks preserved
 • PDF (.pdf) — selectable text, with Korean/CJK glyphs and monospace code blocks
@@ -33,13 +33,14 @@ the sidebar, and export the selected set in one format.
 Key points:
 • 100% local. The extension makes no network requests and sends nothing to any server.
   Your conversations never leave your browser.
-• Least privilege. It runs only on ChatGPT (chatgpt.com / chat.openai.com) and Claude
-  (claude.ai), and requests only the minimum permissions needed.
+• Least privilege. It runs only on ChatGPT (chatgpt.com / chat.openai.com), Claude
+  (claude.ai) and Gemini (gemini.google.com), and requests only the minimum permissions
+  needed.
 • Choose your toolbar. The extension popup lets you show or hide each export format icon
   and the bulk-export icon.
 • English and Korean UI follows your browser language.
 
-Supported providers: ChatGPT and Claude. Bulk export is currently ChatGPT-only.
+Supported providers: ChatGPT, Claude and Gemini. Bulk export is currently ChatGPT-only.
 ```
 
 ### Description (Korean, optional listing)
@@ -48,7 +49,7 @@ Supported providers: ChatGPT and Claude. Bulk export is currently ChatGPT-only.
 Prompt Vault는 AI 채팅 대화를 로컬 파일로 저장해 계정이나 클라우드 없이 영구 사본을
 보관하게 해 줍니다. 대화 데이터는 브라우저 밖으로 전송되지 않습니다.
 
-ChatGPT 또는 Claude 대화 페이지 헤더에 내보내기 버튼이 나타납니다. 클릭 한 번으로
+ChatGPT, Claude, Gemini 대화 페이지 헤더에 내보내기 버튼이 나타납니다. 클릭 한 번으로
 현재 대화를 원하는 형식으로 컴퓨터에 저장합니다.
 
 • Markdown (.md) — 제목과 코드 블록이 보존된 이식성 좋은 텍스트
@@ -62,19 +63,20 @@ ChatGPT 또는 Claude 대화 페이지 헤더에 내보내기 버튼이 나타�
 핵심:
 • 100% 로컬. 확장 프로그램 자체는 네트워크 요청을 하지 않으며 어떤 서버로도 대화를
   보내지 않습니다.
-• 최소 권한. ChatGPT(chatgpt.com / chat.openai.com)와 Claude(claude.ai)에서만 동작합니다.
+• 최소 권한. ChatGPT(chatgpt.com / chat.openai.com), Claude(claude.ai),
+  Gemini(gemini.google.com)에서만 동작합니다.
 • 툴바 선택. 확장 프로그램 팝업에서 형식별 아이콘과 일괄 내보내기 아이콘을 표시하거나
   숨길 수 있습니다.
 • 브라우저 언어에 따라 영어 또는 한국어 UI를 표시합니다.
 
-현재 지원하는 서비스는 ChatGPT와 Claude입니다. 일괄 내보내기는 ChatGPT에서만 제공됩니다.
+현재 지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 ChatGPT에서만 제공됩니다.
 ```
 
 ### Single-purpose statement (Privacy tab)
 
 ```
 Prompt Vault has one purpose: to export the user's own AI chat conversations to local
-Markdown, PDF, JSON, or HTML files. It supports ChatGPT and Claude. The user exports the
+Markdown, PDF, JSON, or HTML files. It supports ChatGPT, Claude and Gemini. The user exports the
 open conversation or, on ChatGPT, selects a set of sidebar conversations through the
 optional bulk action. The extension reads conversation content only in response to that
 user action and only to create local downloads.
@@ -88,7 +90,7 @@ data handling change.
 | Permission / practice | Justification |
 |-----------------------|---------------|
 | `storage` | Persists toolbar and bulk-export visibility preferences through `chrome.storage.sync`. No conversation content is stored. |
-| Host access `https://chatgpt.com/*`, `https://chat.openai.com/*`, `https://claude.ai/*` | Injects export controls into ChatGPT and Claude, and reads conversations selected by the user for local export. These are the only sites on which the extension runs. Each host corresponds to one registered adapter in `src/adapters/`. |
+| Host access `https://chatgpt.com/*`, `https://chat.openai.com/*`, `https://claude.ai/*`, `https://gemini.google.com/*` | Injects export controls into ChatGPT, Claude and Gemini, and reads conversations selected by the user for local export. These are the only sites on which the extension runs. Each host corresponds to one registered adapter in `src/adapters/`. The Gemini entry is scoped to the `gemini.google.com` subdomain, not `google.com`, so it grants no access to any other Google service. |
 | Remote code | Not used. All executable code and the PDF font are bundled in the extension package. |
 | Conversation content | Processed locally only after an export action; not retained by the extension or transmitted to the developer or a third party. |
 
@@ -98,7 +100,7 @@ Data-use declarations:
   processing website content as handling user data even when everything stays on the
   user's device.
 - Select **Website content** and **Personal communications**: the extension reads the
-  ChatGPT and Claude conversations the user explicitly chooses to export. If the current
+  ChatGPT, Claude and Gemini conversations the user explicitly chooses to export. If the current
   dashboard offers **User-generated content** as a separate category, select it as well.
 - The extension uses this data only to create the requested local download. It does not
   retain, transmit, sell, or share conversation content. `chrome.storage.sync` contains

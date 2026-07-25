@@ -12,6 +12,12 @@ const HOSTS = [
   // the same reason as ChatGPT below (client-routed SPA); narrowed in JS by
   // isConversationPage().
   'https://claude.ai/*',
+  // Gemini — conversation pages live at https://gemini.google.com/app/<id>. Host-broad for
+  // the same reason as the entries above (client-routed SPA); narrowed in JS by
+  // isConversationPage(), which excludes /app (new chat) and the unmeasured Gems/project
+  // routes. Scoped to the gemini subdomain only — NOT google.com, which would be a vastly
+  // wider grant covering Search, Gmail and every other Google property.
+  'https://gemini.google.com/*',
 ];
 
 export default defineManifest({

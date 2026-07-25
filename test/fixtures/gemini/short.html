@@ -1,0 +1,169 @@
+<!doctype html>
+<!--
+  Synthetic Gemini conversation fixture.
+
+  NOT a page dump. This repo is public, so the markup below was reconstructed from the
+  structural capture taken during the 2026-07-25 live-DOM verification session (see
+  docs/live-dom-verification.md → Gemini): element tags, class strings and attributes are the
+  live ones; every piece of text is invented placeholder content.
+
+  Structure reproduced from that capture:
+    - `top-bar-actions > div.top-bar-actions > div.left-section | div.center-section |
+      div.right-section`, the right section holding an empty upsell `div.buttons-container`
+      followed by the real one, whose first control is `tts-control-v2`. Gemini has no Share
+      button.
+    - `infinite-scroller[data-test-id="chat-history-container"]` whose direct children are
+      `div.conversation-container` elements, each with an opaque 16-hex `id` and holding
+      exactly one `user-query` and one `model-response` (measured 1:1:1 on 16/16 containers).
+    - user text: `.query-text` containing Angular Material's
+      `span.cdk-visually-hidden.screen-reader-user-query-label` FOLLOWED by
+      `p.query-text-line` — the label is why a naive textContent read is wrong.
+    - assistant prose: `.markdown` carrying `aria-busy="false"` and `aria-live="polite"`.
+    - code blocks: `code-block` with the language in a `div.code-block-decoration` that is a
+      SIBLING of the `<pre>`, and no `language-*` class on the `<code>`.
+
+  Two class strings are deliberately partial, and only where the live capture itself was
+  truncated: `.markdown`'s (live began `markdown markdown-main-panel enable-luminous-…`) and
+  `.query-text`'s trailing state token. Angular's per-build scoping markers
+  (`_ngcontent-ng-c…`, `ng-tns-c…`) are omitted throughout: they are regenerated on every
+  Gemini deploy, so no selector may depend on them.
+
+  The `tts-control-v2` button's class, by contrast, is reproduced in FULL from the capture:
+  `toolbar-mount.test.ts` asserts that every token of the adapter's `toolbarButtonClass`
+  appears here, so shortening this string would silently weaken that guard into a tautology.
+-->
+<html lang="en">
+  <head>
+    <title>Fixture conversation - Google Gemini</title>
+  </head>
+  <body>
+    <top-bar-actions>
+      <div class="top-bar-actions">
+        <div class="left-section"></div>
+        <div class="center-section"></div>
+        <div class="right-section">
+          <div class="buttons-container adv-upsell ng-star-inserted"></div>
+          <div class="buttons-container">
+            <tts-control-v2 class="ng-star-inserted">
+              <div class="response-tts-container hidden ng-star-inserted">
+                <div class="tts-button-container">
+                  <button
+                    aria-label="듣기"
+                    class="mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-mdc-tooltip-trigger tts-button mat-unthemed ng-star-inserted"
+                  >
+                    <mat-icon class="mat-icon notranslate">volume_up</mat-icon>
+                  </button>
+                </div>
+              </div>
+            </tts-control-v2>
+            <conversation-actions-icon>
+              <button aria-label="대화 작업 메뉴 열기" class="mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-unthemed ng-star-inserted">
+                <mat-icon class="mat-icon notranslate">more_vert</mat-icon>
+              </button>
+            </conversation-actions-icon>
+          </div>
+        </div>
+      </div>
+    </top-bar-actions>
+
+    <div id="chat-history" class="chat-history-scroll-container lm">
+      <infinite-scroller
+        data-test-id="chat-history-container"
+        class="chat-history enable-lm-fast-follows enable-lr26-message-styling"
+      >
+        <div id="35f2c6a901f73243" class="conversation-container message-actions-hover-boundary ng-star-inserted">
+          <user-query class="ng-star-inserted">
+            <user-query-content class="user-query-container enable-luminous-prompt-bubble">
+              <div class="query-text gds-body-l" role="heading" aria-level="2" dir="ltr">
+                <span class="cdk-visually-hidden screen-reader-user-query-label">말씀하신 내용</span>
+                <p class="query-text-line ng-star-inserted">First fixture question.</p>
+              </div>
+            </user-query-content>
+          </user-query>
+          <model-response class="enable-lr26-response-chrome-updates ng-star-inserted">
+            <response-container>
+              <thinking-overlay></thinking-overlay>
+              <message-content id="message-content-id-r_35f2c6a901f73243" class="ng-star-inserted">
+                <div
+                  id="model-response-message-contentr_35f2c6a901f73243"
+                  class="markdown markdown-main-panel"
+                  aria-busy="false"
+                  aria-live="polite"
+                  dir="ltr"
+                >
+                  <p>An answer with <strong>bold</strong> and <code>inline code</code>.</p>
+                  <ol>
+                    <li>First step</li>
+                    <li>Second step</li>
+                  </ol>
+                  <response-element>
+                    <code-block class="enable-luminous-code-block ng-star-inserted">
+                      <div class="code-block">
+                        <div class="formatted-code-block-internal-container">
+                          <div class="animated-opacity">
+                            <div class="code-block-decoration">
+                              <span>Python</span>
+                            </div>
+                            <!-- Two `gem-icon-button`s, the count measured on every labelled block. -->
+                            <div class="buttons">
+                              <gem-icon-button class="mat-mdc-tooltip-trigger">
+                                <button class="mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-unthemed">
+                                  <mat-icon class="mat-icon notranslate">content_copy</mat-icon>
+                                </button>
+                              </gem-icon-button>
+                              <gem-icon-button class="mat-mdc-tooltip-trigger">
+                                <button class="mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-unthemed">
+                                  <mat-icon class="mat-icon notranslate">more_vert</mat-icon>
+                                </button>
+                              </gem-icon-button>
+                            </div>
+                            <pre><code class="code-container formatted" data-test-id="code-content">print("hello")</code></pre>
+                          </div>
+                        </div>
+                      </div>
+                    </code-block>
+                  </response-element>
+                </div>
+              </message-content>
+              <sources-list></sources-list>
+              <message-actions></message-actions>
+            </response-container>
+          </model-response>
+        </div>
+
+        <div id="ad8f2b2c4f9c2822" class="conversation-container message-actions-hover-boundary ng-star-inserted">
+          <user-query class="ng-star-inserted">
+            <user-query-content class="user-query-container enable-luminous-prompt-bubble">
+              <div class="query-text gds-body-l" role="heading" aria-level="2" dir="ltr">
+                <span class="cdk-visually-hidden screen-reader-user-query-label">말씀하신 내용</span>
+                <!--
+                  Two line elements. Whether a multi-line prompt really renders as N of these
+                  was NOT measurable live (Gemini's composer rejected every synthetic newline),
+                  so this exercises the adapter's join, not a verified live shape — see the
+                  `[VERIFY]` in tasks.md.
+                -->
+                <p class="query-text-line ng-star-inserted">A follow-up question.</p>
+                <p class="query-text-line ng-star-inserted">With a second line.</p>
+              </div>
+            </user-query-content>
+          </user-query>
+          <model-response class="enable-lr26-response-chrome-updates ng-star-inserted">
+            <response-container>
+              <message-content id="message-content-id-r_ad8f2b2c4f9c2822" class="ng-star-inserted">
+                <div
+                  id="model-response-message-contentr_ad8f2b2c4f9c2822"
+                  class="markdown markdown-main-panel"
+                  aria-busy="false"
+                  aria-live="polite"
+                  dir="ltr"
+                >
+                  <p>Closing reply.</p>
+                </div>
+              </message-content>
+            </response-container>
+          </model-response>
+        </div>
+      </infinite-scroller>
+    </div>
+  </body>
+</html>
