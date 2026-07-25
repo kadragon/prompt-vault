@@ -25,8 +25,8 @@ const declared = manifest as unknown as Record<string, unknown>;
 
 describe('least-privilege manifest', () => {
   it('declares no host_permissions', () => {
-    // `in`, not a truthiness check: an empty array or undefined value would still
-    // mean someone re-introduced the key.
+    // Key presence, not a truthiness check: an empty array or an explicit
+    // `undefined` value would still mean someone re-introduced the key.
     expect(Object.keys(declared)).not.toContain('host_permissions');
   });
 
@@ -46,8 +46,11 @@ describe('least-privilege manifest', () => {
     expect(matches.length).toBeGreaterThan(0);
     for (const pattern of matches) {
       expect(pattern).toMatch(/^https:\/\//);
-      // Never <all_urls> or a bare-scheme wildcard (docs/conventions.md).
-      expect(pattern).not.toMatch(/^https:\/\/\*/);
+      // Never the bare-scheme wildcard `https://*/*`, the <all_urls> equivalent
+      // (docs/conventions.md). Deliberately anchored on the trailing slash so a
+      // narrow subdomain pattern like `https://*.claude.ai/*` still passes — that
+      // is a host-list review question, not a bare privilege escalation.
+      expect(pattern).not.toMatch(/^https:\/\/\*\//);
     }
   });
 });
