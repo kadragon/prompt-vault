@@ -49,7 +49,17 @@ export default defineManifest({
       run_at: 'document_idle',
     },
   ],
-  host_permissions: HOSTS,
+  // No `host_permissions`. Dropped 2026-07-25 by experiment, not by argument: a
+  // *statically declared* content script injects on `matches` alone, and the grant only
+  // adds cross-origin fetch/cookie access from an extension context — which this
+  // extension does not have (no background service worker, no network primitives
+  // anywhere in src/, downloads via URL.createObjectURL + <a download>). A build with
+  // the grant removed was loaded unpacked and the toolbar confirmed to mount AND export
+  // on chatgpt.com, claude.ai and gemini.google.com. chat.openai.com could not be
+  // confirmed the same way — it 308-redirects to chatgpt.com, so no document ever loads
+  // on that origin for a content script to run in, with or without the grant. Full
+  // numbers in docs/live-dom-verification.md; the decision is held by
+  // test/privacy/manifest-least-privilege.test.ts.
   // `storage` is the only permission: the options page persists which toolbar icons to
   // show in chrome.storage.sync, and the content script reads them. Export still downloads
   // via URL.createObjectURL + an `<a download>` (no permission needed); `downloads` would

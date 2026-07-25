@@ -65,7 +65,9 @@ or allow humans to read it.
   the export buttons can appear on, and read the conversation from, ChatGPT, Claude and Gemini
   conversation pages. The extension runs on no other sites. The Gemini grant is scoped to the
   `gemini.google.com` subdomain only — it gives no access to Search, Gmail, or any other Google
-  service.
+  service. This access is limited to the page script the extension injects into those pages; the
+  extension requests no `host_permissions`, so it cannot make requests to these sites, or read
+  their cookies, in the background or from anywhere outside a page you have open.
 
 ## Data retention and deletion
 

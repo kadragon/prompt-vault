@@ -123,6 +123,62 @@ Results worth keeping after the `tasks.md` `[VERIFY]` item that produced them is
 measurement of live behavior that adapter code now depends on. Numbers, not impressions; each
 entry names the account scale it was measured at, because these are not scale-invariant.
 
+## Manifest / permissions
+
+*Not provider-specific — kept here because it is a live measurement of the loaded extension, and
+this is where those live.*
+
+### 2026-07-25 — `host_permissions` is not needed; the grant was dropped
+
+Settled the `[CONSTRAINT]` "is `host_permissions` needed at all?". Resolved by experiment rather
+than by argument, as the ticket required: a build with `host_permissions` removed was loaded
+unpacked and exercised on the live, logged-in hosts.
+
+**What the browser actually loaded.** Read directly from
+`chrome-extension://<id>/manifest.json` — stronger evidence than the build-then-reload sequence,
+because it is Chrome's own parse rather than an inference about which bundle is live:
+`host_permissions` absent, `permissions: ["storage"]`, `content_scripts[0].matches` intact with all
+four hosts. The extension listed as enabled with no error card.
+
+**What still worked, per host** (single account, ~852 conversations):
+
+| Host | Toolbar | Export |
+|------|---------|--------|
+| `chatgpt.com` | mounts, `placement=native`, 5 buttons (incl. bulk) | Markdown 716 B, real content. Bulk panel opens and enumerates 20 rows |
+| `claude.ai` | mounts, `placement=native`, 4 buttons | Markdown 13,607 B; PDF 79,853 B, valid `%PDF-1.3` header |
+| `gemini.google.com` | mounts, `placement=native`, 4 buttons | Markdown 15,049 B, real content |
+| `chat.openai.com` | **not measurable** | — |
+
+**`chat.openai.com` is a redirect-only origin.** `GET https://chat.openai.com/c/<id>` returns
+**HTTP 308** to `https://chatgpt.com/c/<id>`. No document ever loads on that origin, so there is no
+page for a content script to run in — with or without the grant. Read that precisely: this host was
+**not** confirmed working, and it is **not** evidence that the removal is safe there. It is evidence
+that there is nothing there to break. The `HOSTS` entry is consequently inert; whether to keep it is
+a separate question (recorded as a follow-up), not something this experiment settled.
+
+**Why the grant was redundant.** Under MV3 a *statically declared* content script injects on
+`matches` alone; `host_permissions` additionally grants cross-origin fetch/cookie access **from an
+extension context**. This extension has no such context: no background service worker, no
+`fetch`/`XHR`/`sendBeacon` anywhere in `src/` (enforced by
+`test/privacy/no-external-network.test.ts`), no `chrome.tabs`/`scripting`/`cookies`, downloads via
+`URL.createObjectURL` + `<a download>`, PDF font base64-embedded. `npm run build` is `vite build`
+only, so crxjs HMR — the one plausible build-time consumer — never applies to a shipped artifact.
+
+The one non-obvious dependency, checked because it is the part that *could* have broken: crxjs
+emits the content script as a small loader that dynamically imports the real bundle over a
+`chrome-extension://` URL, which needs `web_accessible_resources`. It derives that block's
+`matches` from the same `HOSTS` list feeding `content_scripts`, **not** from `host_permissions` —
+confirmed in the built `dist/manifest.json`, whose `web_accessible_resources[0].matches` still
+lists all four hosts after the removal. That is the mechanical reason the dynamic import kept
+working, rather than it merely appearing to.
+
+**What this does NOT buy.** The install-time warning is unchanged: Chrome derives host warnings from
+`content_scripts.matches` too. The win is that the *granted* API surface shrinks to what is used.
+Do not describe this to users as a reduced permission prompt.
+
+The decision is now held mechanically by `test/privacy/manifest-least-privilege.test.ts` — re-adding
+`host_permissions` turns it red, forcing a fresh measurement rather than a silent revert.
+
 ## ChatGPT
 
 ### 2026-07-24 — `#history` sidebar is append-only, not a recycling virtualizer
