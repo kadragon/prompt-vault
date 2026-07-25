@@ -18,6 +18,15 @@ provider. Per-provider facts live in **Verified findings**, which is grouped by 
 - A selector is added or changed in `selectors.ts` — the stamp must not be copied from a sibling.
 - Before a Web Store release whose diff touches adapter code.
 
+**Re-measure these numbers, not just the selectors.** A selector that stops matching fails loudly;
+a *quantity* that drifts can silently weaken a guard built on it, so any session run for the reasons
+above should re-check the ones adapter code depends on:
+
+| Number | Where it is relied on | What drift does |
+|--------|----------------------|-----------------|
+| Gemini's initial page size (**10**) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
+| ChatGPT `#history` page latency (**1418–2830 ms**) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers (the standing residual recorded below). |
+
 ## Tooling reality (read before promising anything)
 
 The Playwright MCP server is **not repo-owned** — this repo checks in no `.mcp.json`. It comes from
@@ -504,7 +513,10 @@ numbers that turned review arguments into measurements:
   The MCP browser cannot load an unpacked extension; this needs a manual load-unpacked session.
 - Measurements come from **one account and one conversation shape** (prose and code, no attachments,
   no Gems). The page size of 10 was stable at 11/16/17 exchanges but is not established at, say,
-  200.
+  200 — and it is the one number whose drift can quietly weaken a guard rather than break it, so it
+  is listed in "Re-measure these numbers" at the top of this doc. A **smaller** page size than 10 is
+  the dangerous direction: it makes `readUnwalkable`'s threshold under-trigger and lets a partial
+  export through unnoticed.
 
 ## Capturing a fixture
 

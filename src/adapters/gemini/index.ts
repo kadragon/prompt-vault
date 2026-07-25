@@ -50,8 +50,17 @@ const AT_TOP_EPSILON_PX = 1;
 //
 // Used ONLY as a safety threshold on the unwalkable path (`readUnwalkable`): a page holding
 // fewer than this cannot be hiding older exchanges, because a load renders `min(pageSize, total)`.
-// Nothing else depends on the number, and a Gemini change to it errs toward failing loud rather
-// than toward a silent partial.
+// Nothing else depends on the number.
+//
+// **The safety is one-directional, and this is the number to re-measure first when Gemini's
+// markup moves.** If Gemini RAISES its page size (10 → 20), the threshold only over-triggers: a
+// complete 15-exchange page trips `rendered >= 10` and fails loud — annoying, safe. If Gemini
+// LOWERS it (10 → 5), the threshold under-triggers: a 12-exchange conversation renders 5, `5 >= 10`
+// is false, and `readUnwalkable` returns a 5-of-12 snapshot — reopening exactly the silent partial
+// the guard exists to prevent, with nothing left to detect it. No code fixes that asymmetry,
+// because Gemini declares no total to check against (see docs/live-dom-verification.md → Gemini);
+// the mitigation is that this constant is on the live re-verification checklist, not an assumption
+// that any drift is harmless.
 const INITIAL_PAGE_SIZE = 10;
 
 // Gemini's own icon-button classes, taken verbatim from the native header text-to-speech
