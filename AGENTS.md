@@ -19,7 +19,7 @@ leaves the browser.
 | `docs/delegation.md` | Before delegating to sub-agents |
 | `docs/eval-criteria.md` | When writing a Sprint Contract or evaluating a completed feature |
 | `docs/runbook.md` | For build, load-unpacked, test, and package commands |
-| `docs/live-dom-verification.md` | Before verifying selectors against the logged-in live page or capturing a fixture |
+| `docs/live-dom-verification.md` | Before verifying selectors — or the loaded extension's own rendered UI — against the logged-in live page, or capturing a fixture |
 | `docs/store-listing.md` | Before preparing or updating a Chrome Web Store submission |
 | `docs/PRIVACY.md` | Before changing data handling, permissions, or store privacy disclosures |
 

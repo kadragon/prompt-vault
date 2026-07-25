@@ -46,7 +46,9 @@ const MAX_STALL_ROUNDS = 40;
 // such a display. It cannot weaken the stuck-container guard, which sits thousands of pixels away.
 const AT_TOP_EPSILON_PX = 1;
 // Exchanges a fresh page load renders before any scrolling — verified live 2026-07-25 on
-// conversations of 11, 16 and 17 exchanges, every one of which rendered exactly 10.
+// conversations of 11, 16, 17 and 31 exchanges, every one of which rendered exactly 10. The
+// 31-exchange point comes from the rendered-UI session, which drove the built extension itself
+// rather than a copied probe.
 //
 // Used ONLY as a safety threshold on the unwalkable path (`readUnwalkable`): a page holding
 // fewer than this cannot be hiding older exchanges, because a load renders `min(pageSize, total)`.

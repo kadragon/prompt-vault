@@ -24,7 +24,7 @@ above should re-check the ones adapter code depends on:
 
 | Number | Where it is relied on | What drift does |
 |--------|----------------------|-----------------|
-| Gemini's initial page size (**10**) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
+| Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
 | ChatGPT `#history` page latency (**1418–2830 ms**) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers (the standing residual recorded below). |
 
 ## Tooling reality (read before promising anything)
@@ -43,9 +43,40 @@ and re-read its config rather than assuming the flags below.
   - `--user-data-dir <path>` pinned to a stable directory, so the profile persists.
   - `--extension` — attach to the user's already-running Chrome. Requires the "Playwright
     Extension" to be installed (Edge/Chrome only).
-- **The MCP browser cannot load the unpacked extension.** Anything that needs the extension's own
-  UI (toolbar buttons, bulk panel, download behavior) is a manual load-unpacked session — see
-  `docs/runbook.md`. A live-DOM session verifies *DOM assumptions*, not shipped UI.
+- **The MCP browser CAN run the unpacked extension** — corrected 2026-07-25, having been recorded
+  here as impossible, which deferred four items on a false premise — three `[VERIFY]`s and one
+  `[CONSTRAINT]`. The MCP config
+  passes no `--load-extension`, but the browser it launches is an ordinary Chromium whose
+  extensions page is available, so loading `dist/` by hand in the *running* browser works and the
+  content script injects normally. **Read that narrowly:** the capability is per-session, not
+  persistent. The profile is temporary (see the login bullet above), so the by-hand load is a human
+  step that repeats every run, exactly like the login — what became automatable is everything
+  *after* it. Three consequences, each measured in the sessions recorded below:
+  - `chrome://extensions/` **is scriptable**. The extension's id, version and enabled state read
+    out of `extensions-manager`'s nested shadow roots, and `#dev-reload-button` can be clicked to
+    pick up a fresh `npm run build`. Be precise about what that buys, because it is less than it
+    looks: the **version read proves almost nothing** — in the session below it was 1.7.0 both
+    before and after the rebuild, since a `[DOCS]` change does not bump it — so what establishes
+    which code is running is the build-then-reload *sequence*, not the number. And `npm run build`
+    builds the **working tree**, so the sequence proves working-tree parity; that is HEAD parity
+    only when the tree is clean, which is worth a `git status` if the distinction matters. Reload
+    the *content* tab too: an extension reload orphans the content script already living in it.
+  - **Exports are verifiable as real files.** Click a toolbar button and await Playwright's
+    `download` event, then `saveAs` and measure on disk. This is the only route that also covers
+    PDF, whose bytes come from pdfmake's own internal blob URL.
+  - **Do not try to hook the export from the page.** Content scripts run in an **isolated world**,
+    so a `URL.createObjectURL` patch installed via `browser_evaluate` never sees the extension's
+    calls. DOM inspection of the mounted buttons is unaffected — they are ordinary page nodes.
+
+  Two practical notes. `page.emulateMedia({ colorScheme })` really does move both apps' themes
+  (Claude flips `html[data-mode]`, Gemini swaps `body.light-theme`/`dark-theme`), so light/dark is
+  measurable rather than a matter of asking the user to toggle a setting. And mind where the
+  account's own conversation content lands: write exports and screenshots **outside the repo**
+  (Playwright puts element screenshots in the CWD, *not* in `.playwright-mcp/`), and note that the
+  MCP server writes page snapshots and console logs into `.playwright-mcp/` on its own — those
+  snapshots are full accessibility trees of whatever was open. That directory is gitignored, so
+  nothing reaches a tracked file, but it is worth clearing after a session rather than leaving a
+  transcript of the user's conversations on disk.
 
 ## The loop
 
@@ -319,6 +350,74 @@ Same session. Conversation URLs are `claude.ai/chat/<uuid>`. Facts the adapter d
   fixture's reproduction of this string. Keep the fixture's copy FULL; abbreviating it turns that
   guard into a tautology.
 
+### 2026-07-25 (fourth session) — the shipped extension's own walk, on the real virtualizer
+
+Everything above was measured with probes that *copy* the adapter's selectors and algorithm. This
+is the first run of the **built extension** (1.7.0, loaded unpacked into the MCP browser, reloaded
+from a fresh `npm run build` before measuring), on a 56-row conversation opened cold.
+
+| Measurement | Result |
+|---|---|
+| Rows rendered at fresh load | **6** (8 turn nodes) against a declared `aria-setsize` of **56** |
+| Exported JSON `messages` | **56** — equal to the declared row total |
+| Roles | 28 user / 28 assistant, strictly alternating |
+| Messages with empty content | 0 |
+| Messages exported as `[File: …]` | **1** |
+| Rows rendered after the export | 17, `data-index` 39…55 |
+| `scrollTop` before / after | 8486 / 8486 |
+| `scrollHeight` before / after | 9381 / 10545 |
+| Wall clock per export | json 7.5 s · md 7.0 s · pdf 7.3 s · html 7.0 s |
+| Downloads produced | 4 real files — json 16,448 B · md 13,607 B (60 headings) · pdf 79,853 B (`%PDF-` header present) · html 16,256 B (`<html>` present) |
+
+- **`messages` equalled `aria-setsize` exactly**, so the walk reached every row. `buildMessages`
+  fails loud on a shortfall against the declared total, which makes a *successful* export already a
+  completeness proof; the equality is the stronger form of the same statement.
+- A one-shot `querySelectorAll` on that cold load would have exported **6 of 56 rows** — 8 turn
+  nodes. That 6 was read twice, by two probes seconds apart, so it is not one instantaneous
+  sample; no settle delay was applied beyond waiting for the toolbar to mount.
+- The 68% figure recorded further up is **not directly comparable**, and the reason is worth
+  stating rather than glossing. It counted *turn nodes* (16 of ~50) where this counts rows, it came
+  from a different conversation, and neither session recorded the conditions its number was sampled
+  under. Here a cold load rendered 8 turn nodes across 6 rows, while a **post-walk bottom rendered
+  17 rows at the very same `scrollTop`** — so the earlier 16 is consistent with either an
+  already-scrolled page *or* a virtualizer window warmed by walking, and nothing measured
+  distinguishes the two. Both numbers support the only claim that matters — a one-shot read loses
+  most of a long conversation — so use them as two independent instances of it, not as a trend.
+- **The attachment path works against the real page.** Exactly one message came out as
+  `[File: …]` — the attachment-only row that carries no `user-message` node, the case that made
+  this conversation unexportable before PR #35. Until now it had only ever been exercised against
+  a fixture.
+- Rows rendered *after* the export (17, indices 39…55) re-confirm the recycling model from the
+  other side: the walk finishes at the bottom and the top of the conversation is no longer in the
+  DOM, so nothing about the result came from a lucky one-shot read.
+- `scrollTop` came back to its exact pre-export value (8486). **That is weaker evidence than it
+  looks**, and is deliberately not recorded as "the reader's place was preserved": the list grew
+  9381 → 10545 px during the walk and *where* those 1164 px landed was never measured. A plain
+  restore is still the right design, because Claude's list recycles rather than prepending older
+  rows the way Gemini's does — but that is an inference from the recycling finding above, not
+  something this session measured. What was measured is "the raw value was restored", not the
+  stronger conclusion the Gemini bullet below earns by arithmetic.
+
+Rendered toolbar, same session and same conversation:
+
+| Measurement | Result |
+|---|---|
+| Container | inside `[data-testid="wiggle-controls-actions"]`, preceding `wiggle-controls-actions-share` |
+| `data-prompt-vault-placement` | `native` (not the overlay fallback) |
+| Buttons / distinct `aria-label`s | 4 / 4 |
+| `toolbarButtonClass` tokens ours, and how many are absent from Claude's Share button | 28, of which **0** are absent |
+| Computed color, ours vs Share — light | `rgb(11,11,11)` vs `rgb(11,11,11)` |
+| Computed color, ours vs Share — dark | `rgb(255,255,255)` vs `rgb(255,255,255)` |
+| Container rect | 78×28, `visibility: visible` |
+
+The colors are *equal* to Claude's own control in both themes, which is the property that matters:
+the buttons are not styled to match a theme, they inherit from it. Dark was reached with
+`page.emulateMedia({ colorScheme: 'dark' })`, which flipped `html[data-mode]` `light` → `dark` and
+the body background `rgb(249,249,247)` → `rgb(32,32,31)`.
+
+Scope limit: **one** conversation. This establishes that the shipped walk completes on a real
+56-row recycling list, not that it does at every length.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
@@ -509,14 +608,68 @@ numbers that turned review arguments into measurements:
 - **The Gems and project routes**, and the **sidebar bulk track**. The sidebar was observed only in
   passing (33 `[data-test-id="conversation"]` anchors inside its own `infinite-scroller`); its
   paging shape was never measured.
-- **The rendered extension UI** — buttons in Gemini's real top bar, light/dark, actual downloads.
-  The MCP browser cannot load an unpacked extension; this needs a manual load-unpacked session.
 - Measurements come from **one account and one conversation shape** (prose and code, no attachments,
-  no Gems). The page size of 10 was stable at 11/16/17 exchanges but is not established at, say,
-  200 — and it is the one number whose drift can quietly weaken a guard rather than break it, so it
-  is listed in "Re-measure these numbers" at the top of this doc. A **smaller** page size than 10 is
-  the dangerous direction: it makes `readUnwalkable`'s threshold under-trigger and lets a partial
-  export through unnoticed.
+  no Gems). The page size of 10 was stable at 11/16/17 exchanges — 31 as of the session below — but
+  is not established at, say, 200, and it is the one number whose drift can quietly weaken a guard
+  rather than break it, so it is listed in "Re-measure these numbers" at the top of this doc. A
+  **smaller** page size than 10 is the dangerous direction: it makes `readUnwalkable`'s threshold
+  under-trigger and lets a partial export through unnoticed.
+
+### 2026-07-25 (second session) — the shipped extension's own walk, and the rendered toolbar
+
+The re-probe above copied the shipped selectors and walk; this is the **built extension** (1.7.0,
+reloaded from a fresh `npm run build` before measuring) doing it itself. Two conversations: the
+17-exchange one measured previously, and a **31-exchange** one created for this test.
+
+| Measurement | 17-exchange | 31-exchange |
+|---|---|---|
+| Exchanges rendered at fresh load | (not cold — see below) | **10** |
+| Exported JSON `messages` | 34 | **62** |
+| Roles | 17 / 17 | 31 / 31 |
+| Messages with empty content | 0 | 0 |
+| Exchanges rendered after the export | 17 | **31** |
+| `scrollHeight` before → after | — | 3049 → 8152 |
+| Wall clock | not timed | 13.1 s |
+| `aria-setsize` document-wide | 0 | 0 |
+| Downloads produced | 4 real files — json 16,710 B · md 15,049 B (36 headings) · pdf 37,805 B (`%PDF-` header present) · html 16,810 B (`<html>` present) | json only, 5,563 B |
+
+- **The page size held at 10 on a 31-exchange conversation.** That extends the measurement behind
+  `INITIAL_PAGE_SIZE` from 11/16/17 exchanges to 31 — still the newest 10 regardless of length.
+- **62 messages against 31 exchanges**, so the walk paged in the 21 exchanges the cold load
+  withheld. A one-shot read would have exported **20 of 62 messages — 68% missing, silently.**
+- **The bottom-distance restore is confirmed on a real paging list.** Distance from the bottom was
+  **72 px before the export and 72 px after** (`scrollTop` 2187 → 7290 while `scrollHeight` grew
+  3049 → 8152). Restoring the raw `scrollTop` instead would have dropped the reader 5103 px earlier
+  in the conversation. That hazard was previously argued from one observation of a walk in
+  progress; it is now measured end to end.
+- **The 17-exchange run counts only as a download result.** Its list was already fully loaded when
+  the export ran: Gemini kept the walked state across a same-URL `page.goto` within the session, so
+  its `renderedAtStart` was 17, not 10, and that run says nothing about paging. **Open a new tab**
+  when a genuinely cold load is needed — a re-`goto` is not enough.
+- `/app` (the new-chat route) mounted no buttons, which is `isConversationPage()`'s exclusion of it
+  working rather than a failure.
+
+Rendered toolbar, same session:
+
+| Measurement | Result |
+|---|---|
+| Container | direct child of `div.right-section`, preceding `tts-control-v2` |
+| `data-prompt-vault-placement` | `native` (not the overlay fallback) |
+| Buttons / distinct `aria-label`s / glyph `svg`s | 4 / 4 / 4 |
+| Button class | `mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-unthemed` — the four `TOOLBAR_BUTTON_CLASS` tokens, nothing else |
+| Computed color — light | `rgb(68,71,70)` on body background `rgb(253,252,252)` |
+| Computed color — dark | `rgb(196,199,197)` on body background `rgb(15,15,15)` |
+| Container rect | 160×40, `visibility: visible` |
+
+Dark was reached with `page.emulateMedia({ colorScheme: 'dark' })`, which swapped
+`body.light-theme` for `dark-theme`; the buttons' color inverted with it, so they follow Gemini's
+theme tokens rather than carrying a fixed color. Unlike Claude there is **no equality check against
+a neighbouring native control** available here: `tts-control-v2`'s button is a *filled* control
+(background `rgb(157,210,255)` light, `rgb(31,59,155)` dark), so its computed color is not
+comparable with a plain icon button's. The evidence is the inversion, not a match.
+
+Scope limit: two conversations on one account, both prose/code or one-word answers, no attachments
+and no Gems.
 
 ## Capturing a fixture
 

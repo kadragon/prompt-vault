@@ -121,14 +121,21 @@ export const selectors = {
   /**
    * The header action bar holding Claude's native controls (Share, chat options). The
    * export buttons are injected here so they sit inline with Share instead of a fixed
-   * overlay covering it. Verified against the live page (2026-07-25).
+   * overlay covering it. Verified against the live page (2026-07-25), and re-verified
+   * the same day with the **built extension loaded**: the container mounted inside this
+   * element with `data-prompt-vault-placement="native"` — i.e. the overlay fallback was
+   * never reached.
    */
   headerActions: '[data-testid="wiggle-controls-actions"]',
 
   /**
    * Claude's native Share button inside the header action bar — the anchor the export
    * buttons are placed to the left of (beside it, not replacing it). Verified against
-   * the live page (2026-07-25).
+   * the live page (2026-07-25), and re-verified the same day with the built extension
+   * loaded: the container did precede this element, and all 28 tokens of
+   * `toolbarButtonClass` were present on this button's own class list, giving our buttons
+   * a computed color identical to it in BOTH themes (`rgb(11,11,11)` light,
+   * `rgb(255,255,255)` dark). See `docs/live-dom-verification.md` → Claude.
    */
   shareButton: '[data-testid="wiggle-controls-actions-share"]',
 } as const;

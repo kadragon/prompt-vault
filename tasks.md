@@ -6,11 +6,19 @@
 
 ### Bulk panel "Load more" follow-up
 
-- [ ] [VERIFY] Rendered bulk-panel UI: confirm the loaded extension's bulk panel settles into its disabled done state with prior selections preserved after a "Load more" run. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session per `docs/runbook.md`)*
+- [ ] [VERIFY] Rendered bulk-panel UI: confirm the loaded extension's bulk panel settles into its disabled done state with prior selections preserved after a "Load more" run. Marker cleared 2026-07-25: this was deferred on "MCP cannot load an unpacked extension", which is false — see `docs/live-dom-verification.md` → Tooling reality. What it actually needs is a logged-in `chatgpt.com` session with enough history to page.
 
 ### Manifest least-privilege — is `host_permissions` needed at all?
 
-- [ ] [CONSTRAINT] *(deferred: needs a manual load-unpacked session — the same gate as the other `[VERIFY]` items below)*
+- [ ] [CONSTRAINT] Marker cleared 2026-07-25 — the gate this was deferred on was overstated, not
+      absent. The extension does load into the Playwright MCP browser and `chrome://extensions/`
+      is scriptable, so the drop-rebuild-reload-confirm experiment below is scriptable once the
+      session is set up (`docs/live-dom-verification.md` → Tooling reality). What it actually
+      needs from a human, every session, because the MCP profile is temporary: load `dist/`
+      unpacked by hand, and log in to **all four** hosts — `chatgpt.com`, `chat.openai.com`,
+      `claude.ai` and `gemini.google.com` — so a conversation page exists on each to confirm the
+      toolbar against. The experiment must cover **every** host in `HOSTS`; dropping the grant after
+      testing a subset would leave the untested hosts unverified.
       Raised by the security reviewer on PR #34 (P3, conf 70) and recorded as
       **out of scope for that PR** because it is pre-existing: `manifest.config.ts` feeds one
       `HOSTS` list into both `content_scripts.matches` and `host_permissions`, but under MV3 a
@@ -18,18 +26,19 @@
       needed for cross-origin fetch/cookie access from an extension context — and this
       extension has no background service worker, makes no network calls, and downloads via
       `URL.createObjectURL` + `<a download>`. If that analysis holds, the grant is wider than
-      necessary on **all three** hosts, not just the newly added `claude.ai`. Do not "fix" this
+      necessary on **all four** hosts, not just the more recently added `claude.ai` and
+      `gemini.google.com`. Do not "fix" this
       by writing a rationale into the HOSTS comment — nobody currently knows why the entry is
       there, and inventing a justification is worse than the redundancy. Resolve it by
       experiment: drop `host_permissions`, build, load-unpacked, and confirm the toolbar still
-      mounts and exports on chatgpt.com, chat.openai.com, and claude.ai. If it does, remove the
+      mounts and exports on chatgpt.com, chat.openai.com, claude.ai and gemini.google.com — every
+      host in `HOSTS`, so the set never drifts behind a newly added adapter. If it does, remove the
       grant; if it does not, record the actual reason it is required. Either outcome is a
       one-line comment plus a Web Store permission-justification update
       (`docs/store-listing.md`, `docs/PRIVACY.md`).
 
 ### Claude adapter — follow-ups from the 2026-07-25 live session
 
-- [ ] [VERIFY] Rendered Claude UI: load-unpacked per `docs/runbook.md`, open a real `claude.ai/chat/<id>`, and confirm (a) the export buttons mount inside `[data-testid="wiggle-controls-actions"]` to the left of Share and wear Claude's chrome in both light and dark, (b) each of MD/PDF/JSON/HTML downloads, and (c) a long (30+ turn) conversation exports every turn — the walk is unit-covered against a recycling fake but has never run against the real virtualizer. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session)*
 - [ ] [VERIFY] *(blocked by: needs a live session on a conversation containing a text+attachment turn — see `docs/live-dom-verification.md`)*
       User turns holding BOTH text and a file attachment. The 2026-07-25 walk captured only
       an attachment-ONLY turn (no `user-message` node, claimed at row level by `attachmentMarkers`);
@@ -55,7 +64,6 @@
 
 ### Gemini adapter — follow-ups from the 2026-07-25 live session
 
-- [ ] [VERIFY] Rendered Gemini UI: load-unpacked per `docs/runbook.md`, open a real `gemini.google.com/app/<id>`, and confirm (a) the export buttons mount inside the header's `div.right-section` to the left of the 듣기 (TTS) control and wear Gemini's Material chrome in both light and dark, (b) each of MD/PDF/JSON/HTML downloads, and (c) a long (30+ exchange) conversation exports every exchange — the paging walk is unit-covered against a fake and was re-probed live by script, but the shipped extension's own walk has never run on the real page. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session)*
 - [ ] [VERIFY] *(blocked by: needs a live session on a conversation whose response is a generated image or a canvas/immersive panel — see `docs/live-dom-verification.md`)*
       Responses that render no `.markdown` container at all. Every measured response
       was prose and code, so shapes that plausibly render outside the prose container were never
