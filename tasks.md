@@ -6,11 +6,17 @@
 
 ### Bulk panel "Load more" follow-up
 
-- [ ] [VERIFY] Rendered bulk-panel UI: confirm the loaded extension's bulk panel settles into its disabled done state with prior selections preserved after a "Load more" run. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session per `docs/runbook.md`)*
+- [ ] [VERIFY] Rendered bulk-panel UI: confirm the loaded extension's bulk panel settles into its disabled done state with prior selections preserved after a "Load more" run. Marker cleared 2026-07-25: this was deferred on "MCP cannot load an unpacked extension", which is false — see `docs/live-dom-verification.md` → Tooling reality. What it actually needs is a logged-in `chatgpt.com` session with enough history to page.
 
 ### Manifest least-privilege — is `host_permissions` needed at all?
 
-- [ ] [CONSTRAINT] *(deferred: needs a manual load-unpacked session — the same gate as the other `[VERIFY]` items below)*
+- [ ] [CONSTRAINT] Marker cleared 2026-07-25 — the gate this was deferred on was overstated, not
+      absent. The extension does load into the Playwright MCP browser and `chrome://extensions/`
+      is scriptable, so the drop-rebuild-reload-confirm experiment below is scriptable once the
+      session is set up (`docs/live-dom-verification.md` → Tooling reality). What it actually
+      needs from a human, every session, because the MCP profile is temporary: load `dist/`
+      unpacked by hand, and log in to `chatgpt.com`, `chat.openai.com` and `claude.ai` so a
+      conversation page exists on each host to confirm the toolbar against.
       Raised by the security reviewer on PR #34 (P3, conf 70) and recorded as
       **out of scope for that PR** because it is pre-existing: `manifest.config.ts` feeds one
       `HOSTS` list into both `content_scripts.matches` and `host_permissions`, but under MV3 a
@@ -29,7 +35,6 @@
 
 ### Claude adapter — follow-ups from the 2026-07-25 live session
 
-- [ ] [VERIFY] Rendered Claude UI: load-unpacked per `docs/runbook.md`, open a real `claude.ai/chat/<id>`, and confirm (a) the export buttons mount inside `[data-testid="wiggle-controls-actions"]` to the left of Share and wear Claude's chrome in both light and dark, (b) each of MD/PDF/JSON/HTML downloads, and (c) a long (30+ turn) conversation exports every turn — the walk is unit-covered against a recycling fake but has never run against the real virtualizer. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session)*
 - [ ] [VERIFY] *(blocked by: needs a live session on a conversation containing a text+attachment turn — see `docs/live-dom-verification.md`)*
       User turns holding BOTH text and a file attachment. The 2026-07-25 walk captured only
       an attachment-ONLY turn (no `user-message` node, claimed at row level by `attachmentMarkers`);
@@ -55,7 +60,6 @@
 
 ### Gemini adapter — follow-ups from the 2026-07-25 live session
 
-- [ ] [VERIFY] Rendered Gemini UI: load-unpacked per `docs/runbook.md`, open a real `gemini.google.com/app/<id>`, and confirm (a) the export buttons mount inside the header's `div.right-section` to the left of the 듣기 (TTS) control and wear Gemini's Material chrome in both light and dark, (b) each of MD/PDF/JSON/HTML downloads, and (c) a long (30+ exchange) conversation exports every exchange — the paging walk is unit-covered against a fake and was re-probed live by script, but the shipped extension's own walk has never run on the real page. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session)*
 - [ ] [VERIFY] *(blocked by: needs a live session on a conversation whose response is a generated image or a canvas/immersive panel — see `docs/live-dom-verification.md`)*
       Responses that render no `.markdown` container at all. Every measured response
       was prose and code, so shapes that plausibly render outside the prose container were never

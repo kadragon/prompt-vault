@@ -157,13 +157,20 @@ export const selectors = {
    * div.right-section`, with the right section holding the native controls (a
    * `tts-control-v2` "듣기" button and the conversation-actions menu). Gemini has **no Share
    * button**, so unlike ChatGPT and Claude there is no share control to sit beside.
+   * Re-verified the same day with the **built extension loaded**: the container mounted as a
+   * direct child of this element with `data-prompt-vault-placement="native"` — i.e. the
+   * overlay fallback was never reached.
    */
   headerActions: 'top-bar-actions div.top-bar-actions div.right-section',
 
   /**
    * Gemini's native text-to-speech control, the leftmost thing in the header action group —
    * the anchor the export buttons are inserted ahead of, so they sit beside the native
-   * controls instead of after them. Verified against the live page (2026-07-25).
+   * controls instead of after them. Verified against the live page (2026-07-25), and
+   * re-verified the same day with the built extension loaded: the container did precede this
+   * element. Note this control is NOT usable as a styling reference — it renders as a filled
+   * button (background `rgb(157,210,255)` light), so its computed color is not comparable
+   * with a plain icon button's. See `docs/live-dom-verification.md` → Gemini.
    */
   ttsControl: 'tts-control-v2',
 } as const;
