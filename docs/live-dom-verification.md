@@ -193,15 +193,60 @@ role, so a change degrades to the pre-existing loud failure.
 
 Separately, the row dumped in full wrapped its message in **`div[role="article"]` carrying
 `aria-setsize="56"` and `aria-posinset="51"`** (1-based, against a 0-based `data-index` of 50). The
-`aria-setsize` value matched the observed row count exactly, which makes it a **candidate**
+`aria-setsize` value matched the observed row count exactly, which made it a **candidate**
 completeness oracle — stronger than the contiguity check, which even after the leading-range check
 added 2026-07-25 still cannot detect turns missing off the *trailing* end.
 
-Deliberately not called more than that. Only one row was dumped, so presence on every row is
-unverified; where the number originates is unverified (and the adapter's own measurement that turns
-are already client-side argues against calling it server-declared); and 56 is a count of *rows*, not
-messages — one of those rows held four assistant blocks, so the two differ under any counting rule
-that is not one-row-one-message. Not used by any code; tracked in `backlog.md`.
+Nothing more was claimed at the time: only one row had been dumped, so presence on every row was
+unverified, and 56 is a count of *rows*, not messages. The session below settled all of it.
+
+### 2026-07-25 (third session) — `aria-setsize` is a usable declared row total
+
+Measured through Playwright MCP against the live logged-in page, driving a probe that reproduced the
+adapter's up-then-down walk from copied selector strings. **Four conversations were walked end to
+end**, and twelve more spot-checked. This session promotes the candidate above into something the
+adapter depends on, so the numbers matter:
+
+| Conversation | Rows | Rows carrying `aria-setsize` | Distinct values across the walk | `maxIndex + 1` | Turn nodes | Nodes per row | Rounds |
+|---|---|---|---|---|---|---|---|
+| A | 56 | 56 | `[56]` | 56 | 58 | 54×1, 1×4, 1×0 | 50 |
+| B | 14 | 14 | `[14]` | 14 | 14 | 14×1 | 74 |
+| C | 16 | 16 | `[16]` | 16 | 16 | 16×1 | 68 |
+| D | 26 | 26 | `[26]` | 26 | 27 | 25×1, 1×2 | 60 |
+
+- **Present on every indexed row** — 112/112. `rowsArticleNoSetsize` and `rowsNoArticle` were both
+  **0**, so there is no row with a `role="article"` lacking the attribute, and no indexed row without
+  an article at all. That includes conversation A's attachment-only row 50, which has no
+  `[data-testid="user-message"]` node whatsoever. Twelve further conversations spanning 2…56 rows
+  were spot-checked on load and every one carried it.
+- **Constant for the duration of a walk** — exactly one distinct value per conversation, across 50 to
+  74 record rounds each.
+- **It counts ROWS, not messages.** A and D are the proof: 56 rows against 58 turn nodes, 26 against
+  27, because a row may hold several assistant blocks. Where the two differ, the declared total
+  tracked the rows. This is what makes it comparable with the `data-index` set the adapter collects.
+- `aria-posinset − data-index === 1` on all 112 rows: 1-based against a 0-based index, no exceptions.
+- **It tracks the live list.** In a conversation created for the test, the declared total went **2 →
+  4** across one exchange. Across 60 samples at 300 ms spanning a streaming response, the declared
+  total, the rendered row count and the `role="article"` count never disagreed.
+- **No low value during hydration.** Sampling every 100 ms across an SPA navigation into
+  conversation A: the previous conversation's rows (4, declaring 4) are gone by the 100 ms sample,
+  every sample from 100 ms to 600 ms sees **zero** `role="article"` elements, and at the 700 ms
+  sample rows are present already declaring 56. So the gap is ~600 ms of nothing, not ~600 ms of a
+  smaller number: there is no partial state inside a conversation to latch onto, which is what makes
+  reading the *smallest* declared total safe.
+
+`buildMessages` now fails loud when fewer rows were collected than the declared total, and the walk
+terminates once it holds every declared row *and* has gone quiet, instead of waiting out
+`END_SETTLE_ROUNDS` at each end and then running a second pass with nothing left to find. The quiet
+requirement is not decoration: a position being filled is not the same as a turn being finished, so
+ending on the count alone would export a still-streaming response at whatever fragment happened to be
+rendered. The adapter reads the **smallest** total observed during a walk: since the total tracks the live
+list, a message arriving mid-export raises it, and reading the largest would fail an export over
+turns that did not exist when it began. That costs nothing in the case the check exists for — a walk
+that stops short sees the true total on every row it did reach.
+
+Incidental, and NOT the scope of this session: `minIndex` was **0** in all four walks, which
+re-measures on n=4 the 0-based rule `buildMessages` had generalized from a single conversation.
 
 ### 2026-07-25 — Claude's structural facts, as used by `src/adapters/claude/selectors.ts`
 

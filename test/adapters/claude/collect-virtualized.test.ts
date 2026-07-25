@@ -60,16 +60,27 @@ const TURN_H = 100;
 // walk is guaranteed to see the turn again after it finishes.
 const STREAMING_ROUNDS = 2;
 
+/**
+ * How many rows the conversation declares in total, via the `aria-setsize` every live row
+ * carries (2026-07-25: 112/112 rows across four conversations). A function of the round
+ * number models a total that CHANGES mid-walk, which happens when a message lands while the
+ * export is running. `null` (the default) models rows that declare nothing, so every test
+ * predating the oracle keeps exercising the un-declared path.
+ */
+type SetSize = number | null | ((round: number) => number | null);
+
 function makeWindowedDoc({
   turns,
   clientHeight = 250,
   stuckScroll = false,
   startAtBottom = true,
+  setSize = null,
 }: {
   turns: Turn[];
   clientHeight?: number;
   stuckScroll?: boolean;
   startAtBottom?: boolean;
+  setSize?: SetSize;
 }): Document {
   const scrollHeight = turns.length * TURN_H;
   let top = startAtBottom ? Math.max(0, scrollHeight - clientHeight) : 0;
@@ -99,13 +110,28 @@ function makeWindowedDoc({
   // The virtualizer row wrapping turn `i`. Rows are what carry `data-index`; the adapter
   // reads them both directly (to learn which positions rendered at all) and via
   // `turnNode.closest('[data-index]')`.
+  const declaredTotal = (): number | null =>
+    typeof setSize === 'function' ? setSize(rounds) : setSize;
+
   const makeRow = (t: Turn, i: number) => ({
     getAttribute: (name: string): string | null =>
       name === 'data-index' && !t.unindexed ? String(t.indexOverride ?? i) : null,
     // Only an attachment row carries tiles and the user-exclusive edit control; every other
-    // row answers both queries empty, exactly as a prose row does live.
-    querySelector: (sel: string): unknown =>
-      sel === '[data-testid="action-bar-edit"]' && t.attachments && !t.noEditBar ? {} : null,
+    // row answers both queries empty, exactly as a prose row does live. The `role="article"`
+    // wrapper is the reverse: live, EVERY row has one, so it answers on any row that declares
+    // a total at all.
+    querySelector: (sel: string): unknown => {
+      if (sel === '[role="article"][aria-setsize]') {
+        const total = declaredTotal();
+        return total === null
+          ? null
+          : {
+              getAttribute: (name: string): string | null =>
+                name === 'aria-setsize' ? String(total) : null,
+            };
+      }
+      return sel === '[data-testid="action-bar-edit"]' && t.attachments && !t.noEditBar ? {} : null;
+    },
     querySelectorAll: (sel: string): unknown[] =>
       sel === 'button > img[alt]' && t.attachments
         ? t.attachments.map((alt) => ({
@@ -164,8 +190,15 @@ function makeWindowedDoc({
       rounds++;
       return visibleNodes();
     },
+    // One record() call = one turn-selector query, so this counts the walk's rounds. Read by
+    // the early-termination test, which has no other way to see that the walk stopped sooner.
+    get __rounds(): number {
+      return rounds;
+    },
   } as unknown as Document;
 }
+
+const roundsOf = (doc: Document): number => (doc as unknown as { __rounds: number }).__rounds;
 
 const fast = { stepDelayMs: 0 };
 
@@ -376,6 +409,65 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
       /could not read/,
     );
+  });
+
+  // The trailing end — the one direction the index checks are blind to. Contiguity plus the
+  // starts-at-0 rule prove the collected range is exactly 0…n-1, but nothing establishes that
+  // n-1 is the LAST row, so a walk that stopped short exported a plausible partial. Claude
+  // declares the conversation's row count on every row (live 2026-07-25: present on 112/112
+  // rows in four conversations, constant across each walk, always equal to maxIndex + 1).
+  it('fails loud when fewer rows were collected than Claude declares', async () => {
+    // Ten rows render; the conversation declares twelve. Both existing checks pass — 0…9 is
+    // contiguous and starts at zero — which is exactly why this used to export as complete.
+    const doc = makeWindowedDoc({ turns: alternating(10), setSize: 12 });
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/last 2 turns never loaded/);
+  });
+
+  // The same shape with nothing declared must behave exactly as it did before. A markup
+  // change has to degrade to the old behavior, never turn every export into a failure.
+  it('exports the rows it collected when no row declares a total', async () => {
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns: alternating(10) }), fast);
+    expect(messages).toHaveLength(10);
+  });
+
+  // The sharp edge of ending the walk on the declared total: a position being FILLED is not
+  // the same as a turn being FINISHED. A response still streaming when the export starts holds
+  // its row with a fragment, and it is later rounds that grow it. Ending the moment every
+  // position held something would export the fragment — the silent content truncation the
+  // "keep the fullest sighting" rule already exists to prevent. Every row here renders from
+  // round one, so completeness is reached while the turn is still mid-stream.
+  it('does not end the walk on a turn that is still streaming, even once every row is collected', async () => {
+    const turns = alternating(4);
+    turns[2] = { ...turns[2], partial: true, content: 'the complete assistant answer' };
+    const doc = makeWindowedDoc({ turns, clientHeight: 400, setSize: 4 });
+    const messages = await collectVirtualizedTurns(doc, fast);
+    expect(messages[2].content).toBe('the complete assistant answer');
+  });
+
+  // Without the declared total the walk can only infer it is finished from the scroll
+  // position holding still, which costs END_SETTLE_ROUNDS at each end and a full second pass.
+  // Having every declared row in hand — and no round still changing them — is proof, not
+  // inference.
+  it('stops the walk as soon as every declared row is collected', async () => {
+    const declared = makeWindowedDoc({ turns: alternating(20), setSize: 20 });
+    const undeclared = makeWindowedDoc({ turns: alternating(20) });
+    expect(await collectVirtualizedTurns(declared, fast)).toHaveLength(20);
+    expect(await collectVirtualizedTurns(undeclared, fast)).toHaveLength(20);
+    expect(roundsOf(declared)).toBeLessThan(roundsOf(undeclared));
+  });
+
+  // The declared total tracks the live list (live 2026-07-25: 2 -> 4 across one exchange), so
+  // a message landing mid-export raises it. Reading the LARGEST declaration would then fail
+  // the export over turns that did not exist when it started; the smallest cannot. It costs
+  // nothing in the case the check exists for, where a short walk sees the true total on every
+  // row it reaches.
+  it('takes the smallest declared total, so a turn arriving mid-export does not fail it', async () => {
+    const doc = makeWindowedDoc({
+      turns: alternating(12),
+      setSize: (round) => (round < 2 ? 12 : 14),
+    });
+    const messages = await collectVirtualizedTurns(doc, fast);
+    expect(messages).toHaveLength(12);
   });
 
   it('fails loud when the container never reaches an end (stuck scroll)', async () => {

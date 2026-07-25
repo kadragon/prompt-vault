@@ -51,6 +51,35 @@ export const selectors = {
   turnIndexAttr: 'data-index',
 
   /**
+   * The `role="article"` wrapper inside a virtualizer row. Its `aria-setsize` declares how
+   * many rows the WHOLE conversation has, which is the only bound extraction has on the
+   * *trailing* end — `data-index` contiguity proves nothing about turns past the last one
+   * collected. Read via `setSizeAttr` below.
+   *
+   * Verified against the live page (2026-07-25, second measurement session): four
+   * conversations were walked end to end — 14, 16, 26 and 56 rows — and every one of their
+   * **112 indexed rows carried it** (`rowsArticleNoSetsize` 0, `rowsNoArticle` 0), including
+   * the attachment-only row that has no `user-message` node at all. The value was **constant
+   * across each entire walk** (one distinct value per conversation, over 50–74 record
+   * rounds) and equalled `maxIndex + 1` every time. It counts **rows, not messages**: the
+   * 56-row conversation rendered 58 turn nodes and the 26-row one 27, because a row may hold
+   * several assistant blocks. Twelve further conversations (2…56 rows) were spot-checked and
+   * all carried it. A separate hydration trace found no low intermediate value inside a
+   * conversation — the rows go from absent (no `role="article"` at all for ~600 ms) straight
+   * to the full count — which is what makes the smallest observed value a safe reading.
+   */
+  messageArticle: '[role="article"][aria-setsize]',
+
+  /**
+   * Attribute on `messageArticle` declaring the conversation's total row count. Verified
+   * against the live page (2026-07-25): appending a turn raised it (2 → 4 across one
+   * exchange), and across 60 samples spanning a streaming response the declared total never
+   * disagreed with the number of rendered rows — so it tracks the live list rather than
+   * being fixed when the page loads.
+   */
+  setSizeAttr: 'aria-setsize',
+
+  /**
    * Scroll viewport that virtualizes the message list. Claude *recycles* turn nodes —
    * scrolling to the top dropped the rendered count from 16 to 8 while surfacing
    * different turns — so extraction must scroll this element and accumulate, and a

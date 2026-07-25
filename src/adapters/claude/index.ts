@@ -22,6 +22,12 @@ const WALK_STEP_FRACTION = 0.5;
 // Consecutive rounds pinned at an end before it counts as reached, so a single stalled
 // frame is not mistaken for the end of the list.
 const END_SETTLE_ROUNDS = 2;
+// Consecutive rounds that must add and grow nothing before the declared-total early exit is
+// allowed to fire. Deliberately NOT `END_SETTLE_ROUNDS`, though it starts at the same value:
+// that one is about scroll/render frame timing, this one about how long a streaming response
+// may pause between tokens before the walk may call it finished. They answer to different
+// physics, and tuning one for its own reasons must not silently retune the other.
+const CONTENT_QUIET_ROUNDS = 2;
 // Hard anti-runaway ceiling, far above any real conversation's step count (the primary
 // bound is derived from the live scroll height each iteration).
 const WALK_ABSOLUTE_MAX_STEPS = 2000;
@@ -183,11 +189,34 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
   // the two deserve different errors (see `buildMessages`).
   const seenRowIndices = new Set<number>();
   let sawUnindexedTurn = false;
+  // Smallest row total any row declared during the walk (null until one does). Claude puts
+  // the conversation's whole row count on every row, which bounds the TRAILING end — the one
+  // thing `data-index` contiguity cannot (see `buildMessages`).
+  //
+  // The SMALLEST rather than the latest or largest: the total tracks the live list, so a
+  // message arriving mid-export raises it, and a walk that already passed the bottom would
+  // then be failed for turns that did not exist when the export began. The minimum can only
+  // ever under-claim, which costs a missed detection but can never invent one — the safe
+  // direction for a check that aborts the whole export. It also costs nothing in the case the
+  // check exists for: a walk that stops short sees the true total on every row it did reach,
+  // so the minimum IS the true total. And there is no low value to latch onto early — live
+  // measurement found rows go from absent straight to the full count, never through a
+  // partial one (docs/live-dom-verification.md).
+  let declaredTotal: number | null = null;
+  // Consecutive rounds that neither added a turn nor grew one already seen. Guards the early
+  // exit below: "every position is filled" is NOT the same as "there is nothing left to read",
+  // because a response still streaming when the export began fills its position with a
+  // fragment that later rounds upgrade. Counted rather than latched, and thresholded by
+  // `CONTENT_QUIET_ROUNDS`: one quiet round is a gap between tokens as easily as an end.
+  let quietRounds = 0;
 
   const record = (): void => {
+    let changed = false;
     for (const row of Array.from(doc.querySelectorAll(selectors.turnRow))) {
       const index = rowIndex(row);
       if (Number.isInteger(index)) seenRowIndices.add(index);
+      const total = declaredRowTotal(row);
+      if (total !== null && (declaredTotal === null || total < declaredTotal)) declaredTotal = total;
     }
 
     // Group this round's sightings by row FIRST, so several turn nodes inside one row are
@@ -237,7 +266,9 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       const seen = turns.get(index);
       if (!seen) {
         turns.set(index, { role, content });
+        changed = true;
       } else if (content.length > seen.content.trim().length) {
+        changed = true;
         // Keep the fullest sighting of this turn, not merely the first non-empty one.
         // Upgrading only from empty would permanently pin a fragment captured while the
         // response was still streaming or hydrating: the walk would then go on to see the
@@ -247,6 +278,32 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
         seen.content = content;
       }
     }
+
+    quietRounds = changed ? 0 : quietRounds + 1;
+  };
+
+  // Every row the conversation declares has been collected AND the walk has gone quiet. That
+  // is a real termination condition: without it the walk can only guess it is finished by
+  // watching the scroll position stop moving, which costs `END_SETTLE_ROUNDS` extra rounds at
+  // each end plus a whole second pass, and cannot distinguish "the end" from "a stalled frame"
+  // at all.
+  //
+  // The quiet half is load-bearing, not belt-and-braces. A position being filled is not the
+  // same as a turn being finished: a response still streaming when the export began occupies
+  // its row with a fragment, and it is later rounds re-seeing that row that grow it (the "keep
+  // the fullest sighting" rule above). Stopping the moment every position held *something*
+  // would export the fragment and skip the upgrade — reintroducing the silent content
+  // truncation that rule exists to prevent (AGENTS.md #4). Waiting out `CONTENT_QUIET_ROUNDS`
+  // rounds in which nothing was added or grown costs a couple of rounds in the ordinary case
+  // and outlasts the streaming one.
+  //
+  // False until a total has been declared, so a markup change simply restores the old
+  // behavior rather than ending the walk early.
+  const collectedEverything = (): boolean => {
+    if (quietRounds < CONTENT_QUIET_ROUNDS) return false;
+    if (declaredTotal === null || turns.size !== declaredTotal) return false;
+    for (let i = 0; i < declaredTotal; i++) if (!turns.has(i)) return false;
+    return true;
   };
 
   // The walk drags the viewport across the whole conversation. Put the user back where they
@@ -256,13 +313,20 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
   try {
     // Pass 1 — up to the very first turn. Recording on the way means turns above the
     // starting window are captured here rather than waiting for the downward pass.
-    const reachedTop = await walk(container, stepDelayMs, options.maxSteps, record, {
-      atEnd: (c) => c.scrollTop <= 0,
-      step: (c) => {
-        c.scrollTop = Math.max(0, c.scrollTop - stepPx);
+    const reachedTop = await walk(
+      container,
+      stepDelayMs,
+      options.maxSteps,
+      record,
+      {
+        atEnd: (c) => c.scrollTop <= 0,
+        step: (c) => {
+          c.scrollTop = Math.max(0, c.scrollTop - stepPx);
+        },
+        stepPx,
       },
-      stepPx,
-    });
+      collectedEverything,
+    );
     if (!reachedTop) {
       throw new ExtractionError(
         'Timed out scrolling back to the start of the conversation. It may be unusually ' +
@@ -271,13 +335,20 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     }
 
     // Pass 2 — back down to the last turn.
-    const reachedBottom = await walk(container, stepDelayMs, options.maxSteps, record, {
-      atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
-      step: (c) => {
-        c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
+    const reachedBottom = await walk(
+      container,
+      stepDelayMs,
+      options.maxSteps,
+      record,
+      {
+        atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
+        step: (c) => {
+          c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
+        },
+        stepPx,
       },
-      stepPx,
-    });
+      collectedEverything,
+    );
     if (!reachedBottom) {
       throw new ExtractionError(
         'Timed out loading the full conversation while scrolling. The conversation may be ' +
@@ -285,7 +356,7 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       );
     }
 
-    return buildMessages(turns, seenRowIndices, sawUnindexedTurn);
+    return buildMessages(turns, seenRowIndices, sawUnindexedTurn, declaredTotal);
   } finally {
     container.scrollTop = restoreScrollTop;
   }
@@ -293,11 +364,18 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
 
 /**
  * Step a scroll container toward one end, running `record` on every round (including
- * before the first step and after the last). Resolves true once the end has held for
- * `END_SETTLE_ROUNDS` consecutive rounds, false if the step cap was hit first — the
- * caller decides whether that is fatal. The cap is recomputed from the live scroll height
- * each round so a list that grows as it hydrates is not cut short, while a stuck loop
- * still terminates.
+ * before the first step and after the last). Resolves true once `isComplete` reports the
+ * conversation fully collected, or the end has held for `END_SETTLE_ROUNDS` consecutive
+ * rounds; false if the step cap was hit first — the caller decides whether that is fatal.
+ * The cap is recomputed from the live scroll height each round so a list that grows as it
+ * hydrates is not cut short, while a stuck loop still terminates.
+ *
+ * `isComplete` is checked before the end test because it is the stronger signal: reaching a
+ * scroll boundary is only evidence that the viewport stopped moving, whereas having every
+ * declared row in hand is proof there is nothing left to find. Nothing is lost by stopping
+ * an upward pass that has already collected the conversation — the guards it feeds
+ * (`reachedTop`, and `buildMessages`' leading-hole branch) fire only when something is
+ * missing.
  */
 async function walk(
   container: HTMLElement,
@@ -305,10 +383,12 @@ async function walk(
   maxSteps: number | undefined,
   record: () => void,
   motion: { atEnd: (c: HTMLElement) => boolean; step: (c: HTMLElement) => void; stepPx: number },
+  isComplete: () => boolean,
 ): Promise<boolean> {
   let atEndHits = 0;
   for (let step = 0; ; step++) {
     record();
+    if (isComplete()) return true;
     if (motion.atEnd(container)) {
       if (++atEndHits >= END_SETTLE_ROUNDS) return true;
     } else {
@@ -328,6 +408,22 @@ function rowIndex(row: Element | null): number {
 }
 
 /**
+ * The total row count this row declares for the whole conversation, or null when it declares
+ * none. Every live row carried one (verified 2026-07-25 across 112 rows in four
+ * conversations), but null is not treated as an anomaly: a markup change must degrade to the
+ * pre-existing behavior rather than fail every export.
+ *
+ * A non-positive or unparseable value is null too — it could only weaken the checks it feeds,
+ * and a fabricated total is worse than no total (AGENTS.md #5).
+ */
+function declaredRowTotal(row: Element): number | null {
+  const raw = row.querySelector(selectors.messageArticle)?.getAttribute(selectors.setSizeAttr);
+  if (raw === null || raw === undefined) return null;
+  const total = Number.parseInt(raw, 10);
+  return Number.isInteger(total) && total > 0 ? total : null;
+}
+
+/**
  * Turn the accumulated index→turn map into an ordered message list, failing loud on any
  * evidence of incompleteness rather than returning a partial conversation (AGENTS.md #4):
  * a gap in the index range, a range that does not start at position 0, a turn that never
@@ -340,17 +436,25 @@ function rowIndex(row: Element | null): number {
  * scroll problem. Both still fail loud — we cannot export what we cannot read — but telling
  * the user to "scroll through the whole conversation" when that is not the problem sends
  * them in circles.
+ *
+ * `declaredTotal` closes the one hole the index checks cannot see. Contiguity and the
+ * starts-at-0 rule together prove the collected range is exactly `0…n-1`, but nothing
+ * establishes that `n-1` is the LAST row: a walk that stopped short of the bottom yields a
+ * range that passes both tests and exports as a plausible partial — the silent truncation
+ * AGENTS.md #4 exists to prevent. Claude declares the conversation's row count on every row,
+ * so a shortfall against it is proof. Null when no row declared one, in which case this check
+ * is skipped and the pre-existing behavior stands.
  */
 function buildMessages(
   turns: Map<number, CollectedTurn>,
   seenRowIndices: Set<number>,
   sawUnindexedTurn: boolean,
+  declaredTotal: number | null,
 ): Message[] {
   const indices = [...turns.keys()].sort((a, b) => a - b);
 
-  // Claude numbers virtualizer rows from zero (verified live 2026-07-25: `minIndex` 0 on a
-  // 56-row conversation — n=1, re-measurement tracked as a `[VERIFY]` in tasks.md, because a
-  // conversation that legitimately started above 0 would fail here permanently), so a
+  // Claude numbers virtualizer rows from zero (verified live 2026-07-25: `minIndex` 0 in four
+  // separate walked conversations of 14, 16, 26 and 56 rows), so a
   // collected range that starts above zero is a hole exactly like
   // an interior one — it means the first turns were never collected, which contiguity alone
   // cannot see. Seeding the scan at -1 puts that leading range through the same check
@@ -362,14 +466,7 @@ function buildMessages(
     if (indices[k] === previous + 1) continue;
     const missing: number[] = [];
     for (let i = previous + 1; i < indices[k]; i++) missing.push(i);
-    const allRendered = missing.every((i) => seenRowIndices.has(i));
-    if (allRendered) {
-      throw new ExtractionError(
-        `The conversation contains ${missing.length === 1 ? 'a message' : 'messages'} at ` +
-          `position ${missing.join(', ')} that this extension could not read — Claude’s markup ` +
-          'may have changed, or the message may be a type it does not support yet. Please report this.',
-      );
-    }
+    if (missing.every((i) => seenRowIndices.has(i))) throw unreadableRowsError(missing);
     // A leading hole is NOT a "scroll further" problem, even though its rows never rendered:
     // this runs only after the walk proved it reached `scrollTop <= 0`, so the user repeating
     // that scroll by hand does exactly what just failed. Ask for a report instead of sending
@@ -380,6 +477,21 @@ function buildMessages(
           'loaded, even after scrolling to the top. Claude’s markup may have changed — please report this.'
         : `The conversation is missing turns between positions ${previous} and ${indices[k]}. ` +
           'Scroll through the whole conversation and try again.',
+    );
+  }
+
+  // Trailing end. The scan above proved the collected positions are exactly `0…length-1`, so
+  // anything Claude declares beyond that is a turn the walk never got. Split the same two
+  // ways as an interior gap: rows that rendered hold markup this adapter cannot read, rows
+  // that never rendered were never reached.
+  if (declaredTotal !== null && indices.length < declaredTotal) {
+    const missing: number[] = [];
+    for (let i = indices.length; i < declaredTotal; i++) missing.push(i);
+    if (missing.every((i) => seenRowIndices.has(i))) throw unreadableRowsError(missing);
+    throw new ExtractionError(
+      `The conversation’s last ${missing.length === 1 ? 'turn' : `${missing.length} turns`} never ` +
+        `loaded — Claude reports ${declaredTotal} messages but only ${indices.length} could be read. ` +
+        'Scroll to the end of the conversation and try again.',
     );
   }
 
@@ -407,6 +519,20 @@ function buildMessages(
     );
   }
   return messages;
+}
+
+/**
+ * The error for positions whose rows rendered but yielded no readable turn. Shared by the
+ * interior-gap and trailing-end checks so the two cannot drift apart: both describe the same
+ * condition — the walk saw the row, the adapter did not understand it — and both need the
+ * user to report it rather than scroll again.
+ */
+function unreadableRowsError(missing: number[]): ExtractionError {
+  return new ExtractionError(
+    `The conversation contains ${missing.length === 1 ? 'a message' : 'messages'} at ` +
+      `position ${missing.join(', ')} that this extension could not read — Claude’s markup ` +
+      'may have changed, or the message may be a type it does not support yet. Please report this.',
+  );
 }
 
 /**
