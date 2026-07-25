@@ -7,3 +7,8 @@
 ### Bulk panel "Load more" follow-up
 
 - [ ] [VERIFY] Rendered bulk-panel UI: confirm the loaded extension's bulk panel settles into its disabled done state with prior selections preserved after a "Load more" run. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session per `docs/runbook.md`)*
+
+### Claude adapter — follow-ups from the 2026-07-25 live session
+
+- [ ] [VERIFY] Rendered Claude UI: load-unpacked per `docs/runbook.md`, open a real `claude.ai/chat/<id>`, and confirm (a) the export buttons mount inside `[data-testid="wiggle-controls-actions"]` to the left of Share and wear Claude's chrome in both light and dark, (b) each of MD/PDF/JSON/HTML downloads, and (c) a long (30+ turn) conversation exports every turn — the walk is unit-covered against a recycling fake but has never run against the real virtualizer. *(deferred: MCP cannot load an unpacked extension — needs a manual load-unpacked session)*
+- [ ] [VERIFY] Confirm whether Claude's `data-index` is 0-based. The 2026-07-25 snippet dropped `min`/`max` from its output, so `buildMessages` asserts only that the collected indices are **contiguous**, not that they start at 0. If the index is 0-based, a `min !== 0` check would additionally catch a walk that never reached the first turn — today only the reached-top guard covers that. One console snippet on a long conversation answers it.

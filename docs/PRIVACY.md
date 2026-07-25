@@ -61,9 +61,9 @@ or allow humans to read it.
 
 - **`storage`** — to remember your toolbar icon preferences (see above). No conversation
   data is stored.
-- **Host access to `chatgpt.com` and `chat.openai.com`** — so the export buttons can appear
-  on, and read the conversation from, ChatGPT conversation pages. The extension runs on no
-  other sites.
+- **Host access to `chatgpt.com`, `chat.openai.com`, and `claude.ai`** — so the export buttons
+  can appear on, and read the conversation from, ChatGPT and Claude conversation pages. The
+  extension runs on no other sites.
 
 ## Data retention and deletion
 

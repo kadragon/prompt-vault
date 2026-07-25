@@ -14,4 +14,10 @@ marker is removed by hand once the blocking ticket lands.
 ## Next (roadmap — not v1)
 
 - [ ] Gemini adapter (reuse core model + exporters via ConversationAdapter)
-- [ ] Claude adapter (reuse core model + exporters via ConversationAdapter)
+- [ ] Claude adapter: bulk/sidebar export (`listConversations` / `openConversation` /
+      `loadMoreConversations`) *(blocked by: needs its own live-DOM session — the sidebar's list
+      structure, its scroll port, and whether it pages from the server were never measured; the
+      2026-07-25 session covered only the conversation view)*
+- [ ] Claude adapter: Projects track (`matchesProject` + the project bulk members)
+      *(blocked by: Claude's project routes and project-home list markup are unmeasured — same
+      session gap as the sidebar item above)*

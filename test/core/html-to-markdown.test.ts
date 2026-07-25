@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { Window } from 'happy-dom';
-import { htmlToMarkdown } from '../../../src/adapters/chatgpt/html-to-markdown';
+import { blockToMarkdown, htmlToMarkdown } from '../../src/core/html-to-markdown';
 
-// Parse an HTML fragment into a `.markdown`-style container element.
+// Parse an HTML fragment into a prose-container element, the shape every adapter
+// hands the serializer (ChatGPT's `.markdown`, Claude's `.standard-markdown`).
 function md(html: string): string {
   const window = new Window();
   const container = window.document.createElement('div');
@@ -61,6 +62,32 @@ describe('htmlToMarkdown', () => {
   it('omits a bogus (non-language) code header label', () => {
     const html = '<pre><div>실행됨</div><code>ls</code></pre>';
     expect(md(html)).toBe('```\nls\n```');
+  });
+
+  // Claude tags the language on the <code> itself (verified live 2026-07-25:
+  // class="language-sql") and renders no header label, so the class is the only source.
+  it('reads the fence language from a standard language-xxx class', () => {
+    const html = '<pre class="code-block__code"><code class="language-sql">SELECT 1;</code></pre>';
+    expect(md(html)).toBe('```sql\nSELECT 1;\n```');
+  });
+
+  it('prefers the language-xxx class over a header label when both are present', () => {
+    const html =
+      '<pre><div class="header">Plain text</div>' +
+      '<code class="language-ts">const x = 1;</code></pre>';
+    expect(md(html)).toBe('```ts\nconst x = 1;\n```');
+  });
+
+  it('ignores unrelated classes on the code element', () => {
+    const html = '<pre><code class="hljs whitespace-pre">ls</code></pre>';
+    expect(md(html)).toBe('```\nls\n```');
+  });
+
+  it('falls back to the header label when the language class is empty or bogus', () => {
+    const html =
+      '<pre><div class="header">Python</div>' +
+      '<code class="language-">def f(): pass</code></pre>';
+    expect(md(html)).toBe('```python\ndef f(): pass\n```');
   });
 
   it('renders blockquotes with a prefix', () => {
@@ -213,5 +240,39 @@ describe('htmlToMarkdown', () => {
       // leak into the outer grid (it is flattened inline within the cell).
       expect(md(html)).toBe('| outerinner | x |\n| --- | --- |');
     });
+  });
+});
+
+// `htmlToMarkdown` treats its argument as a *container* of blocks. When the element to
+// render IS the block — a `<ul>` lifted straight out of a Claude user turn — that drops
+// the list markers, so adapters use `blockToMarkdown` for it instead.
+describe('blockToMarkdown', () => {
+  function block(html: string): string {
+    const window = new Window();
+    const holder = window.document.createElement('div');
+    holder.innerHTML = html;
+    return blockToMarkdown(holder.firstElementChild as unknown as Element);
+  }
+
+  it('keeps the markers of a list passed in directly', () => {
+    expect(block('<ul><li>alpha</li><li>beta</li></ul>')).toBe('- alpha\n- beta');
+  });
+
+  it('numbers an ordered list passed in directly', () => {
+    expect(block('<ol><li>one</li><li>two</li></ol>')).toBe('1. one\n2. two');
+  });
+
+  it('differs from htmlToMarkdown on the same element (the bug this exists to avoid)', () => {
+    const html = '<ul><li>alpha</li><li>beta</li></ul>';
+    const window = new Window();
+    const holder = window.document.createElement('div');
+    holder.innerHTML = html;
+    const list = holder.firstElementChild as unknown as Element;
+    expect(htmlToMarkdown(list)).toBe('alpha\n\nbeta'); // markers lost
+    expect(blockToMarkdown(list)).toBe('- alpha\n- beta');
+  });
+
+  it('serializes a non-list block just as the container path would', () => {
+    expect(block('<p>plain <strong>text</strong></p>')).toBe('plain **text**');
   });
 });

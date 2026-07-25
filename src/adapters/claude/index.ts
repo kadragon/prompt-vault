@@ -1,0 +1,361 @@
+import type { Conversation, Message, Role } from '../../core/conversation';
+import { ExtractionError } from '../../core/errors';
+import { blockToMarkdown, htmlToMarkdown } from '../../core/html-to-markdown';
+import type { ConversationAdapter } from '../types';
+import { matches } from './matches';
+import { selectors, TITLE_SUFFIX } from './selectors';
+
+const PROVIDER = 'claude';
+
+// Walk tuning for the virtualized message list. Claude keeps only a window of turn
+// nodes in the DOM and RECYCLES them — scrolling to the top dropped the rendered count
+// from 16 to 8 while surfacing different turns (verified live 2026-07-25) — so the walk
+// steps through the viewport and accumulates, per docs/conventions.md. Turns are already
+// client-side (the walk surfaced a contiguous index range without any server round-trip),
+// so the per-step delay only has to cover a render frame, not a fetch. It is far shorter
+// than the ChatGPT *sidebar* numbers, which pay for `#history` pagination.
+const SCROLL_STEP_DELAY_MS = 150;
+// Advance half a viewport per step so every region falls inside two consecutive windows
+// and each turn is seen at least twice — once to record it, again to upgrade its content
+// if the first sighting caught it mid-render.
+const WALK_STEP_FRACTION = 0.5;
+// Consecutive rounds pinned at an end before it counts as reached, so a single stalled
+// frame is not mistaken for the end of the list.
+const END_SETTLE_ROUNDS = 2;
+// Hard anti-runaway ceiling, far above any real conversation's step count (the primary
+// bound is derived from the live scroll height each iteration).
+const WALK_ABSOLUTE_MAX_STEPS = 2000;
+
+// Claude's own icon-button classes, taken verbatim from its native header Share button
+// (verified live 2026-07-25) minus `px-md`, which is horizontal padding for a *labeled*
+// control — the export buttons are icon-only squares — and minus the `disabled:`/
+// `aria-*` variants, which never apply to them. Wearing these makes the buttons
+// indistinguishable from Claude's chrome in both themes. Owned by the adapter (not the
+// content layer) to keep provider CSS knowledge here; if Claude renames these tokens the
+// buttons degrade to unstyled-but-functional.
+const TOOLBAR_BUTTON_CLASS =
+  'cds-reset group/btn relative isolate inline-flex shrink-0 items-center justify-center ' +
+  'gap-1.5 whitespace-nowrap select-none border-0 outline-none focus-visible:outline-hidden ' +
+  'rounded h-control font-sans text-body font-medium transition-shadow duration-fast ' +
+  'focus-visible:shadow-focus text-primary';
+
+/**
+ * Claude adapter — single-conversation export only. Every other `ConversationAdapter`
+ * member is optional and deliberately unimplemented: the sidebar bulk track and the
+ * project track would each need their own live-DOM verification, and an unverified
+ * implementation is worse than an absent one (the feature simply does not mount).
+ */
+export const claudeAdapter: ConversationAdapter = {
+  provider: PROVIDER,
+  matches,
+  extract,
+  toolbarMount,
+  toolbarButtonClass: TOOLBAR_BUTTON_CLASS,
+  toolbarAnchor,
+};
+
+/**
+ * The header action bar holding Claude's native Share control — the injection point for
+ * the export buttons. All Claude DOM knowledge lives in this adapter
+ * (docs/conventions.md), so the content layer asks for the mount point instead of
+ * hardcoding a selector. Null when the header has not rendered yet or the markup
+ * changed; the caller then falls back to a non-overlapping overlay.
+ */
+function toolbarMount(root: ParentNode = document): Element | null {
+  return root.querySelector(selectors.headerActions);
+}
+
+/**
+ * The native Share button — the export buttons are placed immediately to its left,
+ * beside it rather than replacing it. Null when Share has not rendered; the content
+ * layer then mounts at the front of the header bar.
+ */
+function toolbarAnchor(root: ParentNode = document): Element | null {
+  return root.querySelector(selectors.shareButton);
+}
+
+/** Overridable knobs so the walk can be unit-tested without real timers. */
+export interface WalkOptions {
+  /** Milliseconds to wait after each scroll step before re-reading the DOM. */
+  stepDelayMs?: number;
+  /** Absolute step cap per pass; exceeding it before reaching the end fails loud. */
+  maxSteps?: number;
+}
+
+export async function extract(root: ParentNode = document, options: WalkOptions = {}): Promise<Conversation> {
+  // On the live page Claude windows the message list: only a handful of turn nodes exist
+  // at once and off-screen turns are removed, so a single `querySelectorAll` sees a
+  // fraction of the conversation. Collect by walking the viewport. Fixture roots are
+  // fully materialized, so they use the one-shot read.
+  const messages =
+    root === (globalThis as { document?: Document }).document
+      ? await collectVirtualizedTurns(root as Document, options)
+      : readSnapshot(root);
+
+  if (messages.length === 0) {
+    throw new ExtractionError(
+      'No messages found on the page. The conversation may not have loaded, or Claude’s ' +
+        'markup changed — extraction selectors need updating.',
+    );
+  }
+
+  return {
+    title: deriveTitle(root),
+    provider: PROVIDER,
+    url: deriveUrl(root),
+    messages,
+  };
+}
+
+/**
+ * One-shot read of every turn currently in `root` (fixtures, or a live page with no
+ * scroll container). Document order is the conversation order because a turn is either a
+ * user bubble or an assistant prose container and the two are disjoint. Fails loud if a
+ * turn yielded no content — a silently dropped turn is worse than a visible error
+ * (AGENTS.md #4).
+ */
+function readSnapshot(root: ParentNode): Message[] {
+  const nodes = Array.from(root.querySelectorAll(selectors.turn));
+  const messages = nodes.map(toMessage).filter((m): m is Message => m !== null);
+  if (messages.length > 0 && messages.length < nodes.length) {
+    throw new ExtractionError(
+      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
+        'still be loading — wait for it to finish, then try again.',
+    );
+  }
+  return messages;
+}
+
+/** A turn accumulated during the walk, keyed by its row's `data-index`. */
+interface CollectedTurn {
+  role: Role;
+  content: string;
+}
+
+/**
+ * Read the whole conversation off the live, recycling message list. The walk goes up to
+ * the first turn and back down to the last, recording on every step, and keys each turn by
+ * its virtualizer row's `data-index` — the only stable per-turn identity Claude exposes.
+ *
+ * That index also buys a **completeness oracle** the ChatGPT adapter has never had: the
+ * indices of a fully-walked conversation are contiguous, so a hole proves turns were
+ * missed and extraction fails loud instead of returning a plausible-looking partial
+ * (AGENTS.md #4). Verified live (2026-07-25): a full up-then-down walk produced a
+ * contiguous range with zero index→role conflicts, exactly one turn node per indexed row,
+ * and no turn lacking an indexed ancestor.
+ *
+ * Falls back to a one-shot snapshot when there is no scroll container, or when it has zero
+ * height (a hidden/background tab never scrolls, so the walk would crawl to the step cap).
+ */
+export async function collectVirtualizedTurns(doc: Document, options: WalkOptions = {}): Promise<Message[]> {
+  const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
+  if (!container || container.clientHeight === 0) return readSnapshot(doc);
+
+  const { stepDelayMs = SCROLL_STEP_DELAY_MS } = options;
+  const stepPx = Math.max(1, Math.floor(container.clientHeight * WALK_STEP_FRACTION));
+
+  const turns = new Map<number, CollectedTurn>();
+  let sawUnindexedTurn = false;
+
+  const record = (): void => {
+    for (const el of Array.from(doc.querySelectorAll(selectors.turn))) {
+      const row = el.closest(selectors.turnRow);
+      const raw = row?.getAttribute(selectors.turnIndexAttr);
+      const index = raw === null || raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+      if (!Number.isInteger(index)) {
+        // No stable key to dedupe this turn across windows, so it can never be collected
+        // reliably. Flag it and fail loud rather than silently omit it (AGENTS.md #4).
+        sawUnindexedTurn = true;
+        continue;
+      }
+      const content = readTurn(el);
+      const seen = turns.get(index);
+      if (!seen) {
+        turns.set(index, { role: roleOf(el), content });
+      } else if (!seen.content.trim() && content.trim()) {
+        // Upgrade a turn first captured before its content rendered.
+        seen.content = content;
+      }
+    }
+  };
+
+  // Pass 1 — up to the very first turn. Recording on the way means turns above the
+  // starting window are captured here rather than waiting for the downward pass.
+  const reachedTop = await walk(container, stepDelayMs, options.maxSteps, record, {
+    atEnd: (c) => c.scrollTop <= 0,
+    step: (c) => {
+      c.scrollTop = Math.max(0, c.scrollTop - stepPx);
+    },
+    stepPx,
+  });
+  if (!reachedTop) {
+    throw new ExtractionError(
+      'Timed out scrolling back to the start of the conversation. It may be unusually ' +
+        'long; try again, or report if this persists.',
+    );
+  }
+
+  // Pass 2 — back down to the last turn.
+  const reachedBottom = await walk(container, stepDelayMs, options.maxSteps, record, {
+    atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
+    step: (c) => {
+      c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
+    },
+    stepPx,
+  });
+  if (!reachedBottom) {
+    throw new ExtractionError(
+      'Timed out loading the full conversation while scrolling. The conversation may be ' +
+        'unusually long; try again, or report if this persists.',
+    );
+  }
+
+  return buildMessages(turns, sawUnindexedTurn);
+}
+
+/**
+ * Step a scroll container toward one end, running `record` on every round (including
+ * before the first step and after the last). Resolves true once the end has held for
+ * `END_SETTLE_ROUNDS` consecutive rounds, false if the step cap was hit first — the
+ * caller decides whether that is fatal. The cap is recomputed from the live scroll height
+ * each round so a list that grows as it hydrates is not cut short, while a stuck loop
+ * still terminates.
+ */
+async function walk(
+  container: HTMLElement,
+  stepDelayMs: number,
+  maxSteps: number | undefined,
+  record: () => void,
+  motion: { atEnd: (c: HTMLElement) => boolean; step: (c: HTMLElement) => void; stepPx: number },
+): Promise<boolean> {
+  let atEndHits = 0;
+  for (let step = 0; ; step++) {
+    record();
+    if (motion.atEnd(container)) {
+      if (++atEndHits >= END_SETTLE_ROUNDS) return true;
+    } else {
+      atEndHits = 0;
+    }
+    const cap = maxSteps ?? Math.ceil(container.scrollHeight / motion.stepPx) + END_SETTLE_ROUNDS + 5;
+    if (step >= cap || step >= WALK_ABSOLUTE_MAX_STEPS) return false;
+    motion.step(container);
+    await delay(stepDelayMs);
+  }
+}
+
+/**
+ * Turn the accumulated index→turn map into an ordered message list, failing loud on any
+ * evidence of incompleteness rather than returning a partial conversation (AGENTS.md #4):
+ * a gap in the index range, a turn that never yielded content, or a turn with no usable
+ * index.
+ */
+function buildMessages(turns: Map<number, CollectedTurn>, sawUnindexedTurn: boolean): Message[] {
+  const indices = [...turns.keys()].sort((a, b) => a - b);
+
+  for (let k = 1; k < indices.length; k++) {
+    if (indices[k] !== indices[k - 1] + 1) {
+      throw new ExtractionError(
+        `The conversation is missing turns between positions ${indices[k - 1]} and ${indices[k]}. ` +
+          'Scroll through the whole conversation and try again.',
+      );
+    }
+  }
+
+  const messages: Message[] = [];
+  let dropped = 0;
+  for (const index of indices) {
+    const turn = turns.get(index)!;
+    if (turn.content.trim()) {
+      messages.push({ role: turn.role, content: turn.content });
+    } else {
+      dropped++;
+    }
+  }
+
+  if (messages.length > 0 && dropped > 0) {
+    throw new ExtractionError(
+      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
+        'still be loading — wait for it to finish, then try again.',
+    );
+  }
+  if (messages.length > 0 && sawUnindexedTurn) {
+    throw new ExtractionError(
+      'A conversation turn is missing its position marker and could not be exported ' +
+        'reliably. Claude’s markup may have changed — please report this.',
+    );
+  }
+  return messages;
+}
+
+/**
+ * The role of a matched turn node. Claude labels only the user side, so a turn that is not
+ * a user bubble is the assistant's prose container — the two sets are disjoint (verified
+ * live 2026-07-25: zero `.standard-markdown` nested inside a user turn).
+ */
+function roleOf(el: Element): Role {
+  return el.matches(selectors.userMessage) ? 'user' : 'assistant';
+}
+
+/** Read a turn node's content, dispatching on role. */
+function readTurn(el: Element): string {
+  if (roleOf(el) === 'assistant') return htmlToMarkdown(el);
+  return readUserContent(el);
+}
+
+/**
+ * User turns are literal text, not rendered Markdown: Claude puts each paragraph in a
+ * `p.whitespace-pre-wrap`, so the newlines the user typed are significant and must NOT go
+ * through the serializer's inline path (which collapses whitespace runs). Read each block
+ * child as text and join with blank lines, so multiple paragraphs stay separated instead of
+ * being glued together by a single `textContent` read. Lists are the exception — their
+ * markers exist only as markup, so they are serialized.
+ */
+function readUserContent(el: Element): string {
+  const blocks: string[] = [];
+  for (const child of Array.from(el.children)) {
+    const tag = child.tagName.toLowerCase();
+    // `blockToMarkdown`, not `htmlToMarkdown`: the list IS the block here, and treating it
+    // as a container would serialize its `<li>`s as separate blocks and drop the markers.
+    const text = tag === 'ul' || tag === 'ol' ? blockToMarkdown(child) : (child.textContent ?? '');
+    if (text.trim()) blocks.push(text.trim());
+  }
+  if (blocks.length > 0) return blocks.join('\n\n');
+  // No block children (or all empty): fall back to the container's own text so a markup
+  // change degrades to readable content rather than an empty turn.
+  return (el.textContent ?? '').trim();
+}
+
+/** Map one turn node to a normalized Message, or null if it has no content. */
+function toMessage(el: Element): Message | null {
+  const content = readTurn(el);
+  if (!content.trim()) return null;
+  return { role: roleOf(el), content };
+}
+
+/**
+ * The conversation title from `document.title`, which Claude formats as
+ * `"<conversation title> - Claude"` (verified live 2026-07-25). A bare `Claude` means no
+ * conversation title has been assigned yet.
+ */
+function deriveTitle(root: ParentNode): string {
+  const raw = ownerDocument(root)?.title?.trim() ?? '';
+  const title = raw.endsWith(TITLE_SUFFIX) ? raw.slice(0, -TITLE_SUFFIX.length).trim() : raw;
+  return title && title !== 'Claude' ? title : 'Claude conversation';
+}
+
+function deriveUrl(root: ParentNode): string {
+  return ownerDocument(root)?.defaultView?.location?.href ?? '';
+}
+
+const DOCUMENT_NODE = 9;
+
+function ownerDocument(root: ParentNode): Document | null {
+  // Detect a Document by nodeType rather than `instanceof Document` so this works under
+  // any DOM implementation (live browser or a parsed test fixture).
+  if ((root as Node).nodeType === DOCUMENT_NODE) return root as Document;
+  return (root as Element).ownerDocument ?? null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -1,18 +1,27 @@
-// The content-script mount gate for "should the Download button be shown?".
-// The host/path knowledge is ChatGPT-specific, so it lives in the ChatGPT adapter
-// (src/adapters/chatgpt/matches.ts) as the single source of truth; this re-export
-// keeps the content-layer name and dependency direction (content → adapter).
+// The content-script mount gate for "should the export buttons be shown?".
+// Host/path knowledge is provider-specific and lives in each adapter's `matches`
+// (docs/architecture.md), so this asks the adapter registry rather than naming a
+// provider — adding a provider is then a registry entry plus a manifest host, with
+// no edit here. Dependency direction is unchanged (content → adapters).
 
-import { matches, matchesProject } from '../adapters/chatgpt/matches';
-
-/**
- * True only for a ChatGPT conversation page. Single source of truth for both the
- * initial button mount and SPA-navigation re-checks, and for adapter selection.
- */
-export const isConversationPage = matches;
+import { pickAdapter, pickProjectAdapter } from '../adapters';
 
 /**
- * True only for a ChatGPT Project home page. Gates the project bulk-download trigger
- * (parallel to `isConversationPage` for the per-conversation toolbar).
+ * True for a conversation page of ANY registered provider. Single source of truth
+ * for both the initial button mount and SPA-navigation re-checks; it agrees with
+ * adapter selection by construction, since it is the same lookup `mount.ts` uses to
+ * pick the adapter that will do the extracting.
  */
-export const isProjectPage = matchesProject;
+export function isConversationPage(url: string): boolean {
+  return pickAdapter(url) !== null;
+}
+
+/**
+ * True for a Project *home* page of any registered provider that implements the
+ * project track (ChatGPT today; a provider omitting `matchesProject` never matches).
+ * Gates the project bulk-download trigger, parallel to `isConversationPage` for the
+ * per-conversation toolbar.
+ */
+export function isProjectPage(url: string): boolean {
+  return pickProjectAdapter(url) !== null;
+}

@@ -33,13 +33,13 @@ the sidebar, and export the selected set in one format.
 Key points:
 • 100% local. The extension makes no network requests and sends nothing to any server.
   Your conversations never leave your browser.
-• Least privilege. It runs only on ChatGPT (chatgpt.com / chat.openai.com) and requests
-  only the minimum permissions needed.
+• Least privilege. It runs only on ChatGPT (chatgpt.com / chat.openai.com) and Claude
+  (claude.ai), and requests only the minimum permissions needed.
 • Choose your toolbar. The extension popup lets you show or hide each export format icon
   and the bulk-export icon.
 • English and Korean UI follows your browser language.
 
-ChatGPT is the currently supported provider.
+Supported providers: ChatGPT and Claude. Bulk export is currently ChatGPT-only.
 ```
 
 ### Description (Korean, optional listing)
@@ -62,12 +62,12 @@ ChatGPT 대화 페이지 헤더에 내보내기 버튼이 나타납니다. 클�
 핵심:
 • 100% 로컬. 확장 프로그램 자체는 네트워크 요청을 하지 않으며 어떤 서버로도 대화를
   보내지 않습니다.
-• 최소 권한. ChatGPT(chatgpt.com / chat.openai.com)에서만 동작합니다.
+• 최소 권한. ChatGPT(chatgpt.com / chat.openai.com)와 Claude(claude.ai)에서만 동작합니다.
 • 툴바 선택. 확장 프로그램 팝업에서 형식별 아이콘과 일괄 내보내기 아이콘을 표시하거나
   숨길 수 있습니다.
 • 브라우저 언어에 따라 영어 또는 한국어 UI를 표시합니다.
 
-현재 지원하는 서비스는 ChatGPT입니다.
+현재 지원하는 서비스는 ChatGPT와 Claude입니다. 일괄 내보내기는 ChatGPT에서만 제공됩니다.
 ```
 
 ### Single-purpose statement (Privacy tab)
@@ -88,7 +88,7 @@ data handling change.
 | Permission / practice | Justification |
 |-----------------------|---------------|
 | `storage` | Persists toolbar and bulk-export visibility preferences through `chrome.storage.sync`. No conversation content is stored. |
-| Host access `https://chatgpt.com/*`, `https://chat.openai.com/*` | Injects export controls into ChatGPT and reads conversations selected by the user for local export. These are the only sites on which the extension runs. |
+| Host access `https://chatgpt.com/*`, `https://chat.openai.com/*`, `https://claude.ai/*` | Injects export controls into ChatGPT and Claude, and reads conversations selected by the user for local export. These are the only sites on which the extension runs. Each host corresponds to one registered adapter in `src/adapters/`. |
 | Remote code | Not used. All executable code and the PDF font are bundled in the extension package. |
 | Conversation content | Processed locally only after an export action; not retained by the extension or transmitted to the developer or a third party. |
 

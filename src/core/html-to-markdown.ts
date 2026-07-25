@@ -1,17 +1,35 @@
-// Converts the assistant's rendered `.markdown` HTML subtree back into
-// GitHub-flavored Markdown. This is where the DOM→Markdown normalization happens
-// so that exporters (tickets 4/5) consume only the Conversation model and never
-// touch the DOM (docs/conventions.md). Output is deterministic: same subtree →
-// same string. Scope is limited to the tags ChatGPT actually emits (verified
-// against test/fixtures/chatgpt/): headings, p, strong/em, inline & fenced code,
-// ul/ol/li, a, blockquote, hr, br, img.
+// Converts an assistant turn's rendered prose subtree back into GitHub-flavored
+// Markdown. This is where the DOM→Markdown normalization happens so that exporters
+// consume only the Conversation model and never touch the DOM (docs/conventions.md).
+// Output is deterministic: same subtree → same string. Scope is the standard tags
+// chat providers emit: headings, p, strong/em, inline & fenced code, ul/ol/li, a,
+// table, blockquote, hr, br, img.
+//
+// Provider-agnostic on purpose, and therefore in core rather than in an adapter:
+// every adapter hands it a *different* container (ChatGPT's `.markdown`, Claude's
+// `.standard-markdown`) but the same ordinary rendered HTML inside. Adapter isolation
+// (AGENTS.md #3) bans the alternative — one adapter importing another's module. Nothing
+// here may reference a provider-specific selector, class, or attribute.
 
-import { escapeMarkdownText } from '../../core/markdown-escape';
+import { escapeMarkdownText } from './markdown-escape';
 
-/** Serialize an assistant `.markdown` element to Markdown. */
+/** Serialize a prose *container* — its block children become the Markdown blocks. */
 export function htmlToMarkdown(root: Element): string {
-  const md = serializeBlocks(root, 0);
-  // Collapse 3+ blank lines and trim outer whitespace for stable output.
+  return normalize(serializeBlocks(root, 0));
+}
+
+/**
+ * Serialize a single block element — the element ITSELF, not just its children. Use this
+ * when the element to render is the block, e.g. a `<ul>` lifted out of a user turn:
+ * `htmlToMarkdown` would treat that `<ul>` as a container and serialize its `<li>`s as
+ * separate blocks, silently dropping the list markers.
+ */
+export function blockToMarkdown(el: Element): string {
+  return normalize(serializeBlockElement(el, 0));
+}
+
+/** Collapse 3+ blank lines and trim outer whitespace, for stable output. */
+function normalize(md: string): string {
   return md.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -249,16 +267,48 @@ function serializeCodeBlock(pre: Element): string {
 }
 
 /**
- * ChatGPT does not tag the `<code>` with `language-xxx`; the language is a label
- * in the code-block header (e.g. "Python"). Read it there, ignoring the copy/run
- * buttons and icons. Non-language labels (localized status text, etc.) fail the
- * ascii-token check and yield no language rather than a bogus one.
+ * The fence's language hint, read from whichever of the two conventions the provider
+ * uses:
+ *
+ * 1. The standard `<code class="language-xxx">` tag. Claude uses this (verified against
+ *    the live page 2026-07-25: `class="language-sql"`), as does anything rendering
+ *    through a CommonMark/highlight.js pipeline. Checked first because it is an explicit
+ *    machine-readable declaration rather than an inference from display text.
+ * 2. A label rendered in the code-block header (e.g. "Python"). ChatGPT does this and
+ *    tags no class, so the label is read from the header text with the `<code>`, buttons,
+ *    and icons stripped out.
+ *
+ * Either way the result must look like a language token: non-language labels (localized
+ * status text, a "Copy" caption) fail the ascii check and yield no language rather than a
+ * bogus one — also the correct outcome for a provider whose header carries no label.
  */
 function codeLanguage(pre: Element): string {
+  const tagged = languageFromClass(pre.querySelector('code'));
+  if (tagged) return tagged;
+
   const clone = pre.cloneNode(true) as Element;
   clone.querySelectorAll('code, button, svg').forEach((n) => n.remove());
   const token = (clone.textContent ?? '').trim().split(/\s+/)[0] ?? '';
-  const lang = token.toLowerCase();
+  return asLanguageToken(token);
+}
+
+/** The `language-xxx` class on a `<code>`, or `''` when it carries none. */
+function languageFromClass(code: Element | null): string {
+  if (!code) return '';
+  // `className` is not a string on SVG/unknown elements in every DOM implementation,
+  // so read the attribute, which is always a string when present.
+  const classes = (code.getAttribute('class') ?? '').split(/\s+/);
+  for (const name of classes) {
+    if (!name.startsWith('language-')) continue;
+    const lang = asLanguageToken(name.slice('language-'.length));
+    if (lang) return lang;
+  }
+  return '';
+}
+
+/** Normalize a candidate to a lowercase language token, or `''` if it is not one. */
+function asLanguageToken(raw: string): string {
+  const lang = raw.toLowerCase();
   return /^[a-z0-9+#-]+$/.test(lang) ? lang : '';
 }
 
