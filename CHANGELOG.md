@@ -2,10 +2,12 @@
 
 ## Unreleased
 
-- [done] Closed the privacy gate's last two subresource vectors — SVG `<image>` and
+- [done] Closed two more privacy-gate subresource vectors — SVG `<image>` and
   `<meta http-equiv="refresh">` (2026-07-26). Both were left open by PR #42 and confirmed against
-  happy-dom as markup a real parser resolves to a genuine fetch or navigation. Test and docs only;
-  no version bump, matching PR #40/#41 (PR #42 bumped because it shipped a manifest change).
+  happy-dom as markup a real parser resolves to a genuine fetch or navigation. Not "the last two":
+  review turned up `<iframe srcdoc>` while closing these, and it is now tracked in `tasks.md` rather
+  than left unrecorded. Test and docs only; no version bump, matching PR #40/#41 (PR #42 bumped
+  because it shipped a manifest change).
 
   **SVG `<image xlink:href>`** fetches exactly like an `<img>`, but `href` was checked on
   `<link>`/`<base>` only, so neither it nor the SVG 2 plain-`href` form was read. Rather than widen
@@ -29,7 +31,18 @@
   `url=` both optional, `;`/`,` separators — while `content="0"` and an empty `url=` stay unflagged
   as same-document reloads.
 
-  Review caught a real hole in the first cut: the helper read the attribute list last-wins, so
+  Review caught three more holes, each measured rather than argued. **Character references in the
+  refresh *syntax*** — `ref&#x72;esh`, `0&#59;url=`, `u&#x72;l=` — arrive decoded at the refresh
+  algorithm but were compared and parsed as raw text, so decoding moved ahead of the grammar
+  instead of applying only to the URL it had already failed to extract. **C0 control characters**:
+  `normalizeUrlValue` ended in JS `.trim()`, whose whitespace set is not the URL parser's, so
+  `&#1;https://evil.example/` kept a control character in scheme position and read as a local path
+  while a browser fetched off-origin — 26 such code points, enumerated; fixed by stripping exactly
+  the parser's C0-control-or-space set, which also correctly stops stripping a leading NBSP the URL
+  parser keeps. That one predates this change and hit `<img src>` too. **`imagesrcset`** on a
+  preload link was absent from the attribute set.
+
+  Review caught a real hole in the first cut too: the helper read the attribute list last-wins, so
   `<meta content="0;url=https://evil…" http-equiv="refresh" http-equiv="not-refresh">` returned
   clean while a real parser — measured in happy-dom **and** headless Chrome — keeps the *first*
   occurrence and navigates. Fixed by taking the **union** over duplicates (any `http-equiv` reading

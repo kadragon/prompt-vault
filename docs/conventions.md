@@ -90,7 +90,7 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   subresources and executable code only, and Chrome dropped the `navigate-to` directive, so no
   directive exists that would stop an automatic top-level navigation carrying whatever the URL
   interpolates. For this vector the static gate IS the control — weigh a change to
-  `readMetaRefreshTarget` accordingly. Its `content=` parsing follows the HTML spec's shared
+  `readMetaRefreshTargets` accordingly. Its `content=` parsing follows the HTML spec's shared
   declarative refresh steps loosely and always in the over-reporting direction (`url=` and the time
   both optional, `;`/`,` separators, `http-equiv` trimmed before comparing though a real parser does
   not trim). `content="0"` and an empty `url=` are same-document reloads and stay unflagged.
