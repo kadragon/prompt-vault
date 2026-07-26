@@ -278,6 +278,62 @@ Held by `test/privacy/manifest-least-privilege.test.ts`, which asserts no declar
 mentions the host. Re-adding it turns that gate red on purpose: the correct way back is to
 re-measure and restore with a new date, not to delete the assertion.
 
+### 2026-07-26 — an `<iframe srcdoc>` really does fetch its nested subresources, in both spellings
+
+Settled the premise the `[CONSTRAINT]` follow-up from the PR #44 review refused to build on: that
+markup nested inside a `srcdoc` attribute fetches was *inferred from spec*, and the finding said so
+and said "measure before fixing". This is the one privacy-gate claim `happy-dom` cannot settle — it
+parses the nested document but issues no requests — so the usual parser diff was not available and a
+real browser was needed.
+
+**Measured 2026-07-26.** A page served from `python3 -m http.server` on `127.0.0.1`, loaded once in
+Chrome via Playwright; the verdict is the server's own access log, not anything read out of the DOM:
+
+| Markup on the page | Server logged a request |
+|--------------------|-------------------------|
+| `<iframe srcdoc="<img src='/nested-img-fetched.png'>">` | **yes** |
+| `<iframe srcdoc="&lt;img src='/entity-encoded-img-fetched.png'&gt;">` | **yes** |
+| `<img src="/control-top-level-img.png">` (control) | yes |
+
+**The second row is the one that shaped the fix.** The entity-encoded spelling is how nested markup
+is written so the *outer* document still parses — the form to expect, not the exotic one — and it
+fetches identically. A decoder that handles only numeric references (as `isLocalInTreeSrc` does,
+rejecting a surviving `&` instead of decoding it) would find no nested tag at all there, which is a
+silent hole rather than the over-report that rejection buys everywhere else.
+
+**Method, stated precisely:** a local origin and a plain HTTP server, no logged-in session and no
+chat site involved. Sufficient *for this claim* and only this claim — whether the browser issues the
+subresource request at all is decided by the frame's own parse, and a remote host would only add
+DNS. It is not evidence about anything CSP-dependent: this probe ran on an ordinary web page, while
+the extension's own pages carry `frame-src 'none'`, which blocks such a frame outright.
+
+**What changed.** `findSubresourceViolations` in `test/privacy/no-external-network.test.ts` now
+decodes a `srcdoc` value and re-runs the whole subresource collector over it — see the `srcdoc`
+bullet in `docs/conventions.md` for the three calls that follow (named-reference decoding, single
+pass, depth cap that reports rather than returns clean). The runtime control did not change and did
+not need to; this is the static half catching up.
+
+**Second round, same session — the fix's own decoder was measured too, and two shapes fetched while
+it returned clean.** Raised in QA review, then confirmed the same way (Playwright + local server,
+one page, four frames, verdict read from the access log):
+
+| Markup inside `srcdoc` | Server logged a request |
+|------------------------|-------------------------|
+| `&lt;img data-x=1&gt=1 src='/gt-equals-fetched.png'&gt;` | **yes** |
+| `&lt;img data-x=&APOS; src='/upper-apos-fetched.png'&gt;` | **yes** |
+| `&LT;img src='/upper-lt-fetched.png'&GT;` | **yes** |
+| `&lt;img src='/no-semicolon-tail-fetched.png'&gt` | **yes** |
+
+Rows 1–2 were the hole. The first cut decoded named references case-insensitively and with the `;`
+optional, so `&gt=1` became `>1` and `&APOS;` became `'` — each injecting a character the real parser
+never produces, which ended the nested tag's attribute list early and pushed the live `src` outside
+it. The scan returned `[]` for markup Chrome fetched from. **The lesson is the asymmetry:** for a
+gate like this, over-*reporting* is safe and over-*decoding* is not — a wrong decode does not add a
+false hit, it deletes a true one. Rows 3–4 are the guard rails on the fix: both are genuinely
+decodable (`&LT;`/`&GT;` are real table entries; a semicolon-less `&gt` not followed by `=` or an
+alphanumeric does decode), so a correction that simply stopped decoding would have lost the closing
+`>` and read no nested tag at all — the opposite hole. All four are pinned as tests.
+
 ## ChatGPT
 
 ### 2026-07-24 — `#history` sidebar is append-only, not a recycling virtualizer

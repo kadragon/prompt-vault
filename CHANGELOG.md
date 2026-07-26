@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+- [done] Closed the privacy gate's `<iframe srcdoc>` residual — the last known subresource vector the
+  static scan could not see (2026-07-26). The tag scan resumes after each tag's own `>` on purpose,
+  so a tag-shaped attribute VALUE (`<div data-html="<img src='https://…'>">`) is not re-matched as a
+  real element; a real parser yields none, and a test pins that. `srcdoc` is the one attribute where
+  the identical text IS parsed and IS live, so the two cases are indistinguishable by tag syntax and
+  `findSubresourceViolations` returned `[]` for both. **Measured before fixing, as the finding
+  demanded:** `happy-dom` parses a nested document but issues no requests, so the parser diff this
+  file's other vectors were settled by was unavailable. A page in real Chrome against a local HTTP
+  server logged a request for the nested image in *both* spellings — raw
+  `srcdoc="<img src='/a.png'>"` and entity-encoded `srcdoc="&lt;img src='/b.png'&gt;"` — recorded in
+  `docs/live-dom-verification.md`. The fix decodes the value and re-runs the whole collector over it,
+  so `<meta refresh>`, `srcset`, `*:href` and CSS `@import` are all caught nested by the code that
+  already handles them flat. Three calls the measurement forced: the decode covers the five
+  predefined NAMED references, not just numeric ones — the opposite of `isLocalInTreeSrc`, where a
+  surviving `&` is rejected and over-reports, because an undecoded `srcdoc` yields no tags at all and
+  that is a *silent* hole; it is a SINGLE pass, since `&amp;lt;img …&amp;gt;` is literal text a
+  two-pass decode would invent an element from; and `srcdoc` is read on every tag rather than
+  `<iframe>` alone, the same exclusion-list reasoning `href` already follows. **QA then measured the
+  new decoder itself and found a hole in it**, fixed in the same change: matching the named table
+  case-insensitively and with the `;` optional decoded references a real parser leaves as TEXT, and
+  the injected character ended the nested tag early — `&gt=1` (WHATWG's ambiguous-ampersand rule)
+  and `&APOS;` (not in the table at all; `&AMP;`/`&LT;`/`&GT;`/`&QUOT;` are) each fetched in Chrome
+  while the scan returned `[]`. The table is now matched case-sensitively with the carve-out applied,
+  and two more payloads are pinned so the correction did not overshoot into the opposite hole.
+  Worth stating as a rule: over-*reporting* is the safe direction here, over-*decoding* is not —
+  a wrong decode does not add a false hit, it deletes a true one. Recursion is capped at
+  `MAX_SRCDOC_DEPTH` and **reports the unscanned nesting** instead of returning clean (AGENTS.md #4).
+  **What deliberately did not change:** the runtime control. `frame-src 'none'` in the extension-pages
+  CSP already blocks such a frame outright, so unlike the `<meta http-equiv=refresh>` vector this was
+  never unguarded at runtime — the static half was simply behind. Known cosmetic residual: a
+  `url()`/`@import` written unencoded inside a `srcdoc` is now reported twice, once flat and once
+  nested; duplicate over-reporting, pinned as such. Test-only change, so no version bump — matching
+  PRs #41 and #44, which likewise touched neither `src/` nor the manifest.
+
 - [done] Dropped `https://chat.openai.com/*` from the manifest host list — it granted access to
   nothing (2026-07-26). The 2026-07-25 `host_permissions` experiment had already found the origin
   308-redirects to `chatgpt.com`, but deliberately did not act on it: a redirect measured once is
