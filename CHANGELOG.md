@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- [done] Dropped `https://chat.openai.com/*` from the manifest host list — it granted access to
+  nothing (2026-07-26). The 2026-07-25 `host_permissions` experiment had already found the origin
+  308-redirects to `chatgpt.com`, but deliberately did not act on it: a redirect measured once is
+  not proof it is permanent, and a dropped entry fails *silently* (no toolbar, no error) if the
+  origin ever serves pages again — the shape AGENTS.md #4 exists to prevent. So it was re-measured
+  before removal, and widened past what the first session checked: `/c/<id>` **and the bare root**
+  both return HTTP 308 to `chatgpt.com`, so the redirect is **whole-origin**, not path-scoped.
+  There is no page anywhere on that host under any URL shape, which is what makes the silent-failure
+  risk bounded rather than speculative. Two sessions a day apart now agree. Measured with plain
+  `curl`, no browser — sufficient for this claim and only this claim, since a 308 is decided before
+  any document exists; recorded as such in `docs/live-dom-verification.md` rather than dressed up as
+  a live session. The entry was charging real cost for that zero reach: a line in the install-time
+  host warning and a row in the Web Store permission justification, which golden principle #2
+  (least privilege) forbids. Removing it from `HOSTS` also drops it from the crxjs-generated
+  `web_accessible_resources[0].matches`, which derives from the same array. **What deliberately did
+  not change:** `SUPPORTED_HOSTS` in `src/adapters/chatgpt/matches.ts` still lists the hostname — a
+  JS constant carries no permission cost, the existing URL tests stay green untouched, and keeping
+  it means restoring the origin is a one-line manifest change if OpenAI ever stops redirecting. The
+  asymmetry is commented on both sides so it does not read as drift and get "fixed" one-sided. Held
+  by a new assertion in `test/privacy/manifest-least-privilege.test.ts` (549 tests), which compares
+  each declared pattern's host component reduced to its registrable domain rather than matching the
+  pattern string. Review earned that shape twice over: a first draft used a substring test, which
+  CodeQL correctly flagged (`js/incomplete-url-substring-sanitization` — `includes()` also matches
+  `chat.openai.com.attacker.example`), and the reviewer separately caught that both the substring
+  test and the whole-string one let `https://*.openai.com/*` through, a re-add strictly **wider**
+  than the entry being removed. Label arithmetic rejects all of it: verified red by neutralization
+  against `https://chat.openai.com/*`, the scheme-wildcard `*://chat.openai.com/*`, and a
+  path-scoped `https://chat.openai.com/c/*`. Re-adding any openai.com origin turns that gate red on
+  purpose — every one other than the measured host is simply unmeasured, and the way back is to
+  re-measure and restore with a new date, not to delete the assertion.
+  `docs/PRIVACY.md` and `docs/store-listing.md` (EN + KO + the justification table) updated to match.
+  No new permissions, hosts, or network calls.
+
 - [done] Closed two more privacy-gate subresource vectors — SVG `<image>` and
   `<meta http-equiv="refresh">` (2026-07-26). Both were left open by PR #42 and confirmed against
   happy-dom as markup a real parser resolves to a genuine fetch or navigation. Not "the last two":

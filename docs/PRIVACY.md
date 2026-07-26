@@ -61,8 +61,8 @@ or allow humans to read it.
 
 - **`storage`** — to remember your toolbar icon preferences (see above). No conversation
   data is stored.
-- **Host access to `chatgpt.com`, `chat.openai.com`, `claude.ai`, and `gemini.google.com`** — so
-  the export buttons can appear on, and read the conversation from, ChatGPT, Claude and Gemini
+- **Host access to `chatgpt.com`, `claude.ai`, and `gemini.google.com`** — so the
+  export buttons can appear on, and read the conversation from, ChatGPT, Claude and Gemini
   conversation pages. The extension runs on no other sites. The Gemini grant is scoped to the
   `gemini.google.com` subdomain only — it gives no access to Search, Gmail, or any other Google
   service. Three separate things limit this access. The extension makes no network requests at all —

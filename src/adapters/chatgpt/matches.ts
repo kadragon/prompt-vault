@@ -4,6 +4,14 @@
 
 // Supported ChatGPT hosts. Exact hostnames only — a suffix match would let a
 // look-alike domain (e.g. chatgpt.com.attacker.example) pass.
+//
+// `chat.openai.com` is unreachable today and kept on purpose — the asymmetry with
+// manifest.config.ts's HOSTS, which no longer declares it, is deliberate, not drift.
+// That origin 308-redirects to chatgpt.com whole-origin (re-measured 2026-07-26), so no
+// document loads there and this branch never runs. It stays because a JS constant carries
+// no permission cost, while the manifest entry cost a line in the install-time host warning
+// for zero reach. Keeping it means restoring the origin is a one-line manifest change if
+// OpenAI ever stops redirecting. Do NOT "fix" this by deleting either side alone.
 export const SUPPORTED_HOSTS = new Set(['chatgpt.com', 'chat.openai.com']);
 
 // A ChatGPT conversation lives at /c/<id>, or, when it belongs to a custom GPT or a

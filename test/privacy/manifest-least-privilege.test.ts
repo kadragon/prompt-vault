@@ -89,4 +89,40 @@ describe('least-privilege manifest', () => {
       expect(pattern).not.toMatch(/^https:\/\/\*\//);
     }
   });
+
+  it('declares no host it cannot reach — chat.openai.com is redirect-only', () => {
+    // A host that grants access to nothing is not "the minimum needed" (golden principle
+    // #2): it costs a line in the install-time host warning and a row in the Web Store
+    // justification for zero reach. `chat.openai.com` is exactly that — 308 to chatgpt.com
+    // on /c/<id> (measured 2026-07-25) and on the bare root too (2026-07-26), so the
+    // redirect is whole-origin and no document ever loads there for a content script.
+    //
+    // Re-adding it turns this gate red on purpose. The way back is to re-measure the
+    // redirect and restore the entry with the new date, NOT to delete this assertion —
+    // the finding this closes was explicit that a 308 measured once is not proof the
+    // origin is permanently redirect-only, which cuts both ways.
+    //
+    // Note the JS host gate in src/adapters/chatgpt/matches.ts still lists the hostname;
+    // that is deliberate (no permission cost, makes restoring it manifest-only) and is not
+    // what this test is about, which is the manifest's granted surface.
+    const scripts = declared.content_scripts as Array<{ matches?: string[] }> | undefined;
+    const matches = scripts?.[0]?.matches ?? [];
+    // Compared on the pattern's HOST component reduced to its registrable domain, which is
+    // what makes the gate hard to slip past. Three shapes it has to reject, verified by
+    // neutralization: `https://chat.openai.com/*`, the scheme-wildcard `*://chat.openai.com/*`,
+    // and a path-scoped `https://chat.openai.com/c/*` — a whole-string match catches only the
+    // first. Reducing to `openai.com` also rejects `https://*.openai.com/*`, a re-add that is
+    // strictly WIDER than the entry removed here and would otherwise clear both this gate and
+    // the bare-wildcard one above. Widening to the registrable domain is deliberate: the
+    // measurement below covers chat.openai.com, so every other openai.com origin is simply
+    // unmeasured, and an unmeasured host is exactly what must not be added by habit.
+    //
+    // Label arithmetic rather than a substring test, and not only to satisfy CodeQL: an
+    // `includes('chat.openai.com')` check also matches `chat.openai.com.attacker.example`,
+    // the same look-alike hazard that made SUPPORTED_HOSTS in
+    // src/adapters/chatgpt/matches.ts an exact-hostname Set.
+    const hostOf = (pattern: string) => pattern.replace(/^[^:]*:\/\//, '').split('/')[0];
+    const registrableOf = (host: string) => host.split('.').slice(-2).join('.');
+    expect(matches.map(hostOf).map(registrableOf)).not.toContain('openai.com');
+  });
 });

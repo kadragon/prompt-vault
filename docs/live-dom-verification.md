@@ -237,6 +237,47 @@ The load-time evidence is the item re-listing as enabled at the expected version
 Held mechanically by `test/privacy/manifest-least-privilege.test.ts`, which asserts each directive
 by name — dropping `img-src` turns it red (verified by neutralization).
 
+### 2026-07-26 — `chat.openai.com` redirects origin-wide; the inert `HOSTS` entry was dropped
+
+Settled the `[CONSTRAINT]` follow-up the 2026-07-25 experiment above deliberately left open: the
+`chat.openai.com` entry reached nothing, but "a 308 measured once is not proof the origin is
+permanently redirect-only", so the entry was not removed on that measurement alone.
+
+**Re-measured 2026-07-26**, and widened past what the first session checked:
+
+| Request | Status | `location` |
+|---------|--------|------------|
+| `GET https://chat.openai.com/c/0000-test` | `HTTP/2 308` | `https://chatgpt.com/c/0000-test` |
+| `GET https://chat.openai.com/` | `HTTP/2 308` | `https://chatgpt.com/` |
+
+**The new fact is the second row.** The first session measured only `/c/<id>`, which is consistent
+with a path-scoped rule; the bare root redirecting too means the redirect is **whole-origin**. There
+is no page anywhere on that host, not merely no conversation page — so there is nothing a content
+script could be missing out on, under any future URL shape OpenAI might route there.
+
+**Method, stated precisely because it is weaker than the sessions elsewhere in this file:** plain
+`curl` with a Chrome UA, no browser, no logged-in session. That is sufficient *for this claim* and
+only this claim — a 308 is decided by the server before any document exists, so there is no DOM to
+inspect and a browser would follow the same redirect by HTTP semantics. It is **not** evidence about
+anything that needs a rendered page. Two sessions a day apart now agree, which is what raises this
+above the single measurement the finding refused to act on.
+
+**What changed.** `https://chat.openai.com/*` was removed from `HOSTS` in `manifest.config.ts`,
+which drops it from both `content_scripts[0].matches` and the crxjs-generated
+`web_accessible_resources[0].matches` (same source array — see the 2026-07-25 entry above). Golden
+principle #2: a host reaching nothing is not the minimum needed, and it was charging real cost —
+a line in the install-time host warning and a row in the Web Store permission justification.
+`docs/PRIVACY.md` and `docs/store-listing.md` were updated to match.
+
+**What deliberately did NOT change.** `SUPPORTED_HOSTS` in `src/adapters/chatgpt/matches.ts` still
+lists the hostname. A JS constant carries no permission cost, and keeping it means restoring the
+origin is a one-line manifest change if OpenAI ever stops redirecting. The asymmetry is commented on
+both sides so it does not read as drift.
+
+Held by `test/privacy/manifest-least-privilege.test.ts`, which asserts no declared `matches` pattern
+mentions the host. Re-adding it turns that gate red on purpose: the correct way back is to
+re-measure and restore with a new date, not to delete the assertion.
+
 ## ChatGPT
 
 ### 2026-07-24 — `#history` sidebar is append-only, not a recycling virtualizer
