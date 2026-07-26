@@ -62,13 +62,47 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   module (no inline body, no remote or out-of-tree source — either would run code the JS/TS half
   never read), and every **subresource** must resolve to a relative in-tree path too.
 - The subresource scan covers the attributes a browser fetches from with no user action — `src`,
-  `srcset`, `poster`, `data`, `action`, `formaction`, `background`, `href` on `<link>`/`<base>` —
-  plus CSS `url()` and `@import` anywhere in the file. Two deliberate calls: `<a href>`/`<area href>`
-  are NOT checked (user-initiated navigation, not a fetch, so a legitimate outbound link must not
-  redden the gate), and `data:` URIs ARE rejected (no such URI exists in `src/`, and allowing the
-  scheme would also admit `data:text/html`). The runtime control is the manifest CSP above; this
-  half is the static backup — so when the two disagree, prefer closing the vector in BOTH, as the
-  `@import` case was.
+  `srcset`, `poster`, `data`, `action`, `formaction`, `background` — plus `href` and any prefixed
+  `*:href` (the SVG 1.1 spelling is `xlink:href`) on every tag, the `url=` inside a
+  `<meta http-equiv="refresh">` `content`, and CSS `url()` and
+  `@import` anywhere in the file. Three deliberate calls: `href` is checked by **exclusion** rather
+  than by an allowlist of fetching tags (see below), `<a href>`/`<area href>` are the exclusions
+  (user-initiated navigation, not a fetch, so a legitimate outbound link must not redden the gate),
+  and `data:` URIs ARE rejected (no such URI exists in `src/`, and allowing the scheme would also
+  admit `data:text/html`). The runtime control is the manifest CSP above; this half is the static
+  backup — so when the two disagree, prefer closing the vector in BOTH, as the `@import` case was.
+- **`href` is an exclusion list, not an allowlist, and that asymmetry is the point.** The set of
+  tags that fetch from `href` is not one anybody can enumerate correctly and keep correct: past
+  `<link>` and `<base>` sit the SVG elements, where `<image>` and `<feImage>` fetch exactly like an
+  `<img>` while `<use>`, `<pattern>`, the gradients and the animation elements resolve references
+  whose off-document behaviour varies by browser and version. An allowlist has to get that boundary
+  right or it leaves a silent hole — `<image xlink:href>` was one, missed by the `['link','base']`
+  allowlist that shipped with the subresource scan in PR #42. Checking every tag
+  but `<a>`/`<area>` turns each such misjudgement into an over-report instead, and costs nothing:
+  a local relative path passes either way. Add to the exclusion list only for **navigation**, never
+  because a tag is believed not to fetch. The attribute side follows the same rule: any `*:href` is
+  matched by suffix, not an `['href','xlink:href']` set. Only `xlink:` reaches a real fetch — an
+  HTML document binds no namespaces, so a rebound `xl:href` is an inert null-namespace attribute
+  (measured) — but matching by suffix means nobody has to re-derive the parser's foreign-attribute
+  adjustment table to trust this line.
+- **`<meta http-equiv="refresh">` is the one vector with no runtime control behind it.** Everywhere
+  else the manifest CSP is the primary control and this file is the backup; here the CSP restricts
+  subresources and executable code only, and Chrome dropped the `navigate-to` directive, so no
+  directive exists that would stop an automatic top-level navigation carrying whatever the URL
+  interpolates. For this vector the static gate IS the control — weigh a change to
+  `readMetaRefreshTargets` accordingly. Its `content=` parsing follows the HTML spec's shared
+  declarative refresh steps loosely and always in the over-reporting direction (`url=` and the time
+  both optional, `;`/`,` separators, `http-equiv` trimmed before comparing though a real parser does
+  not trim). `content="0"` and an empty `url=` are same-document reloads and stay unflagged.
+- **Reading one occurrence of an attribute is a hole when the tag has two.** A duplicate attribute
+  is a tokenizer parse error that browsers resolve by keeping the FIRST and dropping the rest, so a
+  helper that loops the attribute list and overwrites as it goes reads the wrong one:
+  `<meta content="0;url=https://evil.example/" http-equiv="refresh" http-equiv="not-refresh">`
+  navigates in a real parser and returned clean from the gate. Fixed by taking the **union** — any
+  `http-equiv` reading `refresh` arms it, every `content` is classified — rather than mirroring
+  first-wins, so the gate does not stay coupled to a tokenizer rule it cannot observe. `readSrcValue`
+  is first-wins and the `URL_ATTRS` loop already classifies every occurrence, so both were fine; a
+  new multi-attribute helper is the case to watch.
 - **Classify the value the browser resolves, not the text in the file.** A raw-text scheme test is a
   false negative twice over, both measured: the HTML parser decodes character references first
   (`&#x68;ttps://…`, `https&colon;//…`), and the URL parser then strips ASCII tab/LF/CR from
@@ -85,10 +119,9 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   in `src/` in a form neither half reads (a future `.json`/`.vue`/`.svelte`) reopens the gap —
   extend the gate in the same PR. Note also that both HTML halves read `src/**` only, so an asset
   referenced from `public/` (copied into `dist/` verbatim) is outside them; the CSP still covers it
-  at runtime. Two subresource vectors the scan misses are tracked in `tasks.md` — SVG
-  `<image xlink:href>` and `<meta http-equiv="refresh">`. The CSP covers the first at runtime; the
-  refresh has **no** runtime control, because Chrome dropped CSP `navigate-to`. That one is the
-  only vector uncovered by both layers, so state it as such rather than implying parity.
+  at runtime. A remote SVG `<script href>` is caught, but by the `<script>` half and reported as
+  `inline <script>` — the label understates it, and the test pinning that is what stops a later
+  reader from "fixing" the label into a hole.
 
 ## Testing
 

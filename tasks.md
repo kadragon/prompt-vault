@@ -1,21 +1,19 @@
 ## Review Backlog
 
-### Privacy gate — two subresource vectors the widened HTML scan still misses
+### Privacy gate — `<iframe srcdoc>` nests markup the tag scanner deliberately does not read
 
-- [ ] [CONSTRAINT] Found by QA and review attacking the widened gate on PR #42, each confirmed
-      against happy-dom as something a real parser resolves to a genuine fetch. The others found in
-      that round (entity-escaped and tab-smuggled schemes, the legacy `background` attribute, a
-      bare-string `@import` with no whitespace) were closed in the PR itself; these two were not.
-      (a) **SVG `<image>`.** `<svg><image xlink:href="https://evil.example/x.png"/></svg>` fetches
-      automatically, but `href`/`xlink:href` are only checked on `<link>`/`<base>`. Widening
-      `HREF_TAGS` to `image`/`use` is the obvious fix; check first whether any other SVG element
-      carries a fetching `href`, and whether the plain `href` form needs its own case. Runtime is
-      already covered — CSP `img-src 'self'` blocks it — so this is the static backup catching up.
-      (b) **`<meta http-equiv="refresh" content="0;url=…">`.** An automatic top-level navigation
-      carrying whatever is interpolated into the URL. Neither layer stops it: the gate does not
-      read `content=`, and Chrome dropped CSP `navigate-to`, so there is no directive to add. This
-      is the ONLY vector with no runtime control behind it, which makes the static fix the whole
-      control rather than a backup — weigh it accordingly.
+- [ ] [CONSTRAINT] Raised by the security review on PR #44 while the SVG `<image>` and
+      `<meta http-equiv="refresh">` vectors were being closed. `<iframe srcdoc="<img
+      src='https://evil.example/leak.png'>">` returns `[]` from `findSubresourceViolations`: the tag
+      scan resumes after each tag's own `>` precisely so a tag-shaped *attribute value* is not
+      re-matched as a real tag (pinned by "does not treat a tag-shaped attribute VALUE as a tag"),
+      and `srcdoc` is the one attribute where that markup IS parsed and IS live. So the two cases
+      are indistinguishable by the current scan and closing this one means parsing `srcdoc`'s value
+      as a nested document, not widening a set. Unlike the refresh pragma this IS backstopped at
+      runtime — `frame-src 'none'` in the extension-pages CSP blocks the frame outright — so it is
+      the static half catching up, not the whole control. That the nested `<img>` fetches in Chrome
+      is inferred from spec, not measured (happy-dom does not fetch); measure before fixing.
+      No `srcdoc` exists anywhere in `src/` today.
 
 ### Bulk panel "Load more" — residual: a fetch slower than the dwell still truncates silently
 
