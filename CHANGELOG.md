@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+- [done] Closed the privacy gate's HTML residual (2026-07-26). The `src/`-wide widening fixed
+  which directories are walked, not which file types are read: the collector matched
+  `.tsx?|jsx?|mjs|cjs`, so `src/options/index.html` — the one HTML file this extension ships —
+  was walked and never read, and an inline `<script>` there would have carried a `fetch()` past
+  the gate. Rather than run the JS tokenizer over HTML (it mis-tokenizes apostrophes in prose
+  and `<!-- -->` comments), the gate now asserts the narrower rule that is already required:
+  every `<script>` in `src/**/*.html` must load a relative in-tree `src=` module. MV3's CSP
+  forbids inline script in extension pages, and an in-tree module is by definition one of the
+  .ts/.js files the existing scan already reads — so the two halves cover every executable-code
+  file type present in `src/` (not every file: the `.ttf`/`.txt` under `src/export/fonts` are
+  inert, and a future `.json`/`.vue` would reopen the gap).
+
+  Five parser-differential false negatives were found and closed — three by successive QA
+  passes, two more by review, each pinned as a regression test verified against a real parser
+  (Chromium DOMParser / happy-dom) rather than asserted from the regex: `data-src=` read as the
+  real `src=`; a `src=` substring inside another attribute's quoted value; a `>` inside a quoted
+  value truncating the tag so the remainder re-tokenized as a bare `src=`; and — because quote
+  state was toggled on any quote char instead of following the HTML tokenizer's attribute
+  states — a quote in attribute-NAME position (`<script x">`) or inside an UNQUOTED value
+  (`<script data-x=a"b >`) running the scan past the true tag end into the script body, where a
+  `src=` in the code masked the inline script. Attribute matching now walks attributes by name
+  and tag-end scanning is attribute-state-aware. Review also caught that any `src` value was
+  accepted, so a remote `<script src="https://…">` — the exact egress Golden Principle #1
+  forbids — passed untouched; absolute, protocol-relative, `data:` and `..`-escaping sources
+  are now violations.
+
+  `docs/eval-criteria.md`'s privacy rubric and `docs/conventions.md`'s invariant now state the
+  enforced scope precisely, including the residual they previously overclaimed: the HTML half
+  checks `<script>` only, so a remote subresource (`<img src>`, `<iframe>`, `<form action>`) is
+  a live egress path MV3's default CSP does not restrict and the gate does not read — recorded
+  in `tasks.md`. Tests 496 → 513. Test and docs only — no production code changed and the
+  packaged artifact is byte-identical, so no version bump.
 - [done] Widened the privacy gate to all of `src/` (2026-07-26). `SCAN_DIRS` in
   `test/privacy/no-external-network.test.ts` went from `['src/adapters', 'src/export',
   'src/content']` to `['src']`, so `src/core`, `src/options`, `src/settings`, `src/types` and
