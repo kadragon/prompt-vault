@@ -29,9 +29,12 @@ function collectSourceFiles(absDir: string): string[] {
   try {
     entries = readdirSync(absDir, { withFileTypes: true });
   } catch {
-    // Unreadable directory — scan nothing rather than throw. With a single `src`
-    // root this is the path a renamed/moved source tree would take, which is what
-    // the "scans at least one source file" guard below exists to catch loudly.
+    // Unreadable directory — scan nothing rather than throw. For the `src` root
+    // itself that is caught loudly by the "scans at least one source file" guard
+    // below, which is the renamed/moved-source-tree case. It does NOT cover a
+    // recursive call: an unreadable SUBdirectory is skipped silently, because the
+    // sibling directories still yield files and the guard passes. Pre-existing and
+    // never observed; noted so the guard is not read as broader than it is.
     return [];
   }
   const files: string[] = [];
