@@ -62,8 +62,8 @@ ChatGPT, Claude, Gemini 대화 페이지 헤더에 내보내기 버튼이 나타
 핵심:
 • 100% 로컬. 확장 프로그램 자체는 네트워크 요청을 하지 않으며 어떤 서버로도 대화를
   보내지 않습니다.
-• 최소 권한. ChatGPT(chatgpt.com), Claude(claude.ai),
-  Gemini(gemini.google.com)에서만 동작합니다.
+• 최소 권한. ChatGPT(chatgpt.com), Claude(claude.ai), Gemini(gemini.google.com)에서만
+  동작합니다.
 • 툴바 선택. 확장 프로그램 팝업에서 형식별 아이콘과 일괄 내보내기 아이콘을 표시하거나
   숨길 수 있습니다.
 • 브라우저 언어에 따라 영어 또는 한국어 UI를 표시합니다.

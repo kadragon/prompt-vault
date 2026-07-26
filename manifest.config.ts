@@ -17,9 +17,9 @@ const HOSTS = [
   // habit. Held by test/privacy/manifest-least-privilege.test.ts; the JS host gate in
   // src/adapters/chatgpt/matches.ts still lists the origin, deliberately (see its comment).
   'https://chatgpt.com/*',
-  // Claude — conversation pages live at https://claude.ai/chat/<id>. Host-broad for
-  // the same reason as ChatGPT below (client-routed SPA); narrowed in JS by
-  // isConversationPage().
+  // Claude — conversation pages live at https://claude.ai/chat/<id>. Host-broad for the
+  // same reason as every entry here (client-routed SPA — see the content_scripts comment
+  // below); narrowed in JS by isConversationPage().
   'https://claude.ai/*',
   // Gemini — conversation pages live at https://gemini.google.com/app/<id>. Host-broad for
   // the same reason as the entries above (client-routed SPA); narrowed in JS by
