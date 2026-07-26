@@ -28,9 +28,11 @@ No conversation data leaves the browser.
 | 1 | Any outbound call with conversation data, or `<all_urls>`-style over-permissioning |
 
 **How to test:** run `npm test` — `test/privacy/no-external-network.test.ts` scans every JS/TS file
-under `src/` for `fetch`/`XHR`/`sendBeacon`, and every HTML file for `<script>` tags that are inline
-or load a remote/out-of-tree source. It does NOT check other remote subresources in HTML (`<img>`,
-`<iframe>`, `<form action>`) — check those by hand and watch DevTools Network during export.
+under `src/` for `fetch`/`XHR`/`sendBeacon`, and every HTML file both for `<script>` tags that are
+inline or load a remote/out-of-tree source and for remote subresources (`<img>`, `<iframe>`,
+`<form action>`, `srcset`, `<link href>`, CSS `url()`/`@import`). `test/privacy/manifest-least-privilege.test.ts`
+asserts the extension-pages CSP that blocks the same subresources at runtime. Neither reads `public/`
+or a non-HTML/JS file type, so still watch DevTools Network during an export.
 
 ### 3. Robustness / fail-loud (weight: 20%)
 

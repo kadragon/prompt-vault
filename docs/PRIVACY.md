@@ -1,6 +1,6 @@
 # Privacy Policy — Prompt Vault (AI Chat Backup)
 
-_Last updated: 2026-07-25_
+_Last updated: 2026-07-26_
 
 Prompt Vault is a browser extension that backs up your AI chat conversations to local
 files (Markdown, PDF, JSON, HTML). This policy explains what the extension does and does
@@ -65,10 +65,13 @@ or allow humans to read it.
   the export buttons can appear on, and read the conversation from, ChatGPT, Claude and Gemini
   conversation pages. The extension runs on no other sites. The Gemini grant is scoped to the
   `gemini.google.com` subdomain only — it gives no access to Search, Gmail, or any other Google
-  service. Two separate things limit this access. The extension makes no network requests at all —
-  there is no such code in it. And it requests no `host_permissions`, so it holds no cross-origin
+  service. Three separate things limit this access. The extension makes no network requests at all —
+  there is no such code in it. It requests no `host_permissions`, so it holds no cross-origin
   fetch or cookie access to these sites from a background context; its only reach is the script
-  running inside a page you already have open.
+  running inside a page you already have open. And its settings page ships a Content Security Policy
+  that permits images, fonts, media, styles and scripts only from inside the extension package,
+  allows network connections only back to the extension itself, and forbids frames and form
+  submissions outright.
 
 ## Data retention and deletion
 
