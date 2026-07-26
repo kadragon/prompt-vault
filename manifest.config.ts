@@ -6,8 +6,17 @@ import pkg from './package.json';
 // registered adapter in src/adapters/index.ts — a host without an adapter is an
 // unjustified grant. New providers add sibling hosts.
 const HOSTS = [
+  // ChatGPT — conversation pages live at https://chatgpt.com/c/<id>. The sibling origin
+  // `https://chat.openai.com/*` is deliberately NOT declared: it is redirect-only. Measured
+  // 2026-07-25 on /c/<id> and re-measured 2026-07-26 on BOTH /c/<id> and the bare root — every
+  // request returns HTTP 308 to chatgpt.com, so the redirect is whole-origin and no document
+  // ever loads there for a content script to run in. Declaring it would cost a line in the
+  // install-time host warning and a row in the Web Store justification while reaching nothing,
+  // which Golden Principle #2 (least privilege) forbids. If OpenAI ever serves conversation
+  // pages there again, re-measure first and then restore the entry — do not restore it by
+  // habit. Held by test/privacy/manifest-least-privilege.test.ts; the JS host gate in
+  // src/adapters/chatgpt/matches.ts still lists the origin, deliberately (see its comment).
   'https://chatgpt.com/*',
-  'https://chat.openai.com/*',
   // Claude — conversation pages live at https://claude.ai/chat/<id>. Host-broad for
   // the same reason as ChatGPT below (client-routed SPA); narrowed in JS by
   // isConversationPage().
@@ -55,9 +64,9 @@ export default defineManifest({
   // extension does not have (no background service worker, no network primitives
   // anywhere in src/, downloads via URL.createObjectURL + <a download>). A build with
   // the grant removed was loaded unpacked and the toolbar confirmed to mount AND export
-  // on chatgpt.com, claude.ai and gemini.google.com. chat.openai.com could not be
-  // confirmed the same way — it 308-redirects to chatgpt.com, so no document ever loads
-  // on that origin for a content script to run in, with or without the grant. Full
+  // on chatgpt.com, claude.ai and gemini.google.com — the three hosts declared above.
+  // chat.openai.com, then still declared, could not be confirmed the same way because it
+  // 308-redirects; that entry has since been dropped for the reason recorded in HOSTS. Full
   // numbers in docs/live-dom-verification.md; the decision is held by
   // test/privacy/manifest-least-privilege.test.ts.
   // `storage` is the only permission: the options page persists which toolbar icons to

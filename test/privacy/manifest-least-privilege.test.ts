@@ -89,4 +89,27 @@ describe('least-privilege manifest', () => {
       expect(pattern).not.toMatch(/^https:\/\/\*\//);
     }
   });
+
+  it('declares no host it cannot reach — chat.openai.com is redirect-only', () => {
+    // A host that grants access to nothing is not "the minimum needed" (golden principle
+    // #2): it costs a line in the install-time host warning and a row in the Web Store
+    // justification for zero reach. `chat.openai.com` is exactly that — 308 to chatgpt.com
+    // on /c/<id> (measured 2026-07-25) and on the bare root too (2026-07-26), so the
+    // redirect is whole-origin and no document ever loads there for a content script.
+    //
+    // Re-adding it turns this gate red on purpose. The way back is to re-measure the
+    // redirect and restore the entry with the new date, NOT to delete this assertion —
+    // the finding this closes was explicit that a 308 measured once is not proof the
+    // origin is permanently redirect-only, which cuts both ways.
+    //
+    // Note the JS host gate in src/adapters/chatgpt/matches.ts still lists the hostname;
+    // that is deliberate (no permission cost, makes restoring it manifest-only) and is not
+    // what this test is about, which is the manifest's granted surface.
+    const scripts = declared.content_scripts as Array<{ matches?: string[] }> | undefined;
+    const matches = scripts?.[0]?.matches ?? [];
+    expect(matches).not.toContain('https://chat.openai.com/*');
+    // Substring check too, so a re-add under a different pattern shape
+    // (`*://chat.openai.com/*`, a path-scoped variant) does not slip past the exact match.
+    expect(matches.filter((p) => p.includes('chat.openai.com'))).toEqual([]);
+  });
 });
