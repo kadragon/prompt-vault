@@ -43,11 +43,22 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 - No `fetch`/`XMLHttpRequest`/`sendBeacon`/`navigator.sendBeacon` to any external origin anywhere in
   `src/`. The download uses `URL.createObjectURL` + an `<a download>` (or the
   `downloads` API) — all local. Any PR adding a network call there is rejected by default.
-- `test/privacy/no-external-network.test.ts` enforces this over all of `src/` in two halves:
-  every JS/TS file (`.tsx?|jsx?|mjs|cjs`) is read and scanned for the forbidden primitives, and
-  every `.html` file must load its scripts from a `src=` module — no inline `<script>`, which
-  MV3's CSP forbids anyway and which the JS/TS half could not see. Adding executable code to
-  `src/` in a form neither half reads reopens the gap; extend the gate in the same PR.
+- `test/privacy/no-external-network.test.ts` enforces this in two halves. Every JS/TS file
+  (`.tsx?|jsx?|mjs|cjs`) under `src/` is read and scanned for the forbidden primitives. Every
+  `.html` file under `src/` is checked for **`<script>` tags only**: each must load a relative
+  in-tree `src=` module, so no inline body (which MV3's CSP forbids anyway) and no remote or
+  out-of-tree source — either would run code the JS/TS half never read.
+- A gate that hand-parses a format (HTML, JS) is only as good as its agreement with the real
+  parser. Both detectors here accumulated false negatives that looked correct by inspection —
+  five in the HTML half alone, every one found by running the payload through an actual parser
+  (`happy-dom` is already a devDependency) and diffing its verdict against the detector's. When
+  you touch either detector, probe it that way and pin the payload; reasoning about the regex
+  is not verification. Over-reporting is the safe direction — a false negative is a hole.
+- State the enforced scope precisely; it is narrower than the rule. Two known residuals:
+  executable code in `src/` in a form neither half reads (a future `.json`/`.vue`/`.svelte`)
+  reopens the gap — extend the gate in the same PR; and a remote **subresource** in HTML
+  (`<img src>`, `<iframe>`, `<form action>`) is a live egress path MV3's default CSP does not
+  restrict and the gate does not check (tracked in `tasks.md`).
 
 ## Testing
 
