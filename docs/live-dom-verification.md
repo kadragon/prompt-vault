@@ -159,10 +159,10 @@ a separate question (recorded as a follow-up), not something this experiment set
 **Why the grant was redundant.** Under MV3 a *statically declared* content script injects on
 `matches` alone; `host_permissions` additionally grants cross-origin fetch/cookie access **from an
 extension context**. This extension has no such context: no background service worker, no
-`fetch`/`XHR`/`sendBeacon` anywhere in `src/` — verified by grep across the whole tree, but note
-the *mechanical* gate is narrower than that: `test/privacy/no-external-network.test.ts` scans only
-`src/adapters`, `src/export` and `src/content`, so `src/core`, `src/options`, `src/settings` and
-`src/strings.ts` are true-by-inspection, not enforced — no `chrome.tabs`/`scripting`/`cookies`, downloads via
+`fetch`/`XHR`/`sendBeacon` anywhere in `src/` — verified by grep across the whole tree, and
+mechanically enforced over every JS/TS file in it by `test/privacy/no-external-network.test.ts`
+(`SCAN_DIRS: ['src']`; `src/options/index.html` sits outside its file-type filter and still rests
+on inspection) — no `chrome.tabs`/`scripting`/`cookies`, downloads via
 `URL.createObjectURL` + `<a download>`, PDF font base64-embedded. `npm run build` is `vite build`
 only, so crxjs HMR — the one plausible build-time consumer — never applies to a shipped artifact.
 

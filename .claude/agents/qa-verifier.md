@@ -16,8 +16,8 @@ including a real load-unpacked/export check where the criterion is about runtime
 ## Spawn Prompt Contract
 - **Objective:** which diff + which Sprint Contract + pass number.
 - **Output format:** table {criterion | pass/fail | evidence}.
-- **Tools to use:** Bash for build/lint; Read/Grep for verification (incl. grepping export/adapter
-  code for external network calls — a privacy-principle violation is an automatic fail).
+- **Tools to use:** Bash for build/lint; Read/Grep for verification (incl. grepping all of `src/`
+  for external network calls — a privacy-principle violation is an automatic fail).
 - **Boundaries:** do not edit production code; suggest fixes in the report, do not apply them.
 
 ## Effort Tier

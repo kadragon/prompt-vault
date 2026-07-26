@@ -4,15 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
 // Golden principle #1 (local-only, no exfiltration) enforced mechanically:
-// no external-network primitive may appear anywhere under the adapter, export,
-// or content paths. Downloads use URL.createObjectURL + <a download> (all
-// local), so these tokens are never legitimately needed here. Any PR that adds
-// one turns this gate red. See docs/conventions.md "Privacy invariant".
+// no external-network primitive may appear anywhere in the extension source.
+// Downloads use URL.createObjectURL + <a download> (all local), so these tokens
+// are never legitimately needed here. Any PR that adds one turns this gate red.
+// See docs/conventions.md "Privacy invariant".
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-// Directories scanned. Some (adapters, export) do not exist yet — the gate must
-// already cover them so the first code added there is checked from line one.
-const SCAN_DIRS = ['src/adapters', 'src/export', 'src/content'];
+// The whole source tree, matching the invariant's own scope: a network call in
+// src/core or src/settings exfiltrates just as effectively as one in an adapter.
+const SCAN_DIRS = ['src'];
 
 // Forbidden external-network primitives. Call-shaped for fetch/sendBeacon to
 // avoid matching unrelated identifiers; bare token for XMLHttpRequest (its mere
@@ -29,7 +29,12 @@ function collectSourceFiles(absDir: string): string[] {
   try {
     entries = readdirSync(absDir, { withFileTypes: true });
   } catch {
-    // Directory does not exist yet — nothing to scan, not a failure.
+    // Unreadable directory — scan nothing rather than throw. For the `src` root
+    // itself that is caught loudly by the "scans at least one source file" guard
+    // below, which is the renamed/moved-source-tree case. It does NOT cover a
+    // recursive call: an unreadable SUBdirectory is skipped silently, because the
+    // sibling directories still yield files and the guard passes. Pre-existing and
+    // never observed; noted so the guard is not read as broader than it is.
     return [];
   }
   const files: string[] = [];
@@ -114,12 +119,12 @@ function scanForViolations(rawSource: string, label: string): string[] {
   return violations;
 }
 
-describe('privacy invariant: no external-network primitives in adapter/export/content', () => {
+describe('privacy invariant: no external-network primitives anywhere in src/', () => {
   const files = SCAN_DIRS.flatMap((dir) => collectSourceFiles(join(REPO_ROOT, dir)));
 
   it('scans at least one source file', () => {
     // Guards against the gate silently passing because a path typo made it scan
-    // nothing (e.g. src/ layout changed). src/content always has code.
+    // nothing (e.g. the source root was renamed). src/ always has code.
     expect(files.length).toBeGreaterThan(0);
   });
 

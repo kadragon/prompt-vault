@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- [done] Widened the privacy gate to all of `src/` (2026-07-26). `SCAN_DIRS` in
+  `test/privacy/no-external-network.test.ts` went from `['src/adapters', 'src/export',
+  'src/content']` to `['src']`, so `src/core`, `src/options`, `src/settings`, `src/types` and
+  `src/strings.ts` — previously true-by-inspection only — are now mechanically enforced. Golden
+  Principle #1 was always written as a whole-extension invariant; the gate now matches it.
+  Scanned code files 25 → 35. No production code changed and the packaged artifact is
+  byte-identical, so no version bump. The widening is not cosmetic: a probe `fetch()` appended to
+  `src/core/errors.ts` — a newly-covered file — turned the gate red with
+  `src/core/errors.ts:16 — fetch()` and green again on revert. Four prose sites that stated the old
+  scope were re-widened — `AGENTS.md` Golden Principle #1, `docs/conventions.md` "Privacy
+  invariant", `docs/live-dom-verification.md`, and `.claude/agents/qa-verifier.md`, which had been
+  steering every QA spawn's privacy grep at the narrower subtree. Review corrected the first pass
+  at those: it had said the gate covers "all of `src/`", which overclaims, because the collector
+  matches `.tsx?|jsx?|mjs|cjs` and so walks past `src/options/index.html` without reading it. The
+  enforced scope is now stated as *every JS/TS file under* `src/`, with the HTML gap named where it
+  matters and filed to `tasks.md` rather than papered over.
 - [done] Dropped `host_permissions` from the manifest, closing the `[CONSTRAINT]` that asked
   whether it was needed at all. Version bumped 1.7.0 → 1.7.1, since this changes the packaged
   manifest's granted permissions. Settled by experiment rather than by argument, as the ticket

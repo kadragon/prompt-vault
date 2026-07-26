@@ -41,8 +41,13 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 ## Privacy invariant (enforce, don't just hope)
 
 - No `fetch`/`XMLHttpRequest`/`sendBeacon`/`navigator.sendBeacon` to any external origin anywhere in
-  adapter/export/content code. The download uses `URL.createObjectURL` + an `<a download>` (or the
-  `downloads` API) — all local. Any PR adding a network call to these paths is rejected by default.
+  `src/`. The download uses `URL.createObjectURL` + an `<a download>` (or the
+  `downloads` API) — all local. Any PR adding a network call there is rejected by default.
+- The rule covers all of `src/`; the mechanical gate covers slightly less. `SCAN_DIRS` in
+  `test/privacy/no-external-network.test.ts` is `['src']`, but its collector matches
+  `.tsx?|jsx?|mjs|cjs`, so `src/options/index.html` is walked and never read — an inline
+  `<script>` there would evade it (tracked in `tasks.md`). State the enforced scope as "every
+  JS/TS file under `src/`", not "all of `src/`".
 
 ## Testing
 
