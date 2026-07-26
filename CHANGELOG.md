@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- [done] Closed the privacy gate's HTML residual (2026-07-26). The `src/`-wide widening fixed
+  which directories are walked, not which file types are read: the collector matched
+  `.tsx?|jsx?|mjs|cjs`, so `src/options/index.html` — the one HTML file this extension ships —
+  was walked and never read, and an inline `<script>` there would have carried a `fetch()` past
+  the gate. Rather than run the JS tokenizer over HTML (it mis-tokenizes apostrophes in prose
+  and `<!-- -->` comments), the gate now asserts the narrower rule that is already required:
+  no inline `<script>` in `src/**/*.html`. MV3's CSP forbids inline script in extension pages,
+  so every `<script>` must load a `src=` module — and those modules are the .ts/.js files the
+  existing scan already covers, leaving no file under `src/` unread. Three QA passes each
+  found a real false negative in the detector and each was closed: `data-src=` read as `src=`,
+  a `src=` substring inside another attribute's quoted value, and a `>` inside a quoted value
+  truncating the tag so the remainder re-tokenized as a bare `src=`. Attribute matching now
+  walks attributes, and tag-end scanning is quote-aware; the last two evasions are pinned as
+  regression tests against real-parser behavior. `docs/eval-criteria.md`'s privacy rubric and
+  `docs/conventions.md`'s invariant were widened to state the enforced scope. Tests 496 → 509.
+  Test and docs only — no production code changed and the packaged artifact is byte-identical,
+  so no version bump.
 - [done] Widened the privacy gate to all of `src/` (2026-07-26). `SCAN_DIRS` in
   `test/privacy/no-external-network.test.ts` went from `['src/adapters', 'src/export',
   'src/content']` to `['src']`, so `src/core`, `src/options`, `src/settings`, `src/types` and

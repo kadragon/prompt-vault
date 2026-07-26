@@ -65,25 +65,3 @@
       image-only prompt reports `[Image]` off the standard `<img>` tag. Capture the markup, then
       decide whether a `[File: …]` marker like the ChatGPT and Claude adapters emit is possible
       without guessing at a tile selector (AGENTS.md #5).
-
-### Privacy gate — residuals left after the `src/`-wide widening
-
-- [ ] [CONSTRAINT] `collectSourceFiles` in `test/privacy/no-external-network.test.ts` matches
-      `/\.(tsx?|jsx?|mjs|cjs)$/`, so `src/options/index.html` is scanned by nothing. An inline
-      `<script>` there — the options page is the one place in this extension that ships HTML —
-      would carry a `fetch()` straight past the gate. Pre-existing, and untouched by the widening
-      that raised it: widening `SCAN_DIRS` to `['src']` fixed *which directories* are walked, not
-      *which file types* are read. Not fixed in that PR because extending the extension filter to
-      `.html` needs a decision the widening did not: the scanner's `stripCommentsAndStrings` is a
-      JS/TS tokenizer, and running it over HTML would mis-tokenize (`'` in prose, `<!-- -->`
-      comments) in the over-reporting direction. Decide whether to scan `.html` with the existing
-      tokenizer and accept false positives, extract `<script>` bodies first, or assert the
-      narrower invariant "no inline `<script>` in `src/**/*.html`" instead — the last is cheaper
-      and is arguably the real rule, since MV3's CSP already forbids inline script.
-- [ ] [DOCS] `docs/eval-criteria.md:26` scores privacy 5/5 on "Zero external network calls in
-      adapter/export/content paths", which is now narrower than what the gate enforces. A
-      `product-evaluator` following the rubric literally could award full marks while never
-      looking at `src/core` or `src/settings`. Deliberately deferred out of the widening PR to
-      keep that diff to the gate plus the three prose sites that stated its scope; this one is a
-      scoring rubric, not a statement of the gate's scope. Re-read the row and widen it to `src/`
-      if it still reads stale.
