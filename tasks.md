@@ -1,22 +1,5 @@
 ## Review Backlog
 
-### Privacy gate — two subresource vectors the widened HTML scan still misses
-
-- [ ] [CONSTRAINT] Found by QA and review attacking the widened gate on PR #42, each confirmed
-      against happy-dom as something a real parser resolves to a genuine fetch. The others found in
-      that round (entity-escaped and tab-smuggled schemes, the legacy `background` attribute, a
-      bare-string `@import` with no whitespace) were closed in the PR itself; these two were not.
-      (a) **SVG `<image>`.** `<svg><image xlink:href="https://evil.example/x.png"/></svg>` fetches
-      automatically, but `href`/`xlink:href` are only checked on `<link>`/`<base>`. Widening
-      `HREF_TAGS` to `image`/`use` is the obvious fix; check first whether any other SVG element
-      carries a fetching `href`, and whether the plain `href` form needs its own case. Runtime is
-      already covered — CSP `img-src 'self'` blocks it — so this is the static backup catching up.
-      (b) **`<meta http-equiv="refresh" content="0;url=…">`.** An automatic top-level navigation
-      carrying whatever is interpolated into the URL. Neither layer stops it: the gate does not
-      read `content=`, and Chrome dropped CSP `navigate-to`, so there is no directive to add. This
-      is the ONLY vector with no runtime control behind it, which makes the static fix the whole
-      control rather than a backup — weigh it accordingly.
-
 ### Bulk panel "Load more" — residual: a fetch slower than the dwell still truncates silently
 
 - [ ] [FIX] The loaders end on a fixed dwell (`SIDEBAR_STABLE_ROUNDS × SIDEBAR_STEP_DELAY_MS` = 5 s), so a `#history` page that takes longer than that — slow/tethered link, throttled or cold backend, rate-limit backoff on the last page — still returns a silent partial with no `ExtractionError`. **Measured 2026-07-25, no longer hypothetical:** the built extension's first "Load more" run stopped at **725 of 852** conversations (14.9% missing), cleared its status line and re-enabled the button exactly as a complete run does — see `docs/live-dom-verification.md`. Which exit fired (dwell expiry vs `endOfListGate`) was NOT isolated, so that session raises the priority without narrowing the fix. It also measured one thing that bears on the fix: reaching the panel's `All conversations loaded` state requires an extra run that grows nothing, which is strictly stronger than one run but still latches falsely if that confirming run stalls at its first page boundary. Raised by Codex (P1) and the Claude reviewer (P3, conf 70) on PR #32; the verifier **refuted it as a blocker for that PR** (`main` had the same exit with a 450 ms dwell and no end-of-list gate, so the branch improves the hazard ~11×) but it remains a real residual. Two candidate resolutions were assessed and both rejected as-is: an *adaptive* dwell (`max(floor, 2× longest observed gap)`) cannot bootstrap — the uniformly-slow case stalls out at the **first** page boundary with zero gap samples, so the floor still does all the work; and "fail loud on the ambiguous timeout" fires on every successful run, because a genuinely complete load exits through the same stall-counter expiry. A real fix needs a completeness oracle. The only non-fabricated candidate identified is **page-size parity** ("last increment == page size ⇒ another page exists"), which is asymmetric evidence derived from counts the loader already has — but it is unusable today because the loader counts `/c/` ids only and live data shows 1042 rendered rows vs 852 `/c/` conversations, so the per-page `/c/` increment is not the page size. *(blocked by: needs a live-DOM measurement of the raw `#history` page size and whether it is stable — see `docs/live-dom-verification.md`)*

