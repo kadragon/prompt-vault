@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- [done] Widened the privacy gate to all of `src/` (2026-07-26). `SCAN_DIRS` in
+  `test/privacy/no-external-network.test.ts` went from `['src/adapters', 'src/export',
+  'src/content']` to `['src']`, so `src/core`, `src/options`, `src/settings`, `src/types` and
+  `src/strings.ts` — previously true-by-inspection only — are now mechanically enforced. Golden
+  Principle #1 was always written as a whole-extension invariant; the gate now matches it.
+  Scanned code files 25 → 35. No production code changed and the packaged artifact is
+  byte-identical, so no version bump. The widening is not cosmetic: a probe `fetch()` appended to
+  `src/core/errors.ts` — a newly-covered file — turned the gate red with
+  `src/core/errors.ts:16 — fetch()` and green again on revert. The three prose sites that PR #39
+  had deliberately narrowed to match the old scope (`AGENTS.md` Golden Principle #1,
+  `docs/conventions.md` "Privacy invariant", `docs/live-dom-verification.md`) were re-widened.
 - [done] Dropped `host_permissions` from the manifest, closing the `[CONSTRAINT]` that asked
   whether it was needed at all. Version bumped 1.7.0 → 1.7.1, since this changes the packaged
   manifest's granted permissions. Settled by experiment rather than by argument, as the ticket

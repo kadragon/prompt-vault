@@ -41,8 +41,9 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 ## Privacy invariant (enforce, don't just hope)
 
 - No `fetch`/`XMLHttpRequest`/`sendBeacon`/`navigator.sendBeacon` to any external origin anywhere in
-  adapter/export/content code. The download uses `URL.createObjectURL` + an `<a download>` (or the
-  `downloads` API) — all local. Any PR adding a network call to these paths is rejected by default.
+  `src/`. The download uses `URL.createObjectURL` + an `<a download>` (or the
+  `downloads` API) — all local. Any PR adding a network call there is rejected by default.
+  Enforced mechanically by `test/privacy/no-external-network.test.ts`, whose `SCAN_DIRS` is `['src']`.
 
 ## Testing
 

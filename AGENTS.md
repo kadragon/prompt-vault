@@ -29,7 +29,7 @@ Invariants that, if broken, cause the most damage. Keep them true.
 
 1. **Local-only, no exfiltration** — the extension MUST NOT send conversation content to any
    network endpoint. No `fetch`/`XHR`/`sendBeacon` to external hosts; no analytics. Host
-   permissions limited to supported chat sites. Grep gate: no outbound calls in export/adapter code.
+   permissions limited to supported chat sites. Grep gate: no outbound calls anywhere in `src/`.
 2. **Least-privilege Manifest V3** — MV3 only; request the minimum permissions and narrowest
    `host_permissions` needed. No `<all_urls>`, no broad `tabs`/`scripting` grants without cause.
 3. **Adapter isolation** — every provider (ChatGPT/Gemini/Claude) implements the shared
