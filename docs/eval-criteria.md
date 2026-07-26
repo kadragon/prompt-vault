@@ -31,7 +31,9 @@ No conversation data leaves the browser.
 under `src/` for `fetch`/`XHR`/`sendBeacon`, and every HTML file both for `<script>` tags that are
 inline or load a remote/out-of-tree source and for remote subresources (`<img>`, `<iframe>`,
 `<form action>`, `srcset`, `href`/`*:href` on every tag but `<a>`/`<area>` — which covers
-`<link>` and SVG `<image xlink:href>` alike — `<meta http-equiv="refresh">`, CSS `url()`/`@import`).
+`<link>` and SVG `<image xlink:href>` alike — `<meta http-equiv="refresh">`, CSS `url()`/`@import`,
+and all of the same again inside an `<iframe srcdoc>`, whose value is decoded and re-scanned as the
+nested document it becomes).
 `test/privacy/manifest-least-privilege.test.ts` asserts the extension-pages CSP that blocks most of
 the same subresources at runtime; the refresh is the exception, with no CSP directive behind it at
 all (Chrome dropped `navigate-to`), so there the static scan is the only control. Neither reads `public/`

@@ -109,6 +109,37 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   anywhere in the input (`ht<TAB>tps://…`). `isLocalInTreeSrc` therefore strips those characters,
   decodes numeric references, and rejects any value with a surviving `&` rather than implementing
   the named-entity table.
+- **`srcdoc` is the attribute whose VALUE is a document, so the scan descends into it.** The tag
+  scan resumes after each tag's own `>` precisely so a tag-shaped attribute VALUE
+  (`<div data-html="<img src='https://…'>">`) is not re-matched as a real element — a real parser
+  yields none, and that is pinned. `<iframe srcdoc>` is the one attribute where the same text IS
+  parsed and DOES fetch: measured in Chrome against a local server, the raw
+  `srcdoc="<img src='/a.png'>"` and the entity-encoded `srcdoc="&lt;img src='/b.png'&gt;"` each
+  issued a real request for the nested image. `happy-dom` issues neither, so unlike every other
+  vector here this one could not be settled by a parser diff — it needed a live browser, and the
+  next claim about frame behaviour will too. The two shapes being indistinguishable by tag syntax is
+  why the fix decodes the value and re-runs the whole collector on it rather than widening the tag
+  scan. Three calls follow. The decode covers the five predefined NAMED references as well as the
+  numeric ones — the opposite of `isLocalInTreeSrc`, where a surviving `&` is *rejected* and so
+  over-reports, because a `srcdoc` left encoded yields no tags at all, a silent hole — and it is a
+  SINGLE pass, since `&amp;lt;img …&amp;gt;` is literal text that a named-then-numeric two-pass
+  decode would invent an element from. **Over-decoding is not the mirror of over-reporting — it is a
+  hole.** Decoding a reference the parser leaves as TEXT injects a character into the nested markup,
+  and a `>` or `'` there ends the tag's attribute list early, dropping a real `src=` that follows.
+  Two shapes were found in review and measured fetching in Chrome while the first cut of this scan
+  returned clean: `&gt=1` (WHATWG's *ambiguous ampersand* — no `;` and the next character is `=` or
+  ASCII alphanumeric, so a reference inside an attribute is flushed as text; the historical rule that
+  keeps `?a=1&lt=2` in a query string intact) and `&APOS;` (uppercase, which is simply not in the
+  named-reference table — `&AMP;`/`&LT;`/`&GT;`/`&QUOT;` are, `&APOS;` is not). So the table is
+  matched case-SENSITIVELY, the semicolon-less form is honoured only for the names that have one, and
+  the carve-out is applied — but no further: a `&gt` at the END of a value is decodable and must stay
+  decoded, or the closing `>` goes missing and the nested tag is never read at all, which is the
+  opposite hole. `srcdoc` is read on **every** tag, not just `<iframe>`, for
+  the same reason `href` is an exclusion list. And the recursion is capped at `MAX_SRCDOC_DEPTH`,
+  where it **reports the unscanned nesting** instead of returning clean. Backstopped at runtime by
+  `frame-src 'none'`, so here the static half is catching up rather than being the whole control. A
+  `url()`/`@import` written unencoded inside a `srcdoc` is reported twice, flat and nested —
+  duplicate over-reporting, not a miss, and pinned that way.
 - A gate that hand-parses a format (HTML, JS) is only as good as its agreement with the real
   parser. Both detectors here accumulated false negatives that looked correct by inspection —
   five in the HTML half alone, every one found by running the payload through an actual parser

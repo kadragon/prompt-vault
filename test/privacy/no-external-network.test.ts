@@ -388,14 +388,110 @@ function readMetaRefreshTargets(
     .filter((target) => target !== '');
 }
 
+// The five predefined entities, decoded ALONGSIDE the numeric ones in a single pass. Unlike
+// decodeCharRefs — which leaves named references alone because a surviving `&` is rejected
+// downstream, an over-report — a `srcdoc` left encoded yields NO nested tags at all, which is a
+// silent hole. `&lt;`/`&gt;` are also the spelling to EXPECT rather than the exotic one: they are
+// how nested markup is written so the outer document still parses. One pass, not named-then-
+// numeric: `&amp;lt;` is the literal TEXT `&lt;` to a real parser, and a second pass would decode
+// it into a tag that never exists.
+// Matched CASE-SENSITIVELY against the spellings that are really in the HTML named-reference table
+// — the five lowercase names plus the four uppercase legacy entries (`&AMP;` `&LT;` `&GT;` `&QUOT;`;
+// there is no `&APOS;`). A case-insensitive lookup was the first cut and it is a HOLE, not the
+// over-report it looks like: decoding a reference the parser leaves as TEXT injects a character into
+// the nested markup, and `>` or `'` there truncates the tag's attribute list, dropping a real `src=`
+// that follows. `<iframe srcdoc="&lt;img data-x=&APOS; src='https://…'&gt;">` is the shape — measured
+// fetching in Chrome while the scan returned clean. Over-decoding is NOT symmetric with over-reporting.
+const MARKUP_CHAR_REFS: Record<string, string> = {
+  amp: '&',
+  AMP: '&',
+  lt: '<',
+  LT: '<',
+  gt: '>',
+  GT: '>',
+  quot: '"',
+  QUOT: '"',
+  apos: "'",
+};
+
+// The subset whose SEMICOLON-LESS form is also in the table. `&apos` is not one — it exists only
+// with the `;` — so `&apos` alone stays text, same as the parser leaves it.
+//
+// One thing to know before ADDING to either table: the regex below consumes `[a-zA-Z]+` greedily,
+// where the real algorithm takes the longest valid table PREFIX and then applies the rule above to
+// what follows. The two agree for these five names only because none is a prefix of a longer run
+// that would split differently (`&gtabc` is left whole either way). A new entry has to be re-checked
+// against that, not assumed.
+const SEMICOLONLESS_MARKUP_REFS = new Set(['amp', 'AMP', 'lt', 'LT', 'gt', 'GT', 'quot', 'QUOT']);
+
+function decodeMarkupCharRefs(value: string): string {
+  return value.replace(
+    /&(?:#([xX][0-9a-fA-F]+|\d+)|([a-zA-Z]+))(;)?/g,
+    (
+      match: string,
+      numeric: string | undefined,
+      named: string | undefined,
+      semicolon: string | undefined,
+      offset: number,
+    ) => {
+      // Numeric references decode with or without the `;`, and the ambiguous-ampersand rule below
+      // does not apply to them — same behaviour as the pre-existing decodeCharRefs.
+      if (numeric !== undefined) {
+        return String.fromCodePoint(
+          numeric[0].toLowerCase() === 'x' ? parseInt(numeric.slice(1), 16) : parseInt(numeric, 10),
+        );
+      }
+      if (named === undefined) return match;
+      if (semicolon === undefined) {
+        if (!SEMICOLONLESS_MARKUP_REFS.has(named)) return match;
+        // WHATWG's "ambiguous ampersand" carve-out: a reference consumed as part of an ATTRIBUTE
+        // and lacking its `;` is flushed as TEXT when the next character is `=` or ASCII
+        // alphanumeric — the historical rule that keeps `?a=1&lt=2` in a query string intact. A
+        // `srcdoc` value is always an attribute, so the carve-out always applies here. Without it
+        // `&gt=1` decoded to `>1`, and the injected `>` ended the nested tag early:
+        // `<iframe srcdoc="&lt;img data-x=1&gt=1 src='https://…/miss.png'&gt;">` fetched in Chrome
+        // (measured, local server) while findSubresourceViolations returned `[]`.
+        const next = value[offset + match.length];
+        if (next !== undefined && (next === '=' || /[a-zA-Z0-9]/.test(next))) return match;
+      }
+      return MARKUP_CHAR_REFS[named] ?? match;
+    },
+  );
+}
+
+// `srcdoc` nests a whole document inside an attribute VALUE, and the scan deliberately does not
+// read attribute values as markup — it resumes after each tag's own `>` precisely so
+// `<div data-html="<img src='…'>">` is not re-matched as a real `<img>` (pinned below as a
+// non-violation, because a real parser yields no such element). `srcdoc` is the one attribute where
+// that markup IS parsed and DOES fetch, so the two are indistinguishable by shape and the vector
+// cannot be closed by widening the tag scan — the value has to be decoded and re-scanned as its own
+// document. MEASURED in Chrome rather than inferred: an `<iframe srcdoc="<img src='/a.png'>">` and
+// the entity-encoded `srcdoc="&lt;img src='/b.png'&gt;"` each issued a real request for the nested
+// image. happy-dom fetches neither, which is why this stayed unmeasured until a live browser ran it.
+//
+// Backstopped at runtime by `frame-src 'none'` in the extension-pages CSP, which blocks the frame
+// outright — this is the static half catching up, not the whole control. No `srcdoc` exists anywhere
+// in `src/` today, so over-reporting here costs nothing that ships.
+//
+// Read on EVERY tag rather than on `<iframe>` alone, the same way HREF_EXEMPT_TAGS is an exclusion
+// list: only `<iframe>` has a live `srcdoc` today, and defaulting to "scanned" makes a future
+// spelling an over-report instead of a silent hole.
+const MAX_SRCDOC_DEPTH = 3;
+
 // Report every URL-bearing attribute and CSS `url()` whose target is not a relative in-tree path.
 // This is the half PR #41 left open: MV3's default CSP restricts executable code only, so a remote
 // `<img src>`/`<iframe>`/`<form action>` — or a `url()` in the options page's inline `<style>` —
 // was a working outbound channel that neither half of the gate read. Reuses isLocalInTreeSrc, so
 // a scheme (`https:`, `data:`), a protocol-relative `//host`, and a `..` escape are all rejected.
-function findSubresourceViolations(rawHtml: string, label: string): string[] {
-  const violations: string[] = [];
-  const lineOf = (index: number) => rawHtml.slice(0, index).split('\n').length;
+//
+// Split from its formatting wrapper so the `srcdoc` recursion can consume findings before they are
+// labelled: a nested document's own line numbers do not exist in the file, so every finding it
+// yields is reported at the line of the tag that carries the `srcdoc`.
+function collectSubresourceFindings(
+  rawHtml: string,
+  depth: number,
+): Array<{ index: number; detail: string }> {
+  const findings: Array<{ index: number; detail: string }> = [];
 
   const tagRe = /<([a-zA-Z][\w:-]*)/g;
   let m: RegExpExecArray | null;
@@ -418,9 +514,10 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
     if (tag === 'meta') {
       for (const target of readMetaRefreshTargets(attrList)) {
         if (isLocalInTreeSrc(target)) continue;
-        violations.push(
-          `${label}:${lineOf(m.index)} — remote or out-of-tree <meta http-equiv=refresh>: ${stripQuotes(target)}`,
-        );
+        findings.push({
+          index: m.index,
+          detail: `remote or out-of-tree <meta http-equiv=refresh>: ${stripQuotes(target)}`,
+        });
       }
     }
     for (const { name, value } of attrList) {
@@ -435,9 +532,33 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
         if (isLocalInTreeSrc(target)) continue;
         // Name the offending target: a srcset with two remote candidates would otherwise emit the
         // same line twice, and the message would not say which URL to remove.
-        violations.push(
-          `${label}:${lineOf(m.index)} — remote or out-of-tree <${tag} ${attr}>: ${stripQuotes(target)}`,
-        );
+        findings.push({
+          index: m.index,
+          detail: `remote or out-of-tree <${tag} ${attr}>: ${stripQuotes(target)}`,
+        });
+      }
+    }
+    // Re-scan a `srcdoc` value as the nested document it becomes (see MAX_SRCDOC_DEPTH above).
+    // Runs after the URL-attribute loop so an `<iframe src= srcdoc=>` still reports its own `src`
+    // first. Note the CSS scans below read the RAW text, so a `url()` written unencoded inside a
+    // `srcdoc` is reported twice — once flat, once nested. Duplicate over-reporting, not a miss.
+    for (const { name, value } of attrList) {
+      if (name.toLowerCase() !== 'srcdoc' || value === undefined) continue;
+      if (depth >= MAX_SRCDOC_DEPTH) {
+        // Fail loud rather than stop silently: a `srcdoc` nested past the cap is markup nothing
+        // legitimate writes, and returning clean for it would be the one direction this file never
+        // takes. The cap exists so the recursion cannot be driven without bound.
+        findings.push({
+          index: m.index,
+          detail: `<${tag} srcdoc> nested deeper than ${MAX_SRCDOC_DEPTH} — not scanned`,
+        });
+        continue;
+      }
+      for (const nested of collectSubresourceFindings(
+        decodeMarkupCharRefs(stripQuotes(value)),
+        depth + 1,
+      )) {
+        findings.push({ index: m.index, detail: `${nested.detail} (nested in <${tag} srcdoc>)` });
       }
     }
     // A tag left open at EOF IS dropped by a real parser (measured: happy-dom yields no element),
@@ -454,7 +575,7 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
   let u: RegExpExecArray | null;
   while ((u = cssUrlRe.exec(rawHtml)) !== null) {
     if (isLocalInTreeSrc(u[1])) continue;
-    violations.push(`${label}:${lineOf(u.index)} — remote or out-of-tree CSS url(): ${stripQuotes(u[1])}`);
+    findings.push({ index: u.index, detail: `remote or out-of-tree CSS url(): ${stripQuotes(u[1])}` });
   }
 
   // `@import` takes a bare string as well as a url(), and the bare form is the one the scan above
@@ -465,10 +586,17 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
   let i: RegExpExecArray | null;
   while ((i = cssImportRe.exec(rawHtml)) !== null) {
     if (isLocalInTreeSrc(i[1])) continue;
-    violations.push(`${label}:${lineOf(i.index)} — remote or out-of-tree CSS @import: ${stripQuotes(i[1])}`);
+    findings.push({ index: i.index, detail: `remote or out-of-tree CSS @import: ${stripQuotes(i[1])}` });
   }
 
-  return violations;
+  return findings;
+}
+
+function findSubresourceViolations(rawHtml: string, label: string): string[] {
+  const lineOf = (index: number) => rawHtml.slice(0, index).split('\n').length;
+  return collectSubresourceFindings(rawHtml, 0).map(
+    ({ index, detail }) => `${label}:${lineOf(index)} — ${detail}`,
+  );
 }
 
 describe('privacy invariant: no external-network primitives anywhere in src/', () => {
@@ -822,6 +950,146 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     expect(
       findSubresourceViolations(`<div data-html="<img src='https://evil.example/x.png'>"></div>`, 'h'),
     ).toEqual([]);
+  });
+
+  it('reads a srcdoc VALUE as the nested document it becomes, in both spellings', () => {
+    // The shape the test above must NOT flag, and this one must — same text, different attribute.
+    // Both spellings were MEASURED in Chrome against a local server: each issued a real request for
+    // the nested image (happy-dom issues neither, which is why this stayed inferred until now).
+    expect(
+      findSubresourceViolations(`<iframe srcdoc="<img src='https://evil.example/leak.png'>"></iframe>`, 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <img src>: https://evil.example/leak.png (nested in <iframe srcdoc>)']);
+    // The entity-encoded form is how nested markup is written so the OUTER document still parses,
+    // i.e. the spelling to expect. decodeCharRefs alone leaves it encoded and finds no tag at all.
+    expect(
+      findSubresourceViolations(`<iframe srcdoc="&lt;img src='https://evil.example/enc.png'&gt;"></iframe>`, 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <img src>: https://evil.example/enc.png (nested in <iframe srcdoc>)']);
+    // Numeric references reach the same parser stage, so the same decode has to cover them.
+    expect(
+      findSubresourceViolations(`<iframe srcdoc="&#x3c;img src='https://evil.example/num.png'&#62;"></iframe>`, 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <img src>: https://evil.example/num.png (nested in <iframe srcdoc>)']);
+  });
+
+  it('reports a nested finding at the line of the tag carrying the srcdoc', () => {
+    // A nested document has no line numbers in this file, so every finding it yields is reported
+    // where the reader can actually go and delete something.
+    const html = '<p>x</p>\n<iframe\n  srcdoc="&lt;img src=&quot;https://evil.example/x.png&quot;&gt;"></iframe>';
+    expect(findSubresourceViolations(html, 'h')).toEqual([
+      'h:2 — remote or out-of-tree <img src>: https://evil.example/x.png (nested in <iframe srcdoc>)',
+    ]);
+  });
+
+  it('carries the whole scan into a srcdoc, not just src=', () => {
+    // The recursion re-runs the same collector, so a nested <meta refresh> and a nested @import are
+    // caught by the code that already handles them rather than by a second, narrower reader.
+    expect(
+      findSubresourceViolations(
+        `<iframe srcdoc="&lt;meta http-equiv='refresh' content='0;url=https://evil.example/go'&gt;"></iframe>`,
+        'h',
+      ),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <meta http-equiv=refresh>: https://evil.example/go (nested in <iframe srcdoc>)',
+    ]);
+    // Reported TWICE, and pinned that way: the CSS scans read raw text, so an `@import` written
+    // unencoded inside the attribute is caught flat as well as nested. Duplicate over-reporting on
+    // markup that does fetch — the direction this file always takes — not a miss.
+    expect(
+      findSubresourceViolations(
+        `<iframe srcdoc="&lt;style&gt;@import 'https://evil.example/x.css';&lt;/style&gt;"></iframe>`,
+        'h',
+      ),
+    ).toEqual([
+      'h:1 — remote or out-of-tree CSS @import: https://evil.example/x.css (nested in <iframe srcdoc>)',
+      'h:1 — remote or out-of-tree CSS @import: https://evil.example/x.css',
+    ]);
+  });
+
+  it('leaves a semicolon-less reference as text when the parser does, so no `>` is injected', () => {
+    // Found in review, MEASURED in Chrome both ways. `&gt=1` is an "ambiguous ampersand": no `;` and
+    // the next character is `=`, so a real parser flushes it as TEXT — the nested tag runs on and
+    // its `src` is live. Decoding it anyway injected a `>` that ended the tag early and dropped the
+    // `src` from the scan, i.e. a silent MISS on markup that really fetches. The failure direction
+    // of an over-decode is the opposite of an over-report, which is why this rule is not optional.
+    expect(
+      findSubresourceViolations(
+        `<iframe srcdoc="&lt;img data-x=1&gt=1 src='https://evil.example/miss.png'&gt;"></iframe>`,
+        'h',
+      ),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/miss.png (nested in <iframe srcdoc>)',
+    ]);
+    // Same shape through `&APOS;`, which is NOT in the real named-reference table at all (`&apos;`
+    // is, uppercase is not). The injected character is a quote rather than a `>`, and it swallows
+    // the following `src` into a quoted value just as effectively.
+    expect(
+      findSubresourceViolations(
+        `<iframe srcdoc="&lt;img data-x=&APOS; src='https://evil.example/apos.png'&gt;"></iframe>`,
+        'h',
+      ),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/apos.png (nested in <iframe srcdoc>)',
+    ]);
+    // The carve-out must not become the opposite hole: a semicolon-less reference NOT followed by
+    // `=` or an alphanumeric IS decoded by the parser, so it must be decoded here too or the
+    // closing `>` goes missing and the nested tag is never read.
+    expect(
+      findSubresourceViolations(`<iframe srcdoc="&lt;img src='https://evil.example/tail.png'&gt"></iframe>`, 'h'),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/tail.png (nested in <iframe srcdoc>)',
+    ]);
+    // The uppercase legacy spellings that ARE in the table decode like their lowercase twins.
+    expect(
+      findSubresourceViolations(`<iframe srcdoc="&LT;img src='https://evil.example/up.png'&GT;"></iframe>`, 'h'),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/up.png (nested in <iframe srcdoc>)',
+    ]);
+  });
+
+  it('does not invent a nested tag out of an escaped ampersand', () => {
+    // `&amp;lt;img …&amp;gt;` is the literal TEXT `<img …>` shown to the user, not an element — a
+    // named-then-numeric two-pass decode would turn it into a violation that no parser produces.
+    expect(
+      findSubresourceViolations(
+        `<iframe srcdoc="&amp;lt;img src='https://evil.example/text.png'&amp;gt;"></iframe>`,
+        'h',
+      ),
+    ).toEqual([]);
+  });
+
+  it('allows a srcdoc whose nested markup is local and in-tree', () => {
+    // The gate must stay quiet on a srcdoc that fetches nothing off-origin, or it cannot be adopted.
+    expect(
+      findSubresourceViolations(`<iframe srcdoc="&lt;img src='./icons/icon16.png'&gt;"></iframe>`, 'h'),
+    ).toEqual([]);
+    expect(findSubresourceViolations('<iframe srcdoc="&lt;p&gt;plain text&lt;/p&gt;"></iframe>', 'h')).toEqual([]);
+    expect(findSubresourceViolations('<iframe srcdoc></iframe>', 'h')).toEqual([]);
+  });
+
+  it('flags a srcdoc on a tag other than <iframe>', () => {
+    // Scanned by attribute, not by tag: a tag allowlist here would be the silent-hole direction.
+    expect(
+      findSubresourceViolations(`<div srcdoc="&lt;img src='https://evil.example/x.png'&gt;"></div>`, 'h'),
+    ).toEqual(['h:1 — remote or out-of-tree <img src>: https://evil.example/x.png (nested in <div srcdoc>)']);
+  });
+
+  it('scans to the srcdoc recursion cap, then fails loud rather than stopping silently', () => {
+    // Nesting built by the same escaping a real author would use, so each level peels off in
+    // exactly one decode pass — `&` first, or the later replacements re-escape their own output.
+    const esc = (markup: string) =>
+      markup.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const wrap = (inner: string) => `<iframe srcdoc="${esc(inner)}"></iframe>`;
+    const remoteImg = '<img src="https://evil.example/deep.png">';
+
+    // Three levels is within the cap and the innermost subresource is still found.
+    expect(findSubresourceViolations(wrap(wrap(wrap(remoteImg))), 'h')).toEqual([
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/deep.png (nested in <iframe srcdoc>) (nested in <iframe srcdoc>) (nested in <iframe srcdoc>)',
+    ]);
+
+    // A fourth reaches the cap. Reporting it as unscanned is the point: returning clean for markup
+    // too deep to read would be the one direction this gate never takes.
+    expect(findSubresourceViolations(wrap(wrap(wrap(wrap(remoteImg)))), 'h')).toEqual([
+      'h:1 — <iframe srcdoc> nested deeper than 3 — not scanned (nested in <iframe srcdoc>) (nested in <iframe srcdoc>) (nested in <iframe srcdoc>)',
+    ]);
   });
 
   it('flags src="" even though it resolves same-origin', () => {
