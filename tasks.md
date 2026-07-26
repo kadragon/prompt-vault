@@ -1,25 +1,21 @@
 ## Review Backlog
 
-### Privacy gate — three subresource vectors the widened HTML scan still misses
+### Privacy gate — two subresource vectors the widened HTML scan still misses
 
-- [ ] [CONSTRAINT] Found by QA attacking the widened gate on PR #42, each confirmed against
-      happy-dom as something a real parser resolves to a genuine fetch. None is a runtime hole
-      except the third — the extension-pages CSP added in that PR blocks the first two — so this
-      is about the static backup drifting from what the runtime already enforces.
-      (a) **Entity-escaped scheme.** `<img src="&#x68;ttps://evil.example/e.png">` (and the
-      decimal `&#104;`) is not flagged: `isLocalInTreeSrc` sees the raw text, whose scheme regex
-      does not match, so it reads as a relative path. This one is shared with the older
-      `<script src>` half, so it predates PR #42. Fix direction: decode numeric character
-      references before the scheme test, or reject any value containing `&#`.
-      (b) **SVG `<image>`.** `<svg><image xlink:href="https://evil.example/x.png"/></svg>` fetches
+- [ ] [CONSTRAINT] Found by QA and review attacking the widened gate on PR #42, each confirmed
+      against happy-dom as something a real parser resolves to a genuine fetch. The others found in
+      that round (entity-escaped and tab-smuggled schemes, the legacy `background` attribute, a
+      bare-string `@import` with no whitespace) were closed in the PR itself; these two were not.
+      (a) **SVG `<image>`.** `<svg><image xlink:href="https://evil.example/x.png"/></svg>` fetches
       automatically, but `href`/`xlink:href` are only checked on `<link>`/`<base>`. Widening
       `HREF_TAGS` to `image`/`use` is the obvious fix; check first whether any other SVG element
-      carries a fetching `href`.
-      (c) **`<meta http-equiv="refresh" content="0;url=…">`.** An automatic top-level navigation
+      carries a fetching `href`, and whether the plain `href` form needs its own case. Runtime is
+      already covered — CSP `img-src 'self'` blocks it — so this is the static backup catching up.
+      (b) **`<meta http-equiv="refresh" content="0;url=…">`.** An automatic top-level navigation
       carrying whatever is interpolated into the URL. Neither layer stops it: the gate does not
-      read `content=`, and Chrome dropped CSP `navigate-to`, so there is no directive to add.
-      Static-only fix, and worth stating in `docs/conventions.md` as the one vector with no
-      runtime control behind it.
+      read `content=`, and Chrome dropped CSP `navigate-to`, so there is no directive to add. This
+      is the ONLY vector with no runtime control behind it, which makes the static fix the whole
+      control rather than a backup — weigh it accordingly.
 
 ### Bulk panel "Load more" — residual: a fetch slower than the dwell still truncates silently
 

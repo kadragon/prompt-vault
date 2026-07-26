@@ -41,21 +41,34 @@ describe('least-privilege manifest', () => {
     // default policy restricts executable code only, so without these directives a remote
     // `<img>`/`<iframe>`/`<form action>` or a CSS `url()` still fetches. The HTML half of
     // no-external-network.test.ts is the static backup, not a substitute: it reads the tree,
-    // not the running page. Asserted directive by directive so dropping any one turns red.
+    // not the running page.
+    //
+    // Compared as an EXACT source list per directive, not by substring. Containment catches a
+    // directive being deleted but not one being widened, which is the likelier way this control
+    // decays: `img-src 'self' https://cdn.evil.example` still contains `img-src 'self'` and would
+    // pass green, and MV3 accepts remote sources for every directive here except script-src.
     const csp = declared.content_security_policy as { extension_pages?: string } | undefined;
-    const policy = csp?.extension_pages ?? '';
-    for (const directive of [
-      "script-src 'self'",
-      "object-src 'self'",
-      "img-src 'self'",
-      "media-src 'self'",
-      "font-src 'self'",
-      "style-src 'self' 'unsafe-inline'",
-      "frame-src 'none'",
-      "form-action 'none'",
-      "base-uri 'none'",
-    ]) {
-      expect(policy, `extension_pages CSP is missing: ${directive}`).toContain(directive);
+    const parsed = new Map<string, string[]>(
+      (csp?.extension_pages ?? '')
+        .split(';')
+        .map((part) => part.trim().split(/\s+/))
+        .filter(([name]) => name)
+        .map(([name, ...sources]) => [name.toLowerCase(), sources]),
+    );
+    const expected: Record<string, string[]> = {
+      'script-src': ["'self'"],
+      'object-src': ["'self'"],
+      'img-src': ["'self'"],
+      'media-src': ["'self'"],
+      'font-src': ["'self'"],
+      'style-src': ["'self'", "'unsafe-inline'"],
+      'connect-src': ["'self'"],
+      'frame-src': ["'none'"],
+      'form-action': ["'none'"],
+      'base-uri': ["'none'"],
+    };
+    for (const [directive, sources] of Object.entries(expected)) {
+      expect(parsed.get(directive), `extension_pages CSP: ${directive}`).toEqual(sources);
     }
   });
 

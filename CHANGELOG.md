@@ -15,7 +15,12 @@
   on the loaded unpacked build, not assumed: a remote `<img>`, a remote `<iframe>` and a remote CSS
   `@import` each produced their directive's violation, an in-package image still loaded, and the
   page's inline `<style>` and module script were unaffected (`docs/live-dom-verification.md`).
-  `connect-src` is left unset for crxjs's dev HMR; the JS half already forbids the primitives.
+  `connect-src 'self'` closes fetch/WebSocket/EventSource from that page too — added on review after
+  the original "crxjs dev HMR needs localhost" justification turned out not to apply to this repo,
+  which has no `dev` script; with no `default-src`, an unlisted directive is unrestricted rather
+  than defaulted, so that omission was a hole. All three are measured blocked, and an in-package
+  `fetch` still works. The gate's JS half gained `WebSocket`/`EventSource` for the side no CSP of
+  ours reaches: a content script runs in the host page's world.
 
   The **backup** is the static gate, widened from `<script src>` to every attribute a browser
   fetches from with no user action — `src`, `srcset`, `poster`, `data`, `action`, `formaction`,
@@ -24,10 +29,19 @@
   link cannot redden the gate) and `data:` IS rejected. Every payload was diffed against happy-dom
   instead of reasoned about, including the tokenization shapes that produced five false negatives in
   the `<script>` half; both the gate and the CSP assertion were verified to fail under targeted
-  neutralization. QA's attack found three vectors that remain uncovered statically — an
-  entity-escaped scheme, SVG `<image xlink:href>`, and `<meta http-equiv="refresh">` — recorded in
-  `tasks.md` and disclosed in `docs/conventions.md` rather than papered over; the CSP covers the
-  first two at runtime, and the third has no directive left to add.
+  neutralization.
+
+  Review then attacked both layers and four findings were folded in rather than deferred: the CSP
+  assertion compared by substring, so a *widened* directive (`img-src 'self' https://cdn.evil`)
+  passed green — it now compares each directive's source list exactly; a scheme could be smuggled
+  past the value test by HTML character references or by an ASCII tab, both of which the browser
+  normalizes away before fetching, so values are now normalized before classification; the legacy
+  `background` attribute and a whitespace-free `@import"…"` were both unread; and the tag scan
+  resumed inside the attribute text it had just consumed, making a tag-shaped attribute *value* a
+  false positive. Two vectors remain statically uncovered — SVG `<image xlink:href>` and
+  `<meta http-equiv="refresh">` — recorded in `tasks.md` and disclosed in `docs/conventions.md`
+  rather than papered over; the CSP covers the first at runtime, and the second has no directive
+  left to add, which makes it the one vector with no runtime control behind it.
 
 - [done] Closed the privacy gate's HTML residual (2026-07-26). The `src/`-wide widening fixed
   which directories are walked, not which file types are read: the collector matched

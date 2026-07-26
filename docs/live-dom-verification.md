@@ -201,11 +201,21 @@ evidence that matters, because Chrome refuses to load an extension whose
 | `<img src="https://example.com/…?d=leak">` | **blocked** — `Loading the image … violates … "img-src 'self'"` |
 | `<iframe src="https://example.com/">` | **blocked** — `Framing … violates … "frame-src 'none'"` |
 | `<style>@import "https://example.com/…css"</style>` | **blocked** — `Loading the stylesheet … violates … "style-src 'self' 'unsafe-inline'"` |
+| `fetch('https://example.com/…')` | **blocked** — `Connecting to … violates … "connect-src 'self'"` |
+| `new WebSocket('wss://example.com/…')` | **blocked** — same directive; the constructor still returns, only the connection is refused |
+| `new EventSource('https://example.com/…')` | **blocked** — same directive; surfaces as an `error` event, `readyState` 2 |
 | `<img src="/icons/icon16.png">` (in-package) | loads |
+| `fetch('/manifest.json')` (in-package) | loads — `connect-src 'self'` does not cost same-package reads |
 
 Note the iframe's DOM event is a **`load`, not an `error`** — Chrome swaps in `about:blank` when
 `frame-src` refuses. Only the console violation distinguishes blocked from loaded; do not read a
 frame's `onload` as evidence the policy is off.
+
+**`connect-src` was the omission worth re-measuring.** It was first left unset on the grounds that
+crxjs's dev-mode HMR needs localhost — a justification that does not survive contact with this repo,
+which has no `dev` script at all (`build` is plain `vite build`). With no `default-src`, an unlisted
+directive is unrestricted rather than defaulted, so the three probes above were live egress from an
+extension page until `connect-src 'self'` was added on review.
 
 **`style-src 'self' 'unsafe-inline'` is accepted by MV3.** The inline allowance is rejected for
 `script-src`, which is what made this worth measuring rather than assuming. It is required here (the

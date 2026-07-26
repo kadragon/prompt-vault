@@ -82,13 +82,19 @@ export default defineManifest({
   //     the inline allowance is required; what matters is the 'self', which stops a remote
   //     `@import`. MV3 rejects 'unsafe-inline' for script-src, NOT for style-src (measured: the
   //     built extension loads with no error card — see docs/live-dom-verification.md).
-  // Deliberately UNSET: `connect-src`, because crxjs's dev-mode HMR connects to localhost while the
-  // JS half of the gate already forbids fetch/XHR/sendBeacon across all of src/.
-  // Held by test/privacy/manifest-least-privilege.test.ts.
+  //   connect-src 'self' — closes fetch/XHR/WebSocket/EventSource/sendBeacon from an extension
+  //     page. Added on review: it had been left out on the grounds that crxjs's dev-mode HMR needs
+  //     localhost, which is not a cost this repo pays — there is no `dev` script, `build` is plain
+  //     `vite build`. With no `default-src`, an unlisted directive is unrestricted rather than
+  //     defaulted, so the omission was a real hole, not a formality.
+  // Note what this does NOT reach: a content script runs in the HOST page's world, so none of these
+  // directives apply to it. That side is held statically by the JS/TS half of
+  // test/privacy/no-external-network.test.ts, whose FORBIDDEN list covers WebSocket and EventSource
+  // for exactly this reason. Held by test/privacy/manifest-least-privilege.test.ts.
   content_security_policy: {
     extension_pages:
       "script-src 'self'; object-src 'self'; img-src 'self'; media-src 'self'; " +
-      "font-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "font-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; " +
       "frame-src 'none'; form-action 'none'; base-uri 'none'",
   },
   // Toolbar icon → clicking it opens the settings form as a popup. Reuses the very same

