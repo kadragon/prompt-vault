@@ -10,7 +10,15 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   Never request `<all_urls>`. `content_scripts.matches` lists explicit hosts and is the only host
   grant — do not add `host_permissions`, which this extension does not need and which
   `test/privacy/manifest-least-privilege.test.ts` fails on (background in `manifest.config.ts`).
-- CSP: no remote code. Everything the extension runs is bundled in the package.
+- CSP: no remote code, and no remote *subresources* either. `manifest.config.ts` declares an explicit
+  `content_security_policy.extension_pages` — `script-src`/`object-src`/`img-src`/`media-src`/
+  `font-src 'self'`, `style-src 'self' 'unsafe-inline'`, `frame-src`/`form-action`/`base-uri 'none'`
+  — because MV3's default policy restricts executable code only and leaves
+  `<img>`/`<iframe>`/`<form action>`/CSS `url()`/`@import` free to reach any origin. MV3 rejects
+  `'unsafe-inline'` for `script-src` but accepts it for `style-src` (measured), and the options page
+  needs it for its inline `<style>`. `connect-src` is deliberately unset (dev-mode HMR needs
+  localhost) — reasons are in the manifest comment, and
+  `test/privacy/manifest-least-privilege.test.ts` asserts each directive.
 
 ## Adapters
 
@@ -45,20 +53,30 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   `downloads` API) — all local. Any PR adding a network call there is rejected by default.
 - `test/privacy/no-external-network.test.ts` enforces this in two halves. Every JS/TS file
   (`.tsx?|jsx?|mjs|cjs`) under `src/` is read and scanned for the forbidden primitives. Every
-  `.html` file under `src/` is checked for **`<script>` tags only**: each must load a relative
-  in-tree `src=` module, so no inline body (which MV3's CSP forbids anyway) and no remote or
-  out-of-tree source — either would run code the JS/TS half never read.
+  `.html` file under `src/` is checked twice: each `<script>` must load a relative in-tree `src=`
+  module (no inline body, no remote or out-of-tree source — either would run code the JS/TS half
+  never read), and every **subresource** must resolve to a relative in-tree path too.
+- The subresource scan covers the attributes a browser fetches from with no user action — `src`,
+  `srcset`, `poster`, `data`, `action`, `formaction`, `href` on `<link>`/`<base>` — plus CSS `url()`
+  and `@import` anywhere in the file. Two deliberate calls: `<a href>`/`<area href>` are NOT checked
+  (user-initiated navigation, not a fetch, so a legitimate outbound link must not redden the gate),
+  and `data:` URIs ARE rejected (no such URI exists in `src/`, and allowing the scheme would also
+  admit `data:text/html`). The runtime control is the manifest CSP above; this half is the static
+  backup — so when the two disagree, prefer closing the vector in BOTH, as the `@import` case was.
 - A gate that hand-parses a format (HTML, JS) is only as good as its agreement with the real
   parser. Both detectors here accumulated false negatives that looked correct by inspection —
   five in the HTML half alone, every one found by running the payload through an actual parser
   (`happy-dom` is already a devDependency) and diffing its verdict against the detector's. When
   you touch either detector, probe it that way and pin the payload; reasoning about the regex
   is not verification. Over-reporting is the safe direction — a false negative is a hole.
-- State the enforced scope precisely; it is narrower than the rule. Two known residuals:
-  executable code in `src/` in a form neither half reads (a future `.json`/`.vue`/`.svelte`)
-  reopens the gap — extend the gate in the same PR; and a remote **subresource** in HTML
-  (`<img src>`, `<iframe>`, `<form action>`) is a live egress path MV3's default CSP does not
-  restrict and the gate does not check (tracked in `tasks.md`).
+- State the enforced scope precisely; it is narrower than the rule. Known residual: executable code
+  in `src/` in a form neither half reads (a future `.json`/`.vue`/`.svelte`) reopens the gap —
+  extend the gate in the same PR. Note also that both HTML halves read `src/**` only, so an asset
+  referenced from `public/` (copied into `dist/` verbatim) is outside them; the CSP still covers it
+  at runtime. Three subresource vectors the scan misses are tracked in `tasks.md` — an
+  entity-escaped scheme, SVG `<image xlink:href>`, and `<meta http-equiv="refresh">`. The CSP covers
+  the first two at runtime; the refresh has **no** runtime control, because Chrome dropped CSP
+  `navigate-to`.
 
 ## Testing
 

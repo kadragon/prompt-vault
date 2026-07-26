@@ -161,8 +161,8 @@ a separate question (recorded as a follow-up), not something this experiment set
 extension context**. This extension has no such context: no background service worker, no
 `fetch`/`XHR`/`sendBeacon` anywhere in `src/` — verified by grep across the whole tree, and
 mechanically enforced over every JS/TS file in it by `test/privacy/no-external-network.test.ts`
-(`SCAN_DIRS: ['src']`; `src/options/index.html` sits outside its file-type filter and still rests
-on inspection) — no `chrome.tabs`/`scripting`/`cookies`, downloads via
+(`SCAN_DIRS: ['src']`; `src/options/index.html` sits outside *that* half's file-type filter and is
+covered by the HTML halves instead) — no `chrome.tabs`/`scripting`/`cookies`, downloads via
 `URL.createObjectURL` + `<a download>`, PDF font base64-embedded. `npm run build` is `vite build`
 only, so crxjs HMR — the one plausible build-time consumer — never applies to a shipped artifact.
 
@@ -180,6 +180,52 @@ Do not describe this to users as a reduced permission prompt.
 
 The decision is now held mechanically by `test/privacy/manifest-least-privilege.test.ts` — re-adding
 `host_permissions` turns it red, forcing a fresh measurement rather than a silent revert.
+
+### 2026-07-26 — the extension-pages CSP blocks remote subresources, and breaks nothing
+
+Settled the `[CONSTRAINT]` "the privacy gate checks HTML for `<script>` only". The static gate was
+widened to every URL-bearing attribute, but the gate is a *review-time* control; this session
+measured the *runtime* one that was added alongside it.
+
+**What Chrome accepted.** `npm run build` at 1.7.2, then `#dev-reload-button` on the already-loaded
+unpacked extension. It re-listed as **1.7.2, enabled, no error card** — which is the load-time
+evidence that matters, because Chrome refuses to load an extension whose
+`content_security_policy.extension_pages` is malformed or relaxes `script-src`/`object-src`.
+`dist/manifest.json` carries the policy verbatim; crxjs does not rewrite it.
+
+**What the policy actually blocks**, probed from inside the loaded options page
+(`chrome-extension://<id>/src/options/index.html`):
+
+| Probe | Result |
+|-------|--------|
+| `<img src="https://example.com/…?d=leak">` | **blocked** — `Loading the image … violates … "img-src 'self'"` |
+| `<iframe src="https://example.com/">` | **blocked** — `Framing … violates … "frame-src 'none'"` |
+| `<style>@import "https://example.com/…css"</style>` | **blocked** — `Loading the stylesheet … violates … "style-src 'self' 'unsafe-inline'"` |
+| `<img src="/icons/icon16.png">` (in-package) | loads |
+
+Note the iframe's DOM event is a **`load`, not an `error`** — Chrome swaps in `about:blank` when
+`frame-src` refuses. Only the console violation distinguishes blocked from loaded; do not read a
+frame's `onload` as evidence the policy is off.
+
+**`style-src 'self' 'unsafe-inline'` is accepted by MV3.** The inline allowance is rejected for
+`script-src`, which is what made this worth measuring rather than assuming. It is required here (the
+options page ships a 55-line inline `<style>`), and the `'self'` half is what closes the remote
+`@import` above — a vector that the `url()` half of the static gate does not see either, so leaving
+`style-src` unset would have left one path open in *both* layers.
+
+**Nothing broke.** Computed style on the live page is `padding: 20px`, `font-size: 14px`, `fieldset`
+border `1px` — the page's own inline CSS applies, and a rule injected into a fresh `<style>` took
+effect too. Five checkboxes render and the title reads `prompt-vault 설정`, i.e. the module script ran
+and `chrome.i18n` resolved, so `script-src 'self'` is satisfied by the bundled entry. Console was
+clean before each probe and carried exactly the violation above after.
+
+**Do not read the extensions-page error card as a load failure.** After probing, the item showed an
+errors button — it holds the *runtime* CSP violations the probes just caused, not a manifest parse
+error. A rejected `content_security_policy` fails differently: the extension does not load at all.
+The load-time evidence is the item re-listing as enabled at the expected version.
+
+Held mechanically by `test/privacy/manifest-least-privilege.test.ts`, which asserts each directive
+by name — dropping `img-src` turns it red (verified by neutralization).
 
 ## ChatGPT
 

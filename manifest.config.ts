@@ -65,6 +65,32 @@ export default defineManifest({
   // via URL.createObjectURL + an `<a download>` (no permission needed); `downloads` would
   // only be added if a future ticket switches to the chrome.downloads API.
   permissions: ['storage'],
+  // Explicit CSP for extension pages — the PRIMARY control against subresource egress from the
+  // options page, with the HTML half of test/privacy/no-external-network.test.ts as the static
+  // backup. MV3's default (`script-src 'self'; object-src 'self'`) restricts executable code only,
+  // so without this a remote `<img>`/`<iframe>`/`<form action>` — or a `url()` in the page's inline
+  // `<style>` — is a working outbound channel for anything that page can read, which Golden
+  // Principle #1 forbids. Directive by directive:
+  //   script-src/object-src 'self' — restate the MV3 default; Chrome rejects relaxing them.
+  //   img-src/media-src/font-src 'self' — close the subresource vectors. These also govern what the
+  //     inline CSS may fetch (`background: url(...)` is img-src, NOT style-src).
+  //   frame-src/form-action 'none' — the options page has neither an iframe nor a `<form>`
+  //     (src/options/main.ts renders checkboxes), so nothing legitimate needs either.
+  //   base-uri 'none' — a `<base href>` would retarget every relative URL to a remote origin, which
+  //     is exactly what the gate's relative-path allowance assumes cannot happen.
+  //   style-src 'self' 'unsafe-inline' — src/options/index.html ships an inline `<style>` block, so
+  //     the inline allowance is required; what matters is the 'self', which stops a remote
+  //     `@import`. MV3 rejects 'unsafe-inline' for script-src, NOT for style-src (measured: the
+  //     built extension loads with no error card — see docs/live-dom-verification.md).
+  // Deliberately UNSET: `connect-src`, because crxjs's dev-mode HMR connects to localhost while the
+  // JS half of the gate already forbids fetch/XHR/sendBeacon across all of src/.
+  // Held by test/privacy/manifest-least-privilege.test.ts.
+  content_security_policy: {
+    extension_pages:
+      "script-src 'self'; object-src 'self'; img-src 'self'; media-src 'self'; " +
+      "font-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "frame-src 'none'; form-action 'none'; base-uri 'none'",
+  },
   // Toolbar icon → clicking it opens the settings form as a popup. Reuses the very same
   // page as options_ui below (Chrome allows one HTML file to serve both slots), so there
   // is a single settings UI reachable two ways: the toolbar icon and the chrome://extensions

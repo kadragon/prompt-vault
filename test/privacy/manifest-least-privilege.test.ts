@@ -36,6 +36,29 @@ describe('least-privilege manifest', () => {
     expect(declared.permissions).toEqual(['storage']);
   });
 
+  it('declares the restrictive extension-pages CSP', () => {
+    // The PRIMARY runtime control against subresource egress from the options page — MV3's
+    // default policy restricts executable code only, so without these directives a remote
+    // `<img>`/`<iframe>`/`<form action>` or a CSS `url()` still fetches. The HTML half of
+    // no-external-network.test.ts is the static backup, not a substitute: it reads the tree,
+    // not the running page. Asserted directive by directive so dropping any one turns red.
+    const csp = declared.content_security_policy as { extension_pages?: string } | undefined;
+    const policy = csp?.extension_pages ?? '';
+    for (const directive of [
+      "script-src 'self'",
+      "object-src 'self'",
+      "img-src 'self'",
+      "media-src 'self'",
+      "font-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "frame-src 'none'",
+      "form-action 'none'",
+      "base-uri 'none'",
+    ]) {
+      expect(policy, `extension_pages CSP is missing: ${directive}`).toContain(directive);
+    }
+  });
+
   it('reaches its hosts through content_scripts.matches', () => {
     // With host_permissions gone, `matches` is the ONLY thing granting host access.
     // If it were ever emptied the extension would silently stop mounting anywhere,

