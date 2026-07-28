@@ -25,7 +25,7 @@ above should re-check the ones adapter code depends on:
 | Number | Where it is relied on | What drift does |
 |--------|----------------------|-----------------|
 | Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
-| ChatGPT `#history` page latency (**1418–2830 ms**) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run (recorded below). |
+| ChatGPT `#history` page latency (**757–6123 ms**, median 2433 — re-measured 2026-07-29, up from 1418–2830 ms on 2026-07-24) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical, and no longer rare** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run; 2026-07-29 measured 2 of 37 page boundaries exceeding the 5 s dwell in one healthy walk (both recorded below). |
 
 ## Tooling reality (read before promising anything)
 
@@ -408,6 +408,64 @@ Everything the `[VERIFY]` item asked about held at the done state, on 852 rows:
 Selections survived **two** list growths (19→725→852), not one, so preservation is not an artifact of
 a single append. Scope limit: one account, one track (`#history`; the project-home track was not
 exercised), and no export was run from the loaded list.
+
+### 2026-07-29 — `#history` pages in at a fixed **28 rows**, and the 5 s dwell is measurably too short
+
+Same 1042-conversation account as the 2026-07-24/25 entries; user-driven browser, one console probe
+that stepped the sidebar's scroll container to the end and sampled four candidate row definitions
+every 250 ms, merging consecutive changed samples into one "page" event. Run: 460 steps, 118 s,
+ended clamped, reaching 1042 anchors / 852 `/c/` — the same ground truth as the earlier sessions.
+
+**The raw page size is 28, and it did not vary.** Every anchor-bearing event added exactly 28
+anchors across **36** consecutive pages, with a single final partial page of **6**. The arithmetic
+closes exactly: `28 (initial render) + 36 x 28 + 6 = 1042`, matching the measured end count. The
+scroll container resolved to a `NAV` (not `#history` itself), `scrollHeight 38100 / clientHeight 558`.
+
+This settles the question that blocked the page-size-parity oracle, and it settles it in the
+oracle's favour — but **only when counted on raw rows, never on `/c/` ids**:
+
+| Counted as | Per-page increment |
+|---|---|
+| all `#history a[href]` (and `li` — the two end equal at 1042) | **28, on every one of 36 pages** |
+| `a[href^="/c/"]` only — what `listConversations`/`loadMoreConversations` count | **varies: 15, 19, 20, 21, 22, 23, 24, 25, 26, 27** |
+
+Each page is a fixed 28 rows split between top-level `/c/` conversations and project/GPT-scoped
+`/g/…/c/…` rows, and the split is what varies — `c + gc == 28` held on all 36 pages. So the
+loader's `/c/` increment is not the page size (the premise the review-backlog item recorded), while
+the raw anchor increment is. A parity oracle ("last raw increment == 28 ⇒ another page exists") is
+therefore constructible from counts the loader can take on the rows it already queries.
+
+**The dwell is too short — measured, not inferred.** `SIDEBAR_STABLE_ROUNDS 10 x
+SIDEBAR_STEP_DELAY_MS 500` gives a 5000 ms dwell. Per-page fetch gaps ran **757–6123 ms**
+(median 2433) — already wider than the 1418–2830 ms measured 2026-07-24. Worse, the loader counts
+only `/c/` growth, so it is also blind to the anchorless render event described below; the interval
+it actually sees with no progress is the two gaps summed. Lower bounds on that loader-visible quiet
+window (excluding the sample tick between them, so each is an under-estimate):
+
+| Quiet window (lower bound) | vs 5000 ms dwell |
+|---|---|
+| 6632 ms | **exceeds** |
+| 5625 ms | **exceeds** |
+| 4665 ms | within, by 7% |
+
+**2 of 37 page boundaries exceeded the dwell in a single healthy 2-minute run**, and a third came
+within 7%. This isolates what the 2026-07-25 truncation entry could not: the exit that loses rows is
+**dwell expiry**, not `endOfListGate`. It also revises that entry's "a stall long enough to end it is
+a local event at one page boundary" — such stalls are not rare outliers, they occur roughly twice per
+full walk on this account.
+
+**One inference, deliberately not promoted to a fact.** Each of the 37 pages was preceded by an
+event adding exactly **3 `li` and 0 anchors**, at a tightly clustered 502–510 ms after the previous
+page settled, with the server page landing 0.8–6.1 s later. The regularity suggests a
+three-row loading skeleton rendered while the fetch is in flight — which would be a *direct*
+in-flight signal, strictly better than parity. The probe measured counts only, so no markup was
+captured and this is **not** verified: do not build on it without a session that reads those nodes
+(AGENTS.md #5).
+
+Scope limits: one account, one day, one track (`#history`; the project-home list was not walked).
+28 is one account's observation of a server-side constant, so a fix should derive the page size from
+the first observed increment rather than hardcoding it, and must not treat a page-size change as
+corruption. Add the page size to the re-measure table above once adapter code depends on it.
 
 ### 2026-07-24 — project home scroll port is taller than the list it contains
 
