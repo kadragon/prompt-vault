@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] Claude adapter: read both attachment tile shapes, report files on mixed turns, and drop expanded thinking blocks (v1.8.0) (2026-07-29)
+  → docs/live-dom-verification.md
 - [done] Recorded the 2026-07-29 Claude/Gemini live-DOM session and closed all four open
   `[VERIFY]` items (2026-07-29). Two of them closed by **disproof**: Claude's attachment tiles never
   render inside `user-message` (0 across every measured turn, attached or pasted), so the mixed-turn
