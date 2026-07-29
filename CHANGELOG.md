@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- [done] Recorded the 2026-07-29 Claude/Gemini live-DOM session and closed all four open
+  `[VERIFY]` items (2026-07-29). Two of them closed by **disproof**: Claude's attachment tiles never
+  render inside `user-message` (0 across every measured turn, attached or pasted), so the mixed-turn
+  worry that blocked the fix does not exist; and Gemini's generated-image and Canvas responses both
+  DO render a `.markdown`, so the "no prose container" premise was wrong — a generated image leaves
+  the container empty instead, which lands on the retry-forever error rather than the one written
+  for it. The session also found Claude renders attachments in two tile shapes and the shipped
+  selector matches only one, which blocks export of an attachment-only `.txt` turn outright; that
+  an expanded thinking block is joined into the exported message; and `data-is-streaming`, the
+  stream-completion signal the walk's termination condition was blocked on. Docs, selector stamps
+  and stale code comments only — no behaviour change; the six fixes are queued in `backlog.md`.
+
 - [done] Carried the measured page size across "Load more" calls (v1.7.5, 2026-07-29). The parity
   oracle seeded its page size from the rows already rendered, which is one page on a fresh sidebar
   but the whole list on a re-run — so the retry the incomplete warning asks for got only the dwell,

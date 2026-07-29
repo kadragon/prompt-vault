@@ -83,6 +83,13 @@ export const selectors = {
    * Gemini's response chrome — `sources-list`, `thinking-overlay`, `message-actions` — sits
    * OUTSIDE this element (measured: none of them appear among its descendants), so reading
    * it excludes all of them without any filtering.
+   *
+   * **Presence does not imply content (measured 2026-07-29).** A generated-image response
+   * renders this container EMPTY, keeping the image beside it as
+   * `generated-image > single-image > img`; a Canvas/immersive response fills it normally and
+   * puts its document behind an `immersive-entry-chip`. So a `null` check on this selector does
+   * not separate "readable" from "not readable" — see `readAssistantContent` and
+   * docs/live-dom-verification.md → Gemini → 2026-07-29.
    */
   assistantMarkdown: '.markdown',
 
