@@ -248,25 +248,26 @@ function makeWindowedDoc({
     };
   };
 
-  // Every turn node currently rendered, including any `extraNodes` sharing a turn's row and
+  // The turn nodes row `i` currently renders, including any `extraNodes` sharing its row and
   // any expanded thinking block. An attachment turn with no text contributes NO turn node —
   // that is the whole point of the shape; one that HAS text is a mixed turn and renders both.
-  const visibleNodes = (): unknown[] =>
-    turns.flatMap((t, i) => {
-      if (!intersects(i)) return [];
-      if (hasTiles(t) && !t.content) return [];
-      const nodes: unknown[] = [];
-      // Thinking first: live 2026-07-29 measured `md[0]` as the thinking text and `md[1]` as
-      // the answer, which is why an unfiltered join PREPENDS the reasoning to the message.
-      if (t.thinking !== undefined) nodes.push(makeNode(t, i, t.thinking, true));
-      const thinkingOnlyNow =
-        t.thinkingOnly === true ||
-        (t.thinkingUntilRound !== undefined && rounds <= t.thinkingUntilRound);
-      if (!thinkingOnlyNow) {
-        nodes.push(makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c)));
-      }
-      return nodes;
-    });
+  const nodesIn = (t: Turn, i: number): unknown[] => {
+    if (!intersects(i)) return [];
+    if (hasTiles(t) && !t.content) return [];
+    const nodes: unknown[] = [];
+    // Thinking first: live 2026-07-29 measured `md[0]` as the thinking text and `md[1]` as
+    // the answer, which is why an unfiltered join PREPENDS the reasoning to the message.
+    if (t.thinking !== undefined) nodes.push(makeNode(t, i, t.thinking, true));
+    const thinkingOnlyNow =
+      t.thinkingOnly === true ||
+      (t.thinkingUntilRound !== undefined && rounds <= t.thinkingUntilRound);
+    if (!thinkingOnlyNow) {
+      nodes.push(makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c)));
+    }
+    return nodes;
+  };
+
+  const visibleNodes = (): unknown[] => turns.flatMap((t, i) => nodesIn(t, i));
 
   return {
     querySelector: (sel: string) => (sel === '[data-autoscroll-container]' ? container : null),
@@ -274,6 +275,16 @@ function makeWindowedDoc({
       // Rows carry data-index; the adapter reads them to learn which positions rendered.
       if (sel === '[data-index]') {
         return turns.flatMap((t, i) => (intersects(i) && !t.unindexed ? [makeRow(t, i)] : []));
+      }
+      // The one-shot fallback asks for rows and turns together and relies on the DOM returning
+      // them in document order — a row immediately before the nodes inside it. Modelled here so
+      // the fallback the walk takes when there is no scroll container (or it has zero height, a
+      // background tab) is exercised against the same recycling fake as the walk itself.
+      if (sel === '[data-index], [data-testid="user-message"], .standard-markdown') {
+        return turns.flatMap((t, i) => {
+          if (!intersects(i)) return [];
+          return [...(t.unindexed ? [] : [makeRow(t, i)]), ...nodesIn(t, i)];
+        });
       }
       if (sel !== '[data-testid="user-message"], .standard-markdown') return [];
       rounds++;
@@ -586,6 +597,21 @@ describe('collectVirtualizedTurns — recycling message list', () => {
       role: 'user',
       content: '[File: notes.txt]\n\nhave a look at this',
     });
+  });
+
+  // The row scan iterates row ELEMENTS, so two rows carrying the same `data-index` in one round
+  // would each contribute the row's markers to the same accumulated turn. Whether Claude's
+  // recycling virtualizer ever passes through that state is UNMEASURED — this pins the scan as
+  // idempotent per index so the shape cannot produce a duplicated `[File: …]` if it does.
+  it('reports a file once when two rows carry the same index in one round', async () => {
+    // Six rows, the last overriding its index to 4: the collected range stays contiguous at
+    // 0…4, so `buildMessages` passes and the assertion isolates the duplication.
+    const turns = alternating(6);
+    turns[4] = { role: 'user', content: '', attachments: ['notes.txt'] };
+    turns[5] = { role: 'user', content: '', attachments: ['notes.txt'], indexOverride: 4 };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(5);
+    expect(messages[4]).toEqual({ role: 'user', content: '[File: notes.txt]' });
   });
 
   // Expanding a turn's thinking chip adds a second, un-nested `.standard-markdown` to the row,
