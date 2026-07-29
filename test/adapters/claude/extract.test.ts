@@ -142,8 +142,12 @@ describe('claudeAdapter.extract', () => {
   describe('attachments on the one-shot path', () => {
     // Live 2026-07-25 (row 50 of a 56-row conversation): a turn holding only files renders NO
     // `user-message` node. `action-bar-edit` is what attributes it to the user.
+    // Live 2026-07-25: every indexed row carries a `role="article"` with `aria-setsize`
+    // (112/112 across four conversations), the attachment-only row included. It is what tells a
+    // conversation row from any other indexed element on the page, so the rows here render it.
     const attachmentRow = (index: number, tiles: string, extra = ''): string =>
       `<div data-index="${index}">` +
+      '<div role="article" aria-setsize="2"></div>' +
       '<div data-testid="action-bar-edit"></div>' +
       tiles +
       extra +
@@ -209,6 +213,22 @@ describe('claudeAdapter.extract', () => {
         attachmentRow(1, '<button><img alt=""></button>') +
         '</body>';
       await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+    });
+
+    // Only a row that looks like a conversation row may fail the export. `data-index` is a
+    // generic virtualizer attribute, and this path runs against the WHOLE document live
+    // (no scroll container, or a background tab) — so one stray indexed element elsewhere on
+    // the page must not turn a working export into an error.
+    it('ignores an indexed element that is not a conversation row', async () => {
+      const html =
+        '<body>' +
+        '<div data-index="0"><div role="article" aria-setsize="1"></div>' +
+        '<div data-testid="user-message"><p>a question</p></div></div>' +
+        // A sidebar entry, a menu item, any other virtualized widget: indexed, but no article.
+        '<nav><div data-index="7">Yesterday’s chat</div></nav>' +
+        '</body>';
+      const convo = await claudeAdapter.extract(docFrom(html));
+      expect(convo.messages).toEqual([{ role: 'user', content: 'a question' }]);
     });
   });
 

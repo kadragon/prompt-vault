@@ -733,13 +733,30 @@ describe('collectVirtualizedTurns — recycling message list', () => {
   });
 
   it('falls back to a one-shot read when there is no scroll container', async () => {
-    const doc = makeWindowedDoc({ turns: alternating(4), clientHeight: 400 });
+    // The fallback is a LIVE path, not a fixture convenience, so it meets the same row shapes
+    // the walk does — including the two the turn query alone cannot see: an attachment-only
+    // turn, which renders no `user-message` node at all, and a mixed turn, whose file sits
+    // outside the turn node. Asserting only a message COUNT here left both unexercised on the
+    // one path this fake models.
+    const turns = alternating(4);
+    turns[2] = { role: 'user', content: '', attachments: ['report.pdf'] };
+    turns[3] = {
+      role: 'user',
+      content: 'have a look at this',
+      tiles: [{ shape: 'card', name: 'notes.txt' }],
+    };
+    const doc = makeWindowedDoc({ turns, clientHeight: 400 });
     const noContainer = {
       querySelector: () => null,
       querySelectorAll: (sel: string) => doc.querySelectorAll(sel),
     } as unknown as Document;
     const messages = await collectVirtualizedTurns(noContainer, fast);
     expect(messages).toHaveLength(4);
+    expect(messages[2]).toEqual({ role: 'user', content: '[File: report.pdf]' });
+    expect(messages[3]).toEqual({
+      role: 'user',
+      content: '[File: notes.txt]\n\nhave a look at this',
+    });
   });
 
   it('falls back to a one-shot read when the container has zero height (background tab)', async () => {

@@ -142,7 +142,11 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
  *
  * This path is not fixtures-only: `collectVirtualizedTurns` falls back to it live whenever
  * there is no scroll container or it has zero height (a background tab), which is why it has to
- * meet the same measured row shapes the walk does.
+ * meet the same measured row shapes the walk does — and why the row scan carries the same
+ * unmeasured scope limit `record()` documents: what the tile queries return on a user row with
+ * NO attachment was never measured, so a plain row matching one would be given a `[File: …]` it
+ * does not have. Tracked in backlog.md for a live session; narrowing the selectors on a guess
+ * is the same failure in the other direction (AGENTS.md #5).
  */
 function readSnapshot(root: ParentNode): Message[] {
   // Rows and turns in ONE query, so the DOM's own document order interleaves them and no
@@ -195,7 +199,20 @@ function readSnapshot(root: ParentNode): Message[] {
       const entry = { role: 'user' as Role, parts: [files], claimed: false };
       entries.push(entry);
       byRow.set(el, entry);
-    } else {
+    } else if (el.querySelector(selectors.messageArticle)) {
+      // Only a row that looks like a conversation row may FAIL the export. `data-index` is a
+      // generic virtualizer attribute, not a message-list marker, and on the live fallback
+      // `root` is the whole document — so without this gate one stray indexed element anywhere
+      // on the page (a sidebar, a menu, any other virtualized widget) would abort an otherwise
+      // working export. The walk is not exposed the same way: a stray index only reaches
+      // `seenRowIndices`, which selects error wording, and `declaredRowTotal` already reads
+      // `messageArticle` and so ignores it.
+      //
+      // Gating the FAILURE and not the marker scan is deliberate: an over-narrow gate here can
+      // only lose a loud error, never invent content, and `messageArticle` was measured on
+      // every indexed row — 112/112 across four conversations, explicitly including the
+      // attachment-only row that has no `user-message` node, which is the shape this check
+      // exists to catch (docs/live-dom-verification.md → Claude → 2026-07-25).
       markerlessRows.push(el);
     }
   }
