@@ -81,6 +81,14 @@ const PLACEMENT_ATTR = 'data-prompt-vault-placement';
 // their click still short-circuits here.
 let exportInFlight = false;
 
+// The history sidebar's server page size, once a walk has measured one. Held here so a
+// re-run — the "Load more" retry the incomplete warning asks for — can judge page-size
+// parity, which it cannot derive from a list that is already loaded. Module-level rather
+// than per-panel because the size is a server-side constant for the page's lifetime, so it
+// stays valid across closing and reopening the panel. Undefined until a full page is
+// actually observed; the adapter never reports a size it only guessed at.
+let historyPageSize: number | undefined;
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Format glyphs for the icon-only native buttons. Both are line icons drawn with
@@ -396,9 +404,18 @@ function openBulkExport(doc: Document): void {
     returnToStart: (startUrl) => adapter.openConversation!(startUrl),
     // "Load more": scroll the virtualized history sidebar, accumulating every surfaced
     // row across rounds (a single post-scroll re-scan would drop rows a recycling
-    // virtualizer trims off the top) and return the full list.
+    // virtualizer trims off the top) and return the full list. The measured page size is
+    // carried across calls (see `historyPageSize`) so a retry keeps the completeness oracle.
     loadMore: adapter.loadMoreConversations
-      ? (onProgress, onIncomplete) => adapter.loadMoreConversations!(doc, { onProgress, onIncomplete })
+      ? (onProgress, onIncomplete) =>
+          adapter.loadMoreConversations!(doc, {
+            onProgress,
+            onIncomplete,
+            knownPageSize: historyPageSize,
+            onPageSize: (size) => {
+              historyPageSize = size;
+            },
+          })
       : undefined,
   });
 }

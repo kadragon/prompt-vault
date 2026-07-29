@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- [done] Carried the measured page size across "Load more" calls (v1.7.5, 2026-07-29). The parity
+  oracle seeded its page size from the rows already rendered, which is one page on a fresh sidebar
+  but the whole list on a re-run — so the retry the incomplete warning asks for got only the dwell,
+  not the parity-backed wait, exactly when a page is most likely still owed. A `knownPageSize` /
+  `onPageSize` pair on the loader hands the size back to the caller and in again on the next call,
+  so a retry seeds from evidence. Only a full-size increment ever reports a size: a bad seed is
+  never cached, and a stale one costs wait time, never rows.
+
 - [done] Closed the bulk panel's silent "Load more" truncation (v1.7.4, 2026-07-29). Implements the
   completeness oracle the 2026-07-28 live session unblocked, and takes that session's warnings as
   binding. Three layers. The dwell rises 5 s -> 11.5 s: not a hand-picked number, but what the repo's

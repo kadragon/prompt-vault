@@ -107,6 +107,7 @@ function makeLazyRoot({
   cPerPage = () => pageSize,
   lastPageRows,
   hydrateSplit = 0,
+  preloadedPages = 1,
 }: {
   pageSize: number;
   pages: number;
@@ -127,6 +128,14 @@ function makeLazyRoot({
    * their rows, so a sample taken during hydration shows a full 28-row page as a short one.
    */
   hydrateSplit?: number;
+  /**
+   * Pages already rendered before the walk starts, rather than the single page a fresh sidebar
+   * shows. Models the **re-run over an already-loaded list** — the retry the incomplete warning
+   * invites — where the rows present at the first read are the whole accumulated list, not one
+   * page, so nothing in the DOM tells the walk what a page is worth. Defaults to 1 (a fresh
+   * sidebar), leaving every pre-existing case unchanged.
+   */
+  preloadedPages?: number;
 }): { root: ParentNode; conversationCount: () => number } {
   const clientHeight = view * ROW;
   // Every rendered row's href, in DOM order. A page contributes `cPerPage(p)` plain rows
@@ -143,8 +152,9 @@ function makeLazyRoot({
     for (let i = plain; i < rows; i++) hrefs.push(`/g/g-p-proj/c/p${nextProject++}`);
     lastPageAdded = rows;
   };
-  addPage(0);
-  let pagesIn = 1;
+  const preloaded = Math.max(1, Math.min(preloadedPages, pages));
+  for (let p = 0; p < preloaded; p++) addPage(p);
+  let pagesIn = preloaded;
   let fetching = false;
   let reads = 0;
   let countableFromRead = 0; // reads before this still hide the newest page
@@ -399,6 +409,108 @@ describe('loadMoreConversations (history sidebar)', () => {
     const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
     expect(result.map((c) => c.id)).toEqual(idsUpTo(5));
     expect(incomplete).not.toHaveBeenCalled();
+  });
+
+  it('judges parity on a re-run over an already-loaded list when the page size is supplied', async () => {
+    // The retry the incomplete warning explicitly asks for. Here the rows present at the first
+    // read are three pages, not one, so the walk's own seed would be the whole list and no
+    // increment could ever match it — precisely when a page is most likely still owed. Handed
+    // the size an earlier walk measured, the gate reads the same evidence it does on a fresh
+    // sidebar, so the retry gets the parity-backed wait rather than the bare dwell.
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 5, preloadedPages: 3, fetchMs: 0 });
+    const result = await loadMoreConversations(root, {
+      ...fast,
+      knownPageSize: 5,
+      onIncomplete: incomplete,
+    });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(25));
+    expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes quiet on that same re-run when no page size is supplied', async () => {
+    // Non-vacuity for the case above: the fixture does not warn on its own. Without the
+    // threaded size the seed is the whole loaded list, nothing matches it, and the gate
+    // degrades to the pre-parity dwell — the behaviour the pair exists to fix, pinned so a
+    // future change cannot make the case above pass for the wrong reason.
+    const incomplete = vi.fn();
+    const size = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 5, preloadedPages: 3, fetchMs: 0 });
+    const result = await loadMoreConversations(root, {
+      ...fast,
+      onIncomplete: incomplete,
+      onPageSize: size,
+    });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(25));
+    expect(incomplete).not.toHaveBeenCalled();
+    // And it reports no size either: a seed taken over an already-loaded list is not evidence,
+    // so caching it would poison every later run instead of only this one.
+    expect(size).not.toHaveBeenCalled();
+  });
+
+  it('reports the page size it measured, once a full page has actually been observed', async () => {
+    // The other half of the pair: a fresh walk hands its measurement back so the next call can
+    // seed from it. Fired only for an increment that came in at the full page size — the one
+    // shape that proves a whole page was seen.
+    const size = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 3, fetchMs: 0 });
+    const result = await loadMoreConversations(root, { ...fast, onPageSize: size });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(15));
+    expect(size).toHaveBeenCalledWith(5);
+  });
+
+  it('reports no page size for a batch that DEFINED the size rather than matching it', async () => {
+    // The size is reported only when an increment matched a size already in force. A batch that
+    // grew it is the gate's own guess — what an under-seeded walk (empty or half-rendered
+    // sidebar) or two coalesced pages produce — and the caller caches this for the page's whole
+    // lifetime, where `knownPageSize` outranks the seed and nothing can self-heal it. Here the
+    // supplied size is too small, so every real page exceeds it: `pageSize` grows locally, but
+    // nothing may be cached from it.
+    // One page beyond the seed, so the only increment there is is the one that grew the size.
+    const lone = vi.fn();
+    await loadMoreConversations(makeLazyRoot({ pageSize: 5, pages: 2, fetchMs: 0 }).root, {
+      ...fast,
+      knownPageSize: 3,
+      onPageSize: lone,
+    });
+    expect(lone).not.toHaveBeenCalled();
+
+    // Give it a second page and the size IS reported — but as the 5 a later batch matched
+    // against, never the 3 that was in force when the first one merely redefined it.
+    const size = vi.fn();
+    await loadMoreConversations(makeLazyRoot({ pageSize: 5, pages: 3, fetchMs: 0 }).root, {
+      ...fast,
+      knownPageSize: 3,
+      onPageSize: size,
+    });
+    expect(size.mock.calls).toEqual([[5]]);
+  });
+
+  it('lands the page a re-run would otherwise drop, not just the warning about it', async () => {
+    // What the threaded size is FOR. The gap sits between the dwell and the pending budget, so
+    // only a walk that judged parity waits it out — and the difference shows in the rows
+    // returned, not merely in whether a warning fired. Without the size the same re-run gives
+    // up one page short; with it the page lands.
+    const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+    const dwellMs = (stepDelayMs / SCALE) * (stableRounds ?? 0);
+    const gapMs = dwellMs * 1.5;
+    const opts = { stepDelayMs: stepDelayMs / SCALE, stableRounds, maxSteps };
+    const lazy = { pageSize: 5, pages: 5, preloadedPages: 3, fetchMs: (page: number) => (page === 4 ? gapMs : 0) };
+
+    const withSize = await loadMoreConversations(makeLazyRoot(lazy).root, { ...opts, knownPageSize: 5 });
+    expect(withSize.map((c) => c.id)).toEqual(idsUpTo(25));
+
+    const without = await loadMoreConversations(makeLazyRoot(lazy).root, opts);
+    expect(without.map((c) => c.id)).toEqual(idsUpTo(20));
+  });
+
+  it('reports no page size for a history whose only increment is a short final page', async () => {
+    // A short increment cannot establish the size, and caching it would shrink the oracle's
+    // notion of a page on every later run until parity fired on complete lists.
+    const size = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 3, fetchMs: 0 });
+    await loadMoreConversations(root, { ...fast, onPageSize: size });
+    expect(size).not.toHaveBeenCalled();
   });
 
   it('fails loud when new conversations never stop appearing (runaway) within the step cap', async () => {

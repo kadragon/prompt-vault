@@ -107,6 +107,27 @@ export interface LoadMoreScrollOptions extends AutoScrollOptions {
    * present the result as complete (AGENTS.md #4); omit it and the loop is unchanged.
    */
   onIncomplete?: () => void;
+  /**
+   * A page size an earlier walk over the same list measured (see `onPageSize`). Supplying it
+   * lets `pageParityGate` judge parity on a **re-run over an already-loaded list**, where its
+   * own first-read seed would be the whole list rather than one page. Omit on a first walk over
+   * a fresh sidebar, where the seed is the measured truth.
+   *
+   * Pass only a size `onPageSize` reported, never a hand-picked one. Too large and no increment
+   * can match it, so the gate goes quiet and the walk falls back to the plain dwell — it costs
+   * the wait, never rows, which are collected either way. Too small is the direction that can
+   * actually mislead: a short FINAL page whose length happens to equal it reads as full-size and
+   * warns on a complete list. `onPageSize` cannot hand back an under-sized value, which is why
+   * it, and not the caller, decides what is worth caching.
+   */
+  knownPageSize?: number;
+  /**
+   * Fired with the page size whenever a full page is *observed* arriving, so a caller can cache
+   * it and hand it back as `knownPageSize` on the next call. Never fired for evidence the gate
+   * only guessed at — a short final page, or a seed taken over an already-loaded list. May fire
+   * more than once with the same value; the latest is the one to keep.
+   */
+  onPageSize?: (size: number) => void;
 }
 
 // ChatGPT's own icon-button classes — the same shape as the header's native square
@@ -765,7 +786,10 @@ export async function loadMoreConversations(
       settled: endOfListGate(),
       // Counted over EVERY conversation row, not the `/c/` ids accumulated above — only the
       // raw row count pages in at a fixed size (see `pageParityGate`).
-      pending: pageParityGate(() => history.querySelectorAll(selectors.sidebarConversationRow).length),
+      pending: pageParityGate(() => history.querySelectorAll(selectors.sidebarConversationRow).length, {
+        knownPageSize: options.knownPageSize,
+        onPageSize: options.onPageSize,
+      }),
       pendingExtraRounds: SIDEBAR_PENDING_EXTRA_ROUNDS,
       defaults: SIDEBAR_SCROLL_DEFAULTS,
       onProgress: options.onProgress,
@@ -895,35 +919,51 @@ function endOfListGate(): (container: HTMLElement) => boolean {
  * Stays `false` until a page has been seen at all, so a history shorter than one page — where
  * no increment is ever observed — never claims a page is owed.
  */
-function pageParityGate(rowCount: () => number): () => boolean {
+function pageParityGate(
+  rowCount: () => number,
+  { knownPageSize = 0, onPageSize }: { knownPageSize?: number; onPageSize?: (size: number) => void } = {},
+): () => boolean {
   let previousRows = -1;
-  let pageSize = 0;
+  let pageSize = knownPageSize;
   let pending = false;
   let batch = 0;
   return () => {
     const rows = rowCount();
     if (previousRows < 0) {
-      // Seed from the rows already rendered when the walk starts, which live measurement
-      // recorded as exactly one page (`28 (initial render) + 36 × 28 + 6 = 1042`). Without a
-      // seed the FIRST increment would always define the size and so always satisfy the test
-      // below — so a history holding one short final page beyond the initial render would
-      // warn on every single load, complete or not.
+      // With no size handed in, seed from the rows already rendered when the walk starts, which
+      // live measurement recorded as exactly one page (`28 (initial render) + 36 × 28 + 6 =
+      // 1042`). Without a seed the FIRST increment would always define the size and so always
+      // satisfy the test below — so a history holding one short final page beyond the initial
+      // render would warn on every single load, complete or not.
       //
-      // Two limits worth naming. On a re-run over an already-loaded list (the retry the
-      // warning invites) the seed is the whole list, far larger than a page, so no increment
-      // ever matches and the gate simply goes quiet — it degrades to the pre-parity dwell
-      // rather than to a false alarm, and the panel carries the doubt across retries instead.
-      // And an empty sidebar seeds 0, which is no evidence at all; the `established` test
-      // below then withholds a verdict until an increment has actually set the size.
-      pageSize = rows;
+      // That seed only holds on a FRESH sidebar. On a re-run over an already-loaded list (the
+      // retry the incomplete warning invites) the rendered rows are the whole accumulated list,
+      // far larger than a page, so no increment could ever match and the gate would go quiet —
+      // leaving the retry on the bare dwell exactly when a page is most likely still owed. A
+      // caller that has seen a page land therefore passes `knownPageSize` back in, and it takes
+      // precedence over the seed: measured evidence over a positional assumption.
+      //
+      // An empty sidebar seeds 0, which is no evidence at all; the `established` test below
+      // then withholds a verdict until an increment has actually set the size.
+      if (pageSize === 0) pageSize = rows;
     } else if (rows > previousRows) {
       // Still arriving — accumulate, do not judge yet (see the settling note above).
       batch += rows - previousRows;
     } else if (batch > 0) {
       // Growth stopped, so the batch is whole and can finally be classified.
-      const established = pageSize > 0;
+      const known = pageSize; // the size in force BEFORE this batch can redefine it, below
+      const established = known > 0;
       if (batch > pageSize) pageSize = batch;
       pending = established && batch === pageSize;
+      // Report only a size this batch MATCHED — never one it defined. A batch that grew the
+      // size is the gate's own guess at what a page is worth: an empty or half-rendered
+      // sidebar seeds under a page, and two pages coalescing into one settled batch reads as
+      // double. Both are fine to act on locally (`pending` above, this walk only), but the
+      // caller caches what lands here for the page's whole lifetime, and `knownPageSize` then
+      // outranks the seed — so a guess cached once would cost every later retry its oracle
+      // with no way to self-heal. A short batch never matches either, so what a caller can be
+      // handed is only ever evidence.
+      if (established && batch === known) onPageSize?.(known);
       batch = 0;
     }
     previousRows = rows;

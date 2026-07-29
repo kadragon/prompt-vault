@@ -176,6 +176,20 @@ export interface LoadMoreOptions {
    * such evidence simply never calls it, and omitting it leaves the loop unchanged.
    */
   onIncomplete?: () => void;
+  /**
+   * A page size an earlier walk over the same list reported through `onPageSize`. A provider
+   * whose completeness evidence is page-size parity cannot derive that size on a **re-run over
+   * an already-loaded list** — everything rendered at the first read is the accumulated list,
+   * not one page — so the caller hands back what was measured before. Omit on a first walk.
+   */
+  knownPageSize?: number;
+  /**
+   * Fired with the page size the provider observed a full page arriving at, so the caller can
+   * cache it for the next call's `knownPageSize`. Only ever fired for a size real evidence
+   * established; a provider with no page structure to read simply never calls it. May fire more
+   * than once with the same value.
+   */
+  onPageSize?: (size: number) => void;
 }
 
 /** Polling knobs for `openConversation`'s wait-for-render loop. */

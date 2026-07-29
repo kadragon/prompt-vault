@@ -1,22 +1,5 @@
 ## Review Backlog
 
-### Bulk panel "Load more" — parity patience is lost on the retry it asks for
-
-- [ ] [FIX] `pageParityGate` seeds its page size from the rows already rendered at the walk's
-      first read, which is correct on a fresh sidebar (measured: the initial render IS one page)
-      but wrong on a **re-run over an already-loaded list** — the seed is then the whole list, no
-      increment ever matches it, and the gate goes quiet. So the retry the incomplete-warning
-      explicitly asks the user to make gets only the 10 s dwell, not the 20 s parity-backed wait,
-      which is backwards: the retry is exactly when a page is most likely still owed. Not a
-      correctness hole — `bulk-panel.ts` carries the doubt across clicks, so a stalled retry keeps
-      warning rather than latching "All conversations loaded" (covered by a test) — but it does
-      mean the retry is less likely to actually land the missing page than the first attempt was.
-      Fix by threading the established page size back out of the walk and into the next call
-      (an `onPageSize`/`knownPageSize` pair on `LoadMoreOptions`) so a retry seeds from measured
-      evidence instead of re-guessing. Deliberately out of scope of PR #48, which fixed the two
-      review findings without widening the adapter interface. See the seeding comment in
-      `src/adapters/chatgpt/index.ts` → `pageParityGate`.
-
 ### Claude adapter — follow-ups from the 2026-07-25 live session
 
 - [ ] [VERIFY] *(blocked by: needs a live session on a conversation containing a text+attachment turn — see `docs/live-dom-verification.md`)*
