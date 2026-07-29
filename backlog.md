@@ -17,8 +17,45 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Extraction completeness
 
-- [ ] [FEAT] *(blocked by: needs a live session capturing the markup of a conversation mid-response — see `docs/live-dom-verification.md`)*
-      Give the Claude walk a real termination condition — one that can tell "the newest turn
+> Unblocked by the 2026-07-29 live session. Each item names the function or file the fix lands in,
+> with the evidence in `docs/live-dom-verification.md` → 2026-07-29. Every one can be *started*
+> without another session, but two carry a measurement gap named in the item itself: the
+> termination-condition item turns on how `data-is-streaming` reads on a recycled row, and the
+> Claude attachment fix must handle either tile shape because what selects between them was not
+> established.
+
+- [ ] [FIX] Claude: an attachment-only turn whose file renders as a **file card** blocks the whole
+      export. `attachmentMarkers` (`src/adapters/claude/index.ts`) only matches the preview-tile
+      shape `button > img[alt]`, so a `.txt` (or pasted-image) turn is claimed by neither path and
+      `buildMessages` reports a gap — measured 9 of 10 rows claimed. Add the card shape
+      (`[data-testid="file-thumbnail"]`, name in its `h3`) to `selectors.attachmentImage`'s
+      counterpart and keep the `action-bar-edit` guard. Match on **either** shape rather than
+      dispatching on file type: a PNG was measured producing each one (600×400 → tile, 4×4 → card),
+      so what selects between them is unknown. Reproducing test first.
+- [ ] [FIX] Gemini: a **generated-image** response leaves `.markdown` present but EMPTY, so
+      `readExchange` throws `unreadableExchangeError` and tells the user to wait and retry — advice
+      that can never clear, which is precisely what `unreadableResponseError` exists to avoid.
+      Give the assistant half an escape marker instead of a throw when `model-response` holds a
+      `generated-image`. Do not model it on the user half's `[Image]` without checking that one
+      first: `readUserContent` narrows to `.query-text`, which was measured to hold no `<img>`, so
+      its own fallback is only reachable when no `.query-text` renders — unproven for an image-only
+      prompt. Canvas/immersive is NOT affected — it exports fine.
+- [ ] [FIX] Claude: an **expanded** extended-thinking block adds a second `.standard-markdown` to
+      the row, and `buildMessages` joins it into the assistant's message — so the export silently
+      depends on whether the user had the block open. Exclude containers under an ancestor carrying
+      `data-timeline-text`.
+- [ ] [FEAT] Claude: report attachments on **mixed** turns (text + file). Today `attachmentMarkers`
+      runs only on rows the turn query did not claim, so a mixed turn exports its text and says
+      nothing about the file, in either tile shape. Safe to scan claimed rows: measured
+      `imgsInsideUserMessage` 0 across every turn, so the tiles are never in the turn body.
+- [ ] [FEAT] Claude: an **artifact** is omitted from the export — its card sits outside
+      `.standard-markdown`. Emit a marker from the card (title + kind, e.g. `HTML`).
+- [ ] [FEAT] Gemini: markers for prompt attachments, from
+      `user-query-file-carousel > user-query-file-preview`. `[File: <name>.<ext>]` for
+      `uploaded-file` by joining `filename-label` with a lowercased `extension-label`; a generic
+      `[Image]` for `uploaded-img`, which exposes no name (its `alt` is a localized string and must
+      not be read as one).
+- [ ] [FEAT] Give the Claude walk a real termination condition — one that can tell "the newest turn
       stopped growing" from "the newest turn is off-screen". PR #36 established that
       `aria-setsize` cannot do this on its own: the walk collects the bottom turn as a fragment,
       the virtualizer recycles that row away, and every "is it complete / has it gone quiet?"
@@ -26,12 +63,19 @@ continuation line is invisible to it and the blocked item is offered as actionab
       (measured: early exit at round 17 exporting a 4-character fragment vs 32 rounds exporting
       the full answer — see `docs/live-dom-verification.md` → "a declared total is an oracle, not
       a termination condition"). Today the walk therefore runs both passes to their scroll ends,
-      which is correct but pays a full second traversal on every export. A fix needs a
-      **stream-completion signal** — whatever Claude renders while generating (a stop button, an
-      `aria-busy`, a streaming class on the turn) — and none of it has been measured, so it must
-      not be guessed at (AGENTS.md #5). Note the same signal would also improve on today's
-      behavior at the bottom, where the walk stops on scroll-settle regardless of whether the
-      last turn is still growing.
+      which is correct but pays a full second traversal on every export. The
+      **stream-completion signal** this needs was measured 2026-07-29 and is
+      **`data-is-streaming`**: one node per assistant row, on a div wrapping `.standard-markdown`,
+      `"true"` only while that turn generates and `"false"` on every completed turn including
+      after a reload (420 samples / 84 s — see `docs/live-dom-verification.md` → Claude →
+      2026-07-29). Two constraints the implementation must respect: it flips `false` in the same
+      200 ms sample as the final text chunk, so it marks the end but grants no quiet-period
+      margin; and the row appears ~1.2 s *before* its stream node exists, so "no node yet" must
+      not read as "finished". Still unmeasured, and the case this item actually turns on: how the
+      attribute reads on a row the virtualizer has already recycled — settle that before relying
+      on it to end the walk. Note the same signal would also improve on today's behavior at the
+      bottom, where the walk stops on scroll-settle regardless of whether the last turn is still
+      growing.
 
 ## Next (roadmap — not v1)
 

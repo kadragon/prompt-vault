@@ -408,6 +408,13 @@ function assertNotStreaming(root: ParentNode): void {
  *   consistent with a half-rendered page, where retrying does help (`unreadableExchangeError`);
  * - a container with neither half — markup this adapter does not understand.
  *
+ * **The split above is measurably wrong for one shape (2026-07-29).** A generated-image response
+ * renders its prose container PRESENT but EMPTY and stays that way, so it takes the second branch
+ * and is handed the retry advice — a dead end, the exact outcome this split exists to prevent.
+ * Present-but-empty is therefore not always a half-rendered page. Correcting the routing is a
+ * behaviour change, queued in backlog.md; see `unreadableResponseError` below and
+ * docs/live-dom-verification.md → Gemini → 2026-07-29.
+ *
  * A container holding a prompt and NO `model-response` is not a failure: that is an exchange
  * whose answer was stopped or never started, and exporting the prompt alone drops nothing.
  */
@@ -444,9 +451,14 @@ function unreadableExchangeError(): ExtractionError {
  * A response that rendered no prose container at all. Deliberately worded differently from
  * `unreadableExchangeError`: this shape does not resolve by waiting, so telling the user the
  * conversation "may still be loading" would send them into a retry loop that can never clear.
- * Which shapes reach here is unmeasured — a generated image or a canvas/immersive panel are the
- * plausible candidates, and neither was present in the measured conversations — so it is tracked
- * as a `[VERIFY]` rather than guessed at with a selector (AGENTS.md #5).
+ *
+ * Measured 2026-07-29: **neither candidate reaches here.** A generated image and a
+ * Canvas/immersive response BOTH render a `.markdown`. Canvas fills it (221 chars — it exports
+ * fine, only the panel's own document is left behind), and a generated image leaves it EMPTY,
+ * which falls to `unreadableExchangeError` instead — so the never-clearing retry advice this
+ * function exists to avoid is exactly what that shape currently produces. Fixing that is a
+ * behaviour change, tracked in backlog.md. See docs/live-dom-verification.md → Gemini →
+ * 2026-07-29. Which shapes, if any, DO render no container at all remains unmeasured.
  */
 function unreadableResponseError(): ExtractionError {
   return new ExtractionError(
@@ -490,11 +502,26 @@ function readUserContent(query: Element): string {
   // yielding empty — an empty turn fails the WHOLE export, so one image-only message would
   // block the conversation entirely. `img` is a standard tag, not a guessed Gemini selector.
   //
-  // Narrower than "attachments are handled": no user turn carrying a file or image was
-  // captured in the measured conversations (`user-query img` was 0 throughout), so how
-  // Gemini renders an attachment tile — and whether it sits inside `user-query` at all — is
-  // unknown and tracked as a `[VERIFY]`. Guessing at a tile selector would risk reporting a
-  // fabricated file name (AGENTS.md #5).
+  // Measured 2026-07-29, which settles where the tiles live: inside `user-query` but OUTSIDE
+  // `.query-text`, as `user-query-file-carousel > user-query-file-preview` (one per file). The
+  // earlier `user-query img` count of 0 was an artifact of no measured conversation having had
+  // an attachment, not evidence of absence — with one attached it reads 1.
+  //
+  // The asymmetry that still constrains what a marker may say: an IMAGE preview
+  // (`[data-test-id="uploaded-img"]`) exposes NO file name anywhere, and its `alt` is a
+  // localized generic string ("업로드된 이미지 미리보기"), so unlike Claude it must not be read
+  // as a name — a generic `[Image]` is the most that can be said. A non-image file
+  // (`[data-test-id="uploaded-file"]`) does carry one, but only as `filename-label` (basename)
+  // plus an uppercase `extension-label`, so a `[File: …]` marker means joining the two rather
+  // than reading an attribute. See docs/live-dom-verification.md → Gemini → 2026-07-29.
+  //
+  // `[unknown]` — that same measurement makes this line's REACHABILITY unverified. `scope` narrows
+  // to `.query-text` whenever it exists, and the tiles were measured to sit outside it (and
+  // `.query-text` held no `<img>`), so this can only fire through the `?? query` fallback — i.e.
+  // when a prompt renders no `.query-text` at all. Whether an image-ONLY prompt does that was not
+  // exercised (the measured prompt carried text plus files). If it renders an empty `.query-text`
+  // instead, this returns '' and `readExchange` throws, blocking the export — so treat the
+  // user-half `[Image]` as unproven for that case rather than as working cover (AGENTS.md #5).
   if (scope.querySelector('img')) return '[Image]';
   return '';
 }

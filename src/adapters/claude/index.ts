@@ -517,12 +517,17 @@ function readUserContent(el: Element): string {
   // image-only message would block the conversation entirely. `img` is a standard tag, not
   // a guessed Claude selector.
   //
-  // What was measured (2026-07-25) is narrower than "attachments are handled": an
-  // attachment-ONLY user turn renders no `user-message` node at all, and `attachmentMarkers`
-  // claims that row a level up. A turn holding text AND a file was never captured, so where
-  // its tiles sit relative to this node is unknown — such a turn still exports its text with
-  // the attachment unreported. Tracked as a `[VERIFY]` in tasks.md; guessing at the mixed
-  // layout would risk labelling a pasted image as a file, which is worse than the omission.
+  // Measured 2026-07-29: this fallback never fires for an attachment. Across four mixed turns
+  // and one attachment-only turn — files attached AND an image pasted, txt/pdf/png — the count
+  // of `<img>` inside `user-message` was **0 every time**; every tile sits outside this node,
+  // as a sibling subtree earlier in the row. So the mixed-turn layout is no longer unknown, and
+  // the worry that a row-level scan would sweep up a pasted image inside the turn body is
+  // disproved. What remains true is the omission: a mixed turn exports its text and reports
+  // nothing about the file, because `attachmentMarkers` runs only on rows the turn query did
+  // not claim. See docs/live-dom-verification.md → Claude → 2026-07-29.
+  //
+  // Kept anyway: it costs nothing, and it is the safe direction if Claude ever does render an
+  // image inside the turn body — an empty turn would otherwise fail the WHOLE export.
   if (el.querySelector('img')) return '[Image]';
   return '';
 }

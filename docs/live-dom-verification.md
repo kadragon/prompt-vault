@@ -36,12 +36,24 @@ a user-scoped Claude plugin (`playwright@claude-plugins-official`), configured w
 may be absent or configured differently; confirm it is available before promising a live session,
 and re-read its config rather than assuming the flags below.
 
-- **The login does not survive.** With no `--user-data-dir`, `--help` states "a temporary directory
-  will be created" — a fresh profile per run. Every session starts logged out. Ask the user to log
-  in; never try to reuse, read, or transplant their credentials.
-- Two ways to avoid the re-login, **neither currently configured** (each needs an MCP config change,
-  so propose it, don't assume it):
-  - `--user-data-dir <path>` pinned to a stable directory, so the profile persists.
+- **The login now survives — corrected 2026-07-29.** This previously read "every session starts
+  logged out", on the strength of `--help` saying a temporary directory would be created. Measured:
+  a session opened straight onto a **logged-in** claude.ai *and* gemini.google.com with no login
+  step performed at any point. Three facts were established, and the inference is left as one: the
+  MCP config was re-read and is unchanged (`npx @playwright/mcp@latest`, still no `--user-data-dir`,
+  still no `--extension`); the server that ran was **v0.0.78**; and persistent profile directories
+  exist on disk under `~/Library/Caches/ms-playwright-mcp/mcp-chrome-*` (with older ones under
+  `~/Library/Caches/ms-playwright/mcp-chrome-*`). Since nothing in the config asks for persistence,
+  the server is evidently providing it — but *that v0.0.78 is the version which introduced it* was
+  not tested. So plan for a live session **without** budgeting a login round trip, and re-check
+  rather than assume: this is the server's behaviour, not something the repo pins or controls.
+  Never try to reuse, read, or transplant
+  the user's credentials; the profile persisting means their logged-in session sits on disk between
+  runs, which is worth knowing before pointing the browser at anything sensitive.
+- Two ways to make persistence explicit rather than incidental, **neither currently configured**
+  (each needs an MCP config change, so propose it, don't assume it):
+  - `--user-data-dir <path>` pinned to a stable directory, so the profile does not depend on the
+    server's default.
   - `--extension` — attach to the user's already-running Chrome. Requires the "Playwright
     Extension" to be installed (Edge/Chrome only).
 - **The MCP browser CAN run the unpacked extension** — corrected 2026-07-25, having been recorded
@@ -49,9 +61,11 @@ and re-read its config rather than assuming the flags below.
   `[CONSTRAINT]`. The MCP config
   passes no `--load-extension`, but the browser it launches is an ordinary Chromium whose
   extensions page is available, so loading `dist/` by hand in the *running* browser works and the
-  content script injects normally. **Read that narrowly:** the capability is per-session, not
-  persistent. The profile is temporary (see the login bullet above), so the by-hand load is a human
-  step that repeats every run, exactly like the login — what became automatable is everything
+  content script injects normally. **Read that narrowly:** what was measured is that the load
+  *works*, not that it survives. Whether a hand-loaded unpacked extension outlives a browser restart
+  is `[unknown — not measured 2026-07-29]`. It used to be inferred from the profile being temporary,
+  but that premise was retracted by the login bullet above, so budget the by-hand load as a human
+  step that *may* repeat each run and check rather than assume — what is automatable is everything
   *after* it. Three consequences, each measured in the sessions recorded below:
   - `chrome://extensions/` **is scriptable**. The extension's id, version and enabled state read
     out of `extensions-manager`'s nested shadow roots, and `#dev-reload-button` can be clicked to
@@ -127,6 +141,14 @@ interval — published as `35 × 1008 px` where the totals in the same table req
 independent reviewers each flagged that the arithmetic did not close. Neither is a measurement problem;
 both are bookkeeping. Keep the full per-round array until the write-up is reviewed, and check that every
 per-unit figure reconciles with the totals printed beside it.
+
+**The record must also hold the evidence gathered *outside* the measurement loop.** On 2026-07-29 the
+environment checks behind a correction to this very file — the MCP server's `--version`, the three
+`.mcp.json` copies, the on-disk profile directories — were run in-session but never written down, so
+the resulting doc claim was unbackable from the record and an independent reviewer read it as
+fabricated. Tooling, version and path facts feel like context rather than measurement, which is
+exactly why they get dropped. Write them into the record with the DOM numbers: the test is not "did I
+check this?" but "could someone holding only the record confirm it?"
 
 ## Verified findings
 
@@ -589,6 +611,10 @@ are real at ordinary scale, so neither the walk nor `buildMessages` may assume 1
   hypothesis, but nothing in the row distinguishes them, so it is not established that any of those
   three features was present in the measured conversation at all. What IS established: a multi-block
   assistant turn exists and exports intact.
+  **Partly settled 2026-07-29** (see the entry below): expanding a turn's extended-thinking block
+  adds a second, un-nested `.standard-markdown` to the row, which is one way a multi-block row
+  arises — and one the join path exports as message content. It does not establish that *this* row's
+  four blocks were thinking; a four-block row was not reproduced.
 
 ### 2026-07-25 (second walk) — role is decidable from the action bar, and `aria-setsize` declares the total
 
@@ -794,6 +820,119 @@ the body background `rgb(249,249,247)` → `rgb(32,32,31)`.
 Scope limit: **one** conversation. This establishes that the shipped walk completes on a real
 56-row recycling list, not that it does at every length.
 
+### 2026-07-29 — attachments render in TWO shapes, and only one of them is matched
+
+Measured on a purpose-built 10-row conversation (four mixed turns plus one attachment-only turn),
+each attachment created in the session rather than found, so the shapes are attributable to a known
+file rather than inferred. Both shapes sit **outside** `[data-testid="user-message"]`.
+
+| Shape | Markup | Seen for | Matched by shipped `attachmentImage` |
+|-------|--------|----------|--------------------------------------|
+| A — preview tile | `div[data-testid="<filename>"] > button > img[alt="<filename>"]` | a PDF; a 600×400 PNG | **yes** |
+| B — file card | `div[data-testid="file-thumbnail"] > button > div > h3` (h3 text = filename) | a `.txt`; a 4×4 PNG; a pasted image | **no** — the row holds no `<img>` at all |
+
+Shape B also carries the name on the button's `aria-label`, but as `"pv-probe-note.txt, txt, 4줄"` —
+localized and with extra metadata, so the `h3` is the only clean name source. A pasted image (a
+synthetic `ClipboardEvent` that Claude's handler accepted — it called `preventDefault`) produced
+shape B under a Claude-generated name, `1785297473105_pasted-probe.png`.
+
+**`[unknown]` — what selects shape A over shape B was not established.** Read the "Seen for" column
+as a record of what each *specific file* produced, not as a rule: a PNG appears in **both** rows
+(600×400 → A, 4×4 → B), which rules out file type as the determinant. Whether it turns on
+dimensions, on a thumbnail being generated successfully, on paste-vs-attach, or on something else
+was not measured (AGENTS.md #5). A fix must therefore handle **either** shape appearing for the same
+kind of file rather than dispatching on extension.
+
+**Two consequences, both live today.**
+
+- **An attachment-ONLY turn whose file takes shape B blocks the whole export.** The shipped
+  row-claim logic, replayed verbatim on the probe conversation: `declaredSetsize` 10,
+  `renderedRows` 10, **claimed 9**. Row 8 — the `.txt`-only turn — is claimed by neither the turn
+  query (no `user-message` node) nor `attachmentMarkers` (`shippedTileMatches` 0), so it reaches
+  `buildMessages` as a gap. `viaAttachmentMarkers` was `[]` for the entire conversation. This is
+  the pre-PR #35 failure mode, still reachable for every shape-B attachment.
+- **In a mixed turn the attachment is unreported either way**, because `attachmentMarkers` runs
+  only on rows the turn query did *not* claim. Silent omission, not a failure.
+
+**The `[VERIFY]` item's blocking worry is disproved.** It was held back because scanning a *claimed*
+row might sweep up a pasted image inside `user-message` and mislabel it `[File: …]`. Measured:
+`imgsInsideUserMessage` was **0 in every row** of the conversation — attached or pasted, txt/pdf/png.
+Attachments never render inside the turn body, so a row-level scan cannot reach turn-body content.
+`readUserContent`'s `if (el.querySelector('img')) return '[Image]'` fallback never fired.
+
+Position of a shape-B tile relative to the text body (row 0): neither contains the other, common
+ancestor 4 levels below the row (tile at depth 8, `user-message` at depth 9), tile **first** in
+document order.
+
+### 2026-07-29 — `data-is-streaming` is a real stream-completion signal
+
+On a **settled** conversation — one reloaded, or one whose last turn has finished — there is exactly
+**one** `[data-is-streaming]` node per assistant row (4 nodes / 4 assistant rows); user rows carry
+none. It is a `div` wrapping `.standard-markdown`, and the value survives a full page reload as
+`"false"` on every completed turn.
+
+**That invariant does not hold during generation, and absence must never be read as "finished".**
+The table below measures an assistant row existing for ~1.2 s *before* its stream node is mounted
+(rows go 6→8 at t=21455 while the node count stays at 3 until t=22631). So on a live conversation
+absence means "not an assistant row **or not yet mounted**" — a walk that treats a missing node as a
+completed turn would terminate on a turn that has not started rendering, which is the truncation
+PR #36 exists to prevent. `backlog.md`'s termination-condition item states the same rule.
+
+Transition measured with an in-page 200 ms recorder — **420 samples over 84.0 s**, the full array
+kept until write-up:
+
+| t (ms) | what changed |
+|--------|--------------|
+| 203 | baseline: 6 rows, 3 stream nodes, none `true` |
+| 21455 | rows 6→8, `aria-setsize` 6→8, new row text 26 chars — **the row exists before its stream node does** |
+| 22631 | stream nodes 3→4, `true` count 0→1 — generating |
+| 39439 | `true` count 1→0, retry buttons 3→4, text settles at 3727 chars |
+
+Generating window ≈ 16.6 s (`firstStreamTrue` 22631, `lastStreamTrue` 39201). **Unlike Gemini's
+`aria-busy`**, which stayed `true` ~2.4 s *after* its text stopped growing, Claude's flag flips
+`false` in the same 200 ms sample as the final text chunk (`lastTextGrowth` 39439) — a definitive
+end marker with no trailing margin, so it must not be read as a quiet-period guarantee. No stop
+button was observable by `aria-label` in any of the 420 samples.
+
+This is the signal the backlog item wanted for a real termination condition; what remains unmeasured
+is how it reads on a row the virtualizer has recycled away, which is the case that item cares about.
+
+### 2026-07-29 — artifacts, tool calls and extended thinking
+
+Probe conversation: an artifact request, a web search, and two prose answers. Re-measured after a
+full page reload — 8 rows, `aria-setsize` 8, **`unclaimedRows` empty**. None of the three features
+yields a row the adapter cannot claim, which settles the structural half the second 2026-07-25 walk
+left open.
+
+What sits **outside** `.standard-markdown` on an assistant row, and is therefore not exported
+(`outsideMdChars` 262 / 179 / 303 / 250):
+
+- an `h2` screen-reader heading, `"Claude 응답: <first chars of the answer>"` — a duplicate of the
+  prose, correctly excluded;
+- the collapsed thinking / tool-summary chip;
+- **the artifact card** — `"Pv probe artifact"` / `"코드"` / `"·"` / `"HTML"` / `"다운로드"`. An
+  artifact is silently omitted from the export; the row still exports its prose;
+- the action-bar labels.
+
+Web-search **citation links are inside** `.standard-markdown` (`npmjs.com`, `github.com`), so
+sources survive the export.
+
+**Expanded extended thinking leaks into the message.** Clicking the thinking chip on the web-search
+row took `.standard-markdown` from 1 to 2 (not nested) and the turn query from 1 match to 2:
+`md[0]` is the thinking text (55 chars), `md[1]` the answer (1213). `buildMessages` joins every turn
+node in a row, so with a thinking block expanded the thinking text is prepended to the assistant
+message. This establishes one mechanism that produces a **multi-block** row; it does not explain the
+2026-07-25 "one row with four turn nodes" observation, which was not reproduced here (measured
+1 → 2 blocks, not four). See the note added to that entry above.
+
+Discriminator, measured rather than guessed: the thinking block has an ancestor carrying
+**`data-timeline-text`** (class `group/timeline-text`) three levels above the `.standard-markdown`.
+The answer block has no such ancestor.
+
+Scope limit: two purpose-built conversations on one account. Every attachment and feature was
+created in-session, so these are the shapes *this* account produces today — not proof that no other
+shape exists.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
@@ -971,7 +1110,7 @@ numbers that turned review arguments into measurements:
   restored `9157`) — because paging grew the list from 5019 to 10065 ABOVE them. The walk restores
   distance from the bottom instead, which is invariant under prepending.
 
-**Still unverified, and deliberately not guessed at** (tracked in `backlog.md` / `tasks.md`):
+**Still unverified, and deliberately not guessed at** (tracked in `backlog.md`):
 
 - **What a landing batch does to `scrollTop`.** A browser preserving visual position shifts the
   viewport down by the prepended height; scroll anchoring turned off, or a virtualizer managing its
@@ -979,14 +1118,17 @@ numbers that turned review arguments into measurements:
   the walk was still climbing, so neither outcome was isolated. The walk is written to survive both
   — that is what the settle condition's "is the list still changing?" term is for, and the test
   fake models both shapes explicitly (`batchLandingShiftsViewport`).
-- **Responses that render no `.markdown` at all.** Every measured response was prose and code. A
-  generated image or a canvas/immersive panel plausibly renders outside the prose container, and one
-  such response currently fails the whole export — loudly, with a "please report this" message
-  rather than the retry advice that could never clear it, but it does block the conversation.
-  Tracked as a `[VERIFY]` in `tasks.md`.
-- **Prompts carrying files or images.** `user-query img` was 0 across every measured conversation,
-  so how an attachment tile renders — and whether it sits inside `user-query` at all — is unknown.
-  Guessing a tile selector would risk reporting a fabricated file name (AGENTS.md #5).
+- ~~**Responses that render no `.markdown` at all.**~~ **Resolved 2026-07-29 — see the entry above.**
+  The premise was wrong: a generated image and a Canvas/immersive response BOTH render a
+  `.markdown`. Canvas fills it and exports fine; a generated image leaves it EMPTY, which reaches
+  `unreadableExchangeError` — the retry advice that can never clear — rather than the "please report
+  this" message this bullet assumed. Whether any shape renders no container at all is still open.
+- ~~**Prompts carrying files or images.**~~ **Resolved 2026-07-29 — see the entry above.** The tiles
+  sit inside `user-query` but outside `.query-text`, as
+  `user-query-file-carousel > user-query-file-preview`. The old `user-query img` count of 0 was an
+  artifact of no measured conversation having had an attachment. A name is available for a non-image
+  file only, by joining `filename-label` with a lowercased `extension-label`; an image exposes none,
+  so `[Image]` remains the honest limit (AGENTS.md #5).
 - **The Gems and project routes**, and the **sidebar bulk track**. The sidebar was observed only in
   passing (33 `[data-test-id="conversation"]` anchors inside its own `infinite-scroller`); its
   paging shape was never measured.
@@ -1052,6 +1194,64 @@ comparable with a plain icon button's. The evidence is the inversion, not a matc
 
 Scope limit: two conversations on one account, both prose/code or one-word answers, no attachments
 and no Gems.
+
+### 2026-07-29 — a generated image renders an EMPTY `.markdown`, not a missing one
+
+Measured on a purpose-built conversation with three exchanges, replaying `readExchange`'s branches
+verbatim per exchange:
+
+| Exchange | `.markdown` | prose length | adapter verdict |
+|----------|-------------|--------------|-----------------|
+| prose reply | present | 2 | exports ok |
+| **generated image** | **present** | **0** | **throws `unreadableExchangeError`** |
+| Canvas / immersive | present | 221 | exports ok |
+
+**The `[VERIFY]` item's premise is disproved.** It assumed these shapes "render no `.markdown`
+container at all" and would surface through `unreadableResponseError`. Both named candidates render
+one. The real failure is a *present-but-empty* container, which falls to `readExchange`'s
+`if (!content) throw unreadableExchangeError()` — so the user is told the conversation *"may still
+be loading — wait for it to finish, then try again"*, which is exactly the never-clearing retry loop
+that `unreadableResponseError`'s doc comment exists to avoid. Wrong message, and the whole
+conversation is still blocked.
+
+The generated image lives in `model-response` beside the empty prose container, as
+`generated-image > single-image > img[alt=", AI로 생성"]` (alt is localized and carries no file
+name), alongside `image-loading-overlay` and `download-generated-image-button`.
+
+**Canvas is not a failure.** The immersive response keeps its prose summary in `.markdown` and puts
+the document behind an `immersive-entry-chip`; the panel's own content is not exported, which is an
+omission, not a blocked export. So only the generated-image shape needs the escape marker the item
+asked for.
+
+### 2026-07-29 — how a prompt carries a file or an image
+
+Same conversation, prompt = text + a 600×400 PNG + a `.txt`. The attachments sit inside `user-query`
+but **outside** `.query-text` (`carouselInsideQueryText` 0, and `.query-text` holds no `<img>`), so
+the existing `p.query-text-line` read is not polluted by them:
+
+```
+user-query > user-query-file-carousel > user-query-file-preview   (one per file)
+```
+
+| | image preview | non-image file |
+|---|---|---|
+| test id | `uploaded-img` | `uploaded-file` |
+| markup | `<img alt="업로드된 이미지 미리보기">` | `filename-label` + `extension-label` |
+| name available | **none** | `pv-probe-note` + `TXT` |
+
+`user-query img` came back **1** here. The earlier "0 across every measured conversation" reading
+was an artifact of no measured conversation having had an attachment — absence of the case, not
+evidence of absence.
+
+Two asymmetries decide what a marker can honestly say. For an **image**, Gemini exposes no file name
+anywhere in the tile, and the `alt` is a *localized generic string* — so unlike Claude, where `alt`
+IS the name, it must not be read as one; an image attachment can only ever get a generic `[Image]`.
+For a **non-image file**, a `[File: pv-probe-note.txt]` marker is reachable, but only by joining
+`filename-label` (basename, no extension) with a lowercased `extension-label` (rendered uppercase) —
+a derivation, not a verbatim attribute read.
+
+Scope limit: one purpose-built conversation on one account; video, music and Deep Research responses
+were not exercised.
 
 ## Capturing a fixture
 

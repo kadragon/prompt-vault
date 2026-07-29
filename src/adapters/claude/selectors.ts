@@ -29,6 +29,13 @@ export const selectors = {
    * live page (2026-07-25): no `.standard-markdown` is nested inside a
    * `[data-testid="user-message"]` (overlap count 0), so the two sets are disjoint and
    * a turn can never be counted twice.
+   *
+   * One row can still match TWICE for a reason that is not a second message: expanding a
+   * turn's extended-thinking block adds a second, un-nested `.standard-markdown` holding the
+   * thinking text (measured 2026-07-29 — matches went 1 → 2 on one row). `buildMessages` joins
+   * every match in a row, so an expanded block is exported as part of the assistant's message.
+   * The thinking container is distinguishable: it has an ancestor carrying `data-timeline-text`
+   * (class `group/timeline-text`), which the answer container does not.
    */
   turn: '[data-testid="user-message"], .standard-markdown',
 
@@ -104,6 +111,17 @@ export const selectors = {
    * `alt`-over-`data-testid` rationale above exists to avoid. Claude's `group/thumbnail`
    * wrapper class is avoided in favour of the standard tags. If Claude restructures the tile,
    * this stops matching and the row goes back to failing loud, which is the safe direction.
+   *
+   * **Re-verified 2026-07-29, and it covers only HALF the attachments Claude renders.** There
+   * are two tile shapes; this matches the first — a preview tile
+   * `div[data-testid="<filename>"] > button > img[alt="<filename>"]`, measured for a PDF and a
+   * 600×400 PNG. The second is a *file card*, `div[data-testid="file-thumbnail"] > button > div
+   * > h3` with the name in the `h3` text and **no `<img>` in the row at all**, measured for a
+   * `.txt`, a 4×4 PNG, and a pasted image. Nothing here matches that shape, so an
+   * attachment-ONLY turn carrying one is claimed by neither path and blocks the whole export,
+   * and in a mixed turn it is silently unreported. See docs/live-dom-verification.md → Claude →
+   * 2026-07-29. Deliberately not widened in that session: it is a behaviour change, tracked in
+   * backlog.md rather than smuggled in under a stamp.
    */
   attachmentImage: 'button > img[alt]',
 
