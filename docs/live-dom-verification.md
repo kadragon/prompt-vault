@@ -61,9 +61,11 @@ and re-read its config rather than assuming the flags below.
   `[CONSTRAINT]`. The MCP config
   passes no `--load-extension`, but the browser it launches is an ordinary Chromium whose
   extensions page is available, so loading `dist/` by hand in the *running* browser works and the
-  content script injects normally. **Read that narrowly:** the capability is per-session, not
-  persistent. The profile is temporary (see the login bullet above), so the by-hand load is a human
-  step that repeats every run, exactly like the login — what became automatable is everything
+  content script injects normally. **Read that narrowly:** what was measured is that the load
+  *works*, not that it survives. Whether a hand-loaded unpacked extension outlives a browser restart
+  is `[unknown — not measured 2026-07-29]`. It used to be inferred from the profile being temporary,
+  but that premise was retracted by the login bullet above, so budget the by-hand load as a human
+  step that *may* repeat each run and check rather than assume — what is automatable is everything
   *after* it. Three consequences, each measured in the sessions recorded below:
   - `chrome://extensions/` **is scriptable**. The extension's id, version and enabled state read
     out of `extensions-manager`'s nested shadow roots, and `#dev-reload-button` can be clicked to
@@ -139,6 +141,14 @@ interval — published as `35 × 1008 px` where the totals in the same table req
 independent reviewers each flagged that the arithmetic did not close. Neither is a measurement problem;
 both are bookkeeping. Keep the full per-round array until the write-up is reviewed, and check that every
 per-unit figure reconciles with the totals printed beside it.
+
+**The record must also hold the evidence gathered *outside* the measurement loop.** On 2026-07-29 the
+environment checks behind a correction to this very file — the MCP server's `--version`, the three
+`.mcp.json` copies, the on-disk profile directories — were run in-session but never written down, so
+the resulting doc claim was unbackable from the record and an independent reviewer read it as
+fabricated. Tooling, version and path facts feel like context rather than measurement, which is
+exactly why they get dropped. Write them into the record with the DOM numbers: the test is not "did I
+check this?" but "could someone holding only the record confirm it?"
 
 ## Verified findings
 
@@ -826,6 +836,13 @@ localized and with extra metadata, so the `h3` is the only clean name source. A 
 synthetic `ClipboardEvent` that Claude's handler accepted — it called `preventDefault`) produced
 shape B under a Claude-generated name, `1785297473105_pasted-probe.png`.
 
+**`[unknown]` — what selects shape A over shape B was not established.** Read the "Seen for" column
+as a record of what each *specific file* produced, not as a rule: a PNG appears in **both** rows
+(600×400 → A, 4×4 → B), which rules out file type as the determinant. Whether it turns on
+dimensions, on a thumbnail being generated successfully, on paste-vs-attach, or on something else
+was not measured (AGENTS.md #5). A fix must therefore handle **either** shape appearing for the same
+kind of file rather than dispatching on extension.
+
 **Two consequences, both live today.**
 
 - **An attachment-ONLY turn whose file takes shape B blocks the whole export.** The shipped
@@ -849,9 +866,17 @@ document order.
 
 ### 2026-07-29 — `data-is-streaming` is a real stream-completion signal
 
-Exactly **one** `[data-is-streaming]` node per assistant row (4 nodes / 4 assistant rows); user rows
-carry none. It is a `div` wrapping `.standard-markdown`. The value survives a full page reload as
-`"false"` on every completed turn, so absence means "not an assistant row", not "unknown".
+On a **settled** conversation — one reloaded, or one whose last turn has finished — there is exactly
+**one** `[data-is-streaming]` node per assistant row (4 nodes / 4 assistant rows); user rows carry
+none. It is a `div` wrapping `.standard-markdown`, and the value survives a full page reload as
+`"false"` on every completed turn.
+
+**That invariant does not hold during generation, and absence must never be read as "finished".**
+The table below measures an assistant row existing for ~1.2 s *before* its stream node is mounted
+(rows go 6→8 at t=21455 while the node count stays at 3 until t=22631). So on a live conversation
+absence means "not an assistant row **or not yet mounted**" — a walk that treats a missing node as a
+completed turn would terminate on a turn that has not started rendering, which is the truncation
+PR #36 exists to prevent. `backlog.md`'s termination-condition item states the same rule.
 
 Transition measured with an in-page 200 ms recorder — **420 samples over 84.0 s**, the full array
 kept until write-up:
@@ -896,7 +921,9 @@ sources survive the export.
 row took `.standard-markdown` from 1 to 2 (not nested) and the turn query from 1 match to 2:
 `md[0]` is the thinking text (55 chars), `md[1]` the answer (1213). `buildMessages` joins every turn
 node in a row, so with a thinking block expanded the thinking text is prepended to the assistant
-message. This is the likely origin of the 2026-07-25 "one row with four turn nodes" observation.
+message. This establishes one mechanism that produces a **multi-block** row; it does not explain the
+2026-07-25 "one row with four turn nodes" observation, which was not reproduced here (measured
+1 → 2 blocks, not four). See the note added to that entry above.
 
 Discriminator, measured rather than guessed: the thinking block has an ancestor carrying
 **`data-timeline-text`** (class `group/timeline-text`) three levels above the `.standard-markdown`.

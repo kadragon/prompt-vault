@@ -17,22 +17,29 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Extraction completeness
 
-> The 2026-07-29 live session measured every shape below. Each item names the file:line the fix
-> lands in and the evidence in `docs/live-dom-verification.md`; none of them needs another
-> session to *start*.
+> Unblocked by the 2026-07-29 live session. Each item names the function or file the fix lands in,
+> with the evidence in `docs/live-dom-verification.md` → 2026-07-29. Every one can be *started*
+> without another session, but two carry a measurement gap named in the item itself: the
+> termination-condition item turns on how `data-is-streaming` reads on a recycled row, and the
+> Claude attachment fix must handle either tile shape because what selects between them was not
+> established.
 
 - [ ] [FIX] Claude: an attachment-only turn whose file renders as a **file card** blocks the whole
       export. `attachmentMarkers` (`src/adapters/claude/index.ts`) only matches the preview-tile
       shape `button > img[alt]`, so a `.txt` (or pasted-image) turn is claimed by neither path and
       `buildMessages` reports a gap — measured 9 of 10 rows claimed. Add the card shape
       (`[data-testid="file-thumbnail"]`, name in its `h3`) to `selectors.attachmentImage`'s
-      counterpart and keep the `action-bar-edit` guard. Reproducing test first.
+      counterpart and keep the `action-bar-edit` guard. Match on **either** shape rather than
+      dispatching on file type: a PNG was measured producing each one (600×400 → tile, 4×4 → card),
+      so what selects between them is unknown. Reproducing test first.
 - [ ] [FIX] Gemini: a **generated-image** response leaves `.markdown` present but EMPTY, so
       `readExchange` throws `unreadableExchangeError` and tells the user to wait and retry — advice
       that can never clear, which is precisely what `unreadableResponseError` exists to avoid.
-      Give the assistant half an escape marker (an `[Image]` mirroring the user half) instead of a
-      throw when `model-response` holds a `generated-image`. Canvas/immersive is NOT affected —
-      it exports fine.
+      Give the assistant half an escape marker instead of a throw when `model-response` holds a
+      `generated-image`. Do not model it on the user half's `[Image]` without checking that one
+      first: `readUserContent` narrows to `.query-text`, which was measured to hold no `<img>`, so
+      its own fallback is only reachable when no `.query-text` renders — unproven for an image-only
+      prompt. Canvas/immersive is NOT affected — it exports fine.
 - [ ] [FIX] Claude: an **expanded** extended-thinking block adds a second `.standard-markdown` to
       the row, and `buildMessages` joins it into the assistant's message — so the export silently
       depends on whether the user had the block open. Exclude containers under an ancestor carrying

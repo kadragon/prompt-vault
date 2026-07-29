@@ -408,6 +408,13 @@ function assertNotStreaming(root: ParentNode): void {
  *   consistent with a half-rendered page, where retrying does help (`unreadableExchangeError`);
  * - a container with neither half — markup this adapter does not understand.
  *
+ * **The split above is measurably wrong for one shape (2026-07-29).** A generated-image response
+ * renders its prose container PRESENT but EMPTY and stays that way, so it takes the second branch
+ * and is handed the retry advice — a dead end, the exact outcome this split exists to prevent.
+ * Present-but-empty is therefore not always a half-rendered page. Correcting the routing is a
+ * behaviour change, queued in backlog.md; see `unreadableResponseError` below and
+ * docs/live-dom-verification.md → Gemini → 2026-07-29.
+ *
  * A container holding a prompt and NO `model-response` is not a failure: that is an exchange
  * whose answer was stopped or never started, and exporting the prompt alone drops nothing.
  */
@@ -507,6 +514,14 @@ function readUserContent(query: Element): string {
   // (`[data-test-id="uploaded-file"]`) does carry one, but only as `filename-label` (basename)
   // plus an uppercase `extension-label`, so a `[File: …]` marker means joining the two rather
   // than reading an attribute. See docs/live-dom-verification.md → Gemini → 2026-07-29.
+  //
+  // `[unknown]` — that same measurement makes this line's REACHABILITY unverified. `scope` narrows
+  // to `.query-text` whenever it exists, and the tiles were measured to sit outside it (and
+  // `.query-text` held no `<img>`), so this can only fire through the `?? query` fallback — i.e.
+  // when a prompt renders no `.query-text` at all. Whether an image-ONLY prompt does that was not
+  // exercised (the measured prompt carried text plus files). If it renders an empty `.query-text`
+  // instead, this returns '' and `readExchange` throws, blocking the export — so treat the
+  // user-half `[Image]` as unproven for that case rather than as working cover (AGENTS.md #5).
   if (scope.querySelector('img')) return '[Image]';
   return '';
 }
