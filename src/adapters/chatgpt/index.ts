@@ -113,9 +113,12 @@ export interface LoadMoreScrollOptions extends AutoScrollOptions {
    * own first-read seed would be the whole list rather than one page. Omit on a first walk over
    * a fresh sidebar, where the seed is the measured truth.
    *
-   * A wrong size (a stale one, or one carried over from a different list) costs only the wait:
-   * no increment matches it, so the gate goes quiet and the walk falls back to the plain dwell.
-   * It cannot manufacture a truncation or a false alarm — rows are collected either way.
+   * Pass only a size `onPageSize` reported, never a hand-picked one. Too large and no increment
+   * can match it, so the gate goes quiet and the walk falls back to the plain dwell — it costs
+   * the wait, never rows, which are collected either way. Too small is the direction that can
+   * actually mislead: a short FINAL page whose length happens to equal it reads as full-size and
+   * warns on a complete list. `onPageSize` cannot hand back an under-sized value, which is why
+   * it, and not the caller, decides what is worth caching.
    */
   knownPageSize?: number;
   /**
@@ -948,13 +951,19 @@ function pageParityGate(
       batch += rows - previousRows;
     } else if (batch > 0) {
       // Growth stopped, so the batch is whole and can finally be classified.
-      const established = pageSize > 0;
+      const known = pageSize; // the size in force BEFORE this batch can redefine it, below
+      const established = known > 0;
       if (batch > pageSize) pageSize = batch;
       pending = established && batch === pageSize;
-      // Report only a size a full-size increment actually demonstrated. A short batch never
-      // matches, and neither does anything measured against an over-large seed — so a caller
-      // caching this can only ever be handed evidence, never one of the gate's own guesses.
-      if (batch === pageSize) onPageSize?.(pageSize);
+      // Report only a size this batch MATCHED — never one it defined. A batch that grew the
+      // size is the gate's own guess at what a page is worth: an empty or half-rendered
+      // sidebar seeds under a page, and two pages coalescing into one settled batch reads as
+      // double. Both are fine to act on locally (`pending` above, this walk only), but the
+      // caller caches what lands here for the page's whole lifetime, and `knownPageSize` then
+      // outranks the seed — so a guess cached once would cost every later retry its oracle
+      // with no way to self-heal. A short batch never matches either, so what a caller can be
+      // handed is only ever evidence.
+      if (established && batch === known) onPageSize?.(known);
       batch = 0;
     }
     previousRows = rows;

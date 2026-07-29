@@ -459,6 +459,51 @@ describe('loadMoreConversations (history sidebar)', () => {
     expect(size).toHaveBeenCalledWith(5);
   });
 
+  it('reports no page size for a batch that DEFINED the size rather than matching it', async () => {
+    // The size is reported only when an increment matched a size already in force. A batch that
+    // grew it is the gate's own guess — what an under-seeded walk (empty or half-rendered
+    // sidebar) or two coalesced pages produce — and the caller caches this for the page's whole
+    // lifetime, where `knownPageSize` outranks the seed and nothing can self-heal it. Here the
+    // supplied size is too small, so every real page exceeds it: `pageSize` grows locally, but
+    // nothing may be cached from it.
+    // One page beyond the seed, so the only increment there is is the one that grew the size.
+    const lone = vi.fn();
+    await loadMoreConversations(makeLazyRoot({ pageSize: 5, pages: 2, fetchMs: 0 }).root, {
+      ...fast,
+      knownPageSize: 3,
+      onPageSize: lone,
+    });
+    expect(lone).not.toHaveBeenCalled();
+
+    // Give it a second page and the size IS reported — but as the 5 a later batch matched
+    // against, never the 3 that was in force when the first one merely redefined it.
+    const size = vi.fn();
+    await loadMoreConversations(makeLazyRoot({ pageSize: 5, pages: 3, fetchMs: 0 }).root, {
+      ...fast,
+      knownPageSize: 3,
+      onPageSize: size,
+    });
+    expect(size.mock.calls).toEqual([[5]]);
+  });
+
+  it('lands the page a re-run would otherwise drop, not just the warning about it', async () => {
+    // What the threaded size is FOR. The gap sits between the dwell and the pending budget, so
+    // only a walk that judged parity waits it out — and the difference shows in the rows
+    // returned, not merely in whether a warning fired. Without the size the same re-run gives
+    // up one page short; with it the page lands.
+    const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+    const dwellMs = (stepDelayMs / SCALE) * (stableRounds ?? 0);
+    const gapMs = dwellMs * 1.5;
+    const opts = { stepDelayMs: stepDelayMs / SCALE, stableRounds, maxSteps };
+    const lazy = { pageSize: 5, pages: 5, preloadedPages: 3, fetchMs: (page: number) => (page === 4 ? gapMs : 0) };
+
+    const withSize = await loadMoreConversations(makeLazyRoot(lazy).root, { ...opts, knownPageSize: 5 });
+    expect(withSize.map((c) => c.id)).toEqual(idsUpTo(25));
+
+    const without = await loadMoreConversations(makeLazyRoot(lazy).root, opts);
+    expect(without.map((c) => c.id)).toEqual(idsUpTo(20));
+  });
+
   it('reports no page size for a history whose only increment is a short final page', async () => {
     // A short increment cannot establish the size, and caching it would shrink the oracle's
     // notion of a page on every later run until parity fired on complete lists.
