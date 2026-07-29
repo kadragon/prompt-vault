@@ -21,9 +21,9 @@ const SCROLL_ABSOLUTE_MAX_STEPS = 400;
  * Scroll tuning for the *conversation-list* loaders (`loadMoreConversations`,
  * `loadMoreProjectConversations`) — deliberately far more patient than the message-viewport
  * numbers above. Older turns are already in the client, but `#history` fetches each next
- * page from the server: measured round-trips of 757–6123 ms across 37 consecutive pages on a
- * 1042-conversation account (2026-07-29; the 1418–2830 ms first measured 2026-07-24 turned out
- * to understate the worst case by more than 2×). The viewport's 3 × 150 ms ≈ 450 ms stall
+ * page from the server: measured round-trips of 1509–7516 ms across two independent cold runs
+ * on a ~1047-row account (2026-07-28; the 1418–2830 ms first measured 2026-07-24 turned out to
+ * understate the worst case by more than 2×). The viewport's 3 × 150 ms ≈ 450 ms stall
  * window elapses long before a batch lands, so the loader read "no new items" mid-fetch and
  * returned 19 of 852 conversations — a silent 2% truncation (AGENTS.md #4).
  *
@@ -34,31 +34,32 @@ const SCROLL_ABSOLUTE_MAX_STEPS = 400;
  * long the fetch took. This window covers the remaining case, dwelling at the end while the
  * last page is still in flight.
  *
- * Sizing it needs the window the loader can actually *see*, which is longer than one fetch:
- * a page is preceded by a row-render event carrying no hrefs, so the conversation count stays
- * flat across that event and the fetch behind it — a measured 6632 ms at worst (2026-07-29,
- * a lower bound). Twenty rounds of 500 ms gives 10 s from the scroll that triggers the fetch
- * to giving up, ~1.5× that window. The previous ten rounds gave 5 s, which **2 of 37 page
- * boundaries exceeded in a single healthy walk** — the mechanism behind the 725-of-852
- * truncation measured 2026-07-25. `SIDEBAR_SCROLL_DEFAULTS_TEST` pins the margin so it cannot
- * be tuned back down unnoticed. Time alone is still a guess about the worst case, which is why
- * `pageParityGate` supplies structural evidence on top of it.
+ * Sizing it needs the window the loader can actually *see*, and the rows of a pending page
+ * render before their anchors do, so the conversation count stays flat across the render and
+ * the fetch behind it alike — the measured worst case is the **7516 ms** inter-batch gap.
+ * Twenty-three rounds of 500 ms gives 11.5 s from the scroll that triggers the fetch to giving
+ * up, ~1.5× that gap. The previous ten rounds gave 5 s, which gaps exceeded in **both** cold
+ * runs (5 of 74 batches), every one of them while the container was already clamped — the exact
+ * state stalls are counted in, and the mechanism behind the 725-of-852 truncation measured
+ * 2026-07-25. `SIDEBAR_SCROLL_DEFAULTS_TEST` pins the margin so it cannot be tuned back down
+ * unnoticed. Time alone is still a guess about the tail, which is why `pageParityGate` supplies
+ * structural evidence on top of it.
  *
  * The step cap is anti-runaway only, and must not be sized to the one account we measured.
  * Rounds scale with the conversation count N: stepping rounds ≈ N/17.5 (a ~700 px sidebar of
  * ~36 px rows, advanced 0.9 viewport per round) plus ~6 dwell rounds per 28-row page while its
- * fetch lands, plus the final dwell — `rounds(N) ≈ 0.271 N + 20` (up to +40 when parity holds
- * the walk open), which puts the measured 1042-conversation account at ~302 rounds. A cap of
+ * fetch lands, plus the final dwell — `rounds(N) ≈ 0.271 N + 23` (up to +43 when parity holds
+ * the walk open), which puts the measured ~1047-row account at ~307 rounds. A cap of
  * 600 would therefore throw on a *healthy* list at N ≈ 2100, discarding the entire
  * accumulation; 2000 carries N ≈ 7200 and bounds a genuinely runaway list at
  * 2000 × 500 ms ≈ 17 minutes. The long pathological wait is the deliberate side of that trade:
  * failing early on a real history is the worse outcome.
  */
 const SIDEBAR_STEP_DELAY_MS = 500;
-const SIDEBAR_STABLE_ROUNDS = 20;
+const SIDEBAR_STABLE_ROUNDS = 23;
 /**
  * Extra stall rounds granted while `pageParityGate` reports a page is still owed — 20 more,
- * so a parity-backed wait runs to 20 s rather than 10. Bounded rather than open-ended because
+ * so a parity-backed wait runs to 21.5 s rather than 11.5. Bounded rather than open-ended because
  * parity is asymmetric evidence: a list whose length is an exact multiple of the page size
  * ends on a full-size page and looks identical to one page short, so an unbounded wait would
  * spin to the step cap and fail loud on a perfectly complete account (~1 in 28 of them).
@@ -878,6 +879,13 @@ function endOfListGate(): (container: HTMLElement) => boolean {
  * alone came out anywhere from 15 to 27 — which is exactly why this oracle looked impossible
  * from the numbers the loader already had.
  *
+ * A batch is judged only once it has **settled** — the rows are accumulated while the count is
+ * still growing and classified on the first round that adds nothing. Judging each round's delta
+ * on its own would be wrong in the one direction that matters: anchors lag their rows mid-fetch
+ * (measured 2026-07-28 — 1039 `li` against 1036 anchors), so a full page sampled during
+ * hydration reads as a short one, and "short ⇒ exhausted" firing on that sample would recreate
+ * the very truncation this guard exists to prevent.
+ *
  * Read the evidence for what it is: **asymmetric**. A short increment proves the end; a
  * full-size one does not prove more is coming (a list whose length is an exact multiple of the
  * page size ends on a full-size page). Callers must therefore bound how long they act on it —
@@ -891,6 +899,7 @@ function pageParityGate(rowCount: () => number): () => boolean {
   let previousRows = -1;
   let pageSize = 0;
   let pending = false;
+  let batch = 0;
   return () => {
     const rows = rowCount();
     if (previousRows < 0) {
@@ -908,10 +917,14 @@ function pageParityGate(rowCount: () => number): () => boolean {
       // below then withholds a verdict until an increment has actually set the size.
       pageSize = rows;
     } else if (rows > previousRows) {
-      const increment = rows - previousRows;
+      // Still arriving — accumulate, do not judge yet (see the settling note above).
+      batch += rows - previousRows;
+    } else if (batch > 0) {
+      // Growth stopped, so the batch is whole and can finally be classified.
       const established = pageSize > 0;
-      if (increment > pageSize) pageSize = increment;
-      pending = established && increment === pageSize;
+      if (batch > pageSize) pageSize = batch;
+      pending = established && batch === pageSize;
+      batch = 0;
     }
     previousRows = rows;
     return pending;

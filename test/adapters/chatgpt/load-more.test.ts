@@ -87,16 +87,17 @@ function makeRoot({
 // Build a fake `#history` sidebar as a **server-paged, append-only lazy list** — the shape
 // live measurement found on a 1042-conversation account: the rendered node count grows
 // monotonically and never recycles (2026-07-24), and reaching the bottom triggers a server
-// round-trip that appends the next page (757–6123 ms, re-measured 2026-07-29 over 37 pages;
-// the 2026-07-24 reading of 1418–2830 ms understated it). `fetchMs` is that round-trip;
+// round-trip that appends the next page (1509–7516 ms confirmed, re-measured 2026-07-28 over
+// two cold runs; the 2026-07-24 reading of 1418–2830 ms understated it). `fetchMs` is that
+// round-trip;
 // `hydrateRounds` is how many further re-reads the landed rows stay href-less (present in
 // the DOM, raising the container height, but not yet countable conversations).
 //
-// `cPerPage` models the split measured 2026-07-29: a page is a FIXED `pageSize` rows, but
-// only some are top-level `/c/` conversations — the rest are project/GPT-scoped
-// `/g/g-p-…/c/` rows living in the same `#history`. The split varies page to page (measured:
-// 15–27 of 28), which is why the `/c/` increment is not the page size. Defaults to an
-// all-`/c/` page, leaving the pre-existing cases unchanged.
+// `cPerPage` models the split measured live: a page is a FIXED `pageSize` rows, but only some
+// are top-level `/c/` conversations — the rest are project/GPT-scoped `/g/g-p-…/c/` rows living
+// in the same `#history`. The split varies page to page (11–27 of 28 across 74 batches), which
+// is why the `/c/` increment is not the page size. Defaults to an all-`/c/` page, leaving the
+// pre-existing cases unchanged.
 function makeLazyRoot({
   pageSize,
   pages,
@@ -105,20 +106,27 @@ function makeLazyRoot({
   view = 3,
   cPerPage = () => pageSize,
   lastPageRows,
+  hydrateSplit = 0,
 }: {
   pageSize: number;
   pages: number;
-  /** Round-trip for each page, by 0-based page index — measured live to vary 757-6123 ms. */
+  /** Round-trip for each page, by 0-based page index — measured live to vary 1509-7516 ms. */
   fetchMs: number | ((page: number) => number);
   hydrateRounds?: number;
   view?: number;
   cPerPage?: (page: number) => number;
   /**
-   * Rows in the final page, when the list does not divide evenly — the shape measured
-   * 2026-07-29 (36 pages of 28, then 6). Omit for a list whose last page is full-size,
+   * Rows in the final page, when the list does not divide evenly — the shape measured live
+   * (36 full pages of 28, then a short one). Omit for a list whose last page is full-size,
    * which is the case parity cannot distinguish from "one more page is still owed".
    */
   lastPageRows?: number;
+  /**
+   * Anchors of a landed page withheld on its first countable read, so the page arrives as two
+   * increments instead of one. Models the mid-fetch divergence measured 2026-07-28: anchors lag
+   * their rows, so a sample taken during hydration shows a full 28-row page as a short one.
+   */
+  hydrateSplit?: number;
 }): { root: ParentNode; conversationCount: () => number } {
   const clientHeight = view * ROW;
   // Every rendered row's href, in DOM order. A page contributes `cPerPage(p)` plain rows
@@ -191,7 +199,10 @@ function makeLazyRoot({
       // Count only the collect query, which the loop makes exactly once per round. The
       // parity counter reads the same DOM in the same round and must not age hydration.
       if (sel.includes('^=')) reads++;
-      return anchorsFor(sel, reads < countableFromRead ? hrefs.length - lastPageAdded : hrefs.length);
+      let upTo = hrefs.length;
+      if (reads < countableFromRead) upTo -= lastPageAdded;
+      else if (hydrateSplit > 0 && reads === countableFromRead) upTo -= hydrateSplit;
+      return anchorsFor(sel, upTo);
     },
   };
   const root = {
@@ -204,14 +215,16 @@ function makeLazyRoot({
 
 const fast = { stepDelayMs: 0, stableRounds: 3, maxSteps: 200 };
 
-// The longest stretch during which the LOADER sees no progress, measured live (2026-07-29,
-// 1042-conversation account, 37 consecutive pages). This — not the fetch alone — is what the
-// dwell must outlast: every page is preceded by a 3-row render event carrying no hrefs, so
-// the conversation count stays flat across both that event and the fetch behind it. Page
-// fetches themselves ran 757-6123 ms, already more than double the 1418-2830 ms measured
-// 2026-07-24. A lower bound: the sample tick between the two measured gaps is excluded
-// (509 + 6123 ms). 2 of 37 page boundaries exceeded the 5000 ms dwell this replaced.
-const LONGEST_LOADER_BLIND_MS = 6632;
+// The longest inter-batch gap measured live — 7516 ms, directly measured across two
+// independent cold runs on a ~1047-row account (2026-07-28), against a floor of 1509 ms and a
+// median near 3011-4504 ms. This is the stretch during which the loader sees no progress at
+// all, so it is what the dwell must outlast rather than any single fetch: the rows of a
+// pending page render before their anchors do, so the conversation count stays flat across
+// both. Gaps above the old 5000 ms dwell landed in BOTH runs (5 of 74 batches), every one
+// while the container was already clamped — the exact state stalls are counted in. A separate
+// 2026-07-29 run over the same account saw a narrower 757-6123 ms band; the wider confirmed
+// bound governs. Details: docs/live-dom-verification.md, 2026-07-28.
+const LONGEST_LOADER_BLIND_MS = 7516;
 // `SCALE` runs the production timings that much faster so a real-latency test stays a
 // sub-second unit test.
 const SCALE = 100;
@@ -348,6 +361,19 @@ describe('loadMoreConversations (history sidebar)', () => {
     const { root } = makeLazyRoot({ pageSize: 5, pages: 3, fetchMs: 0 });
     const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
     expect(result.map((c) => c.id)).toEqual(idsUpTo(15));
+    expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies a page by its settled size, not by a mid-hydration sample of it', async () => {
+    // The 2026-07-28 session measured anchors lagging their rows mid-fetch (1039 li vs 1036
+    // anchors). So a full page can be sampled as a SHORT one, and "short => exhausted" firing
+    // on that sample recreates the silent truncation the oracle exists to prevent. Here the
+    // final page is full-size but arrives as 4 anchors then 2: judged per round it reads short
+    // twice and the walk claims completeness; judged once the increment settles it reads 6.
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 6, pages: 2, hydrateSplit: 2, fetchMs: 0 });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(12));
     expect(incomplete).toHaveBeenCalledTimes(1);
   });
 
