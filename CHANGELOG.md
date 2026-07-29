@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Claude adapter: report attachments on the one-shot path, and mark a duplicated row index once (v1.8.1) (2026-07-29)
 - [done] Claude adapter: read both attachment tile shapes, report files on mixed turns, and drop expanded thinking blocks (v1.8.0) (2026-07-29)
   → docs/live-dom-verification.md
 - [done] Recorded the 2026-07-29 Claude/Gemini live-DOM session and closed all four open

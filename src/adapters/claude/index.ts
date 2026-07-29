@@ -124,19 +124,113 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
 }
 
 /**
- * One-shot read of every turn currently in `root` (fixtures, or a live page with no
- * scroll container). Document order is the conversation order because a turn is either a
- * user bubble or an assistant prose container and the two are disjoint. Fails loud if a
- * turn yielded no content — a silently dropped turn is worse than a visible error
- * (AGENTS.md #4).
+ * One-shot read of every turn currently in `root` (fixtures, or a live page with no scroll
+ * container). Document order is the conversation order because a turn is either a user bubble
+ * or an assistant prose container and the two are disjoint. Fails loud if a turn yielded no
+ * content — a silently dropped turn is worse than a visible error (AGENTS.md #4).
+ *
+ * Rows, not turn nodes, are the unit — the same shape `record()` uses on the walk, and for the
+ * same two measured reasons. A row may hold SEVERAL turn nodes (live 2026-07-25: one row of 56
+ * held four `.standard-markdown` blocks, all one assistant turn), which are joined rather than
+ * exported as separate messages. And a row may hold NONE: an attachment-only user turn renders
+ * no `user-message` node at all, its files sitting in the row beside the action bar. Enumerating
+ * turn nodes alone dropped that turn with no error whatsoever — such a row contributes no node,
+ * so a completeness check counting nodes cannot see it is missing (AGENTS.md #4). A row claimed
+ * by nothing is now counted as unreadable here too. Only the counting is shared with the walk,
+ * not the wording: `buildMessages` can tell a rendered-but-unreadable row from one that never
+ * rendered and says so, while this path has no walk to blame and keeps the one generic message.
+ *
+ * This path is not fixtures-only: `collectVirtualizedTurns` falls back to it live whenever
+ * there is no scroll container or it has zero height (a background tab), which is why it has to
+ * meet the same measured row shapes the walk does — and why the row scan carries the same
+ * unmeasured scope limit `record()` documents: what the tile queries return on a user row with
+ * NO attachment was never measured, so a plain row matching one would be given a `[File: …]` it
+ * does not have. Tracked in backlog.md for a live session; narrowing the selectors on a guess
+ * is the same failure in the other direction (AGENTS.md #5).
  */
 function readSnapshot(root: ParentNode): Message[] {
-  // Filtered BEFORE the completeness check below, which compares against `nodes.length`: a
-  // dropped thinking block is not a turn that could not be read, and counting it as one would
-  // fail every export of a conversation with a block expanded.
-  const nodes = dropThinkingBlocks(Array.from(root.querySelectorAll(selectors.turn)));
-  const messages = nodes.map(toMessage).filter((m): m is Message => m !== null);
-  if (messages.length > 0 && messages.length < nodes.length) {
+  // Rows and turns in ONE query, so the DOM's own document order interleaves them and no
+  // position comparison is needed to place an attachment-only row among the turns. A row is
+  // returned before the nodes inside it, which is also the order the markers must take: the
+  // tile precedes the text body (measured on row 0 — neither contains the other, tile first).
+  const all = Array.from(root.querySelectorAll(`${selectors.turnRow}, ${selectors.turn}`));
+  const rows = new Set(root.querySelectorAll(selectors.turnRow));
+  // Filtered BEFORE anything is accumulated: a dropped thinking block is not a turn that could
+  // not be read, and counting it as one would fail every export of a conversation with a block
+  // expanded.
+  const kept = new Set(dropThinkingBlocks(all.filter((el) => !rows.has(el))));
+
+  const entries: { role: Role; parts: string[]; claimed: boolean }[] = [];
+  const byRow = new Map<Element, (typeof entries)[number]>();
+  // Rows that carried no markers. Whether one is a failure is only knowable after the whole
+  // scan: a row is visited BEFORE the turn nodes inside it, so an ordinary prose row looks
+  // exactly like an unreadable one at the moment it is reached.
+  const markerlessRows: Element[] = [];
+
+  for (const el of all) {
+    // Membership decides what each element is, rather than re-testing the selectors: a turn
+    // node the thinking filter dropped is in neither set, so it falls through to be ignored —
+    // not mistaken for a row and counted as unreadable.
+    if (kept.has(el)) {
+      const row = el.closest(selectors.turnRow);
+      const existing = row ? byRow.get(row) : undefined;
+      if (existing) {
+        // A turn node settles the role of a row the marker scan attributed to the user, which
+        // is how `record()` orders the two as well — there the markers are applied after the
+        // turn grouping, so they never override a role read from a node.
+        if (!existing.claimed) existing.role = roleOf(el);
+        existing.claimed = true;
+        existing.parts.push(readTurn(el));
+        continue;
+      }
+      const entry = { role: roleOf(el), parts: [readTurn(el)], claimed: true };
+      entries.push(entry);
+      // A node with no row ancestor keeps its own entry, exactly as it does today.
+      if (row) byRow.set(row, entry);
+      continue;
+    }
+    if (!rows.has(el)) continue;
+    // Attachments live OUTSIDE the turn node, so they are read off the row. `attachmentMarkers`
+    // claims a row only if it carries named tiles AND the user-exclusive edit control; a row
+    // failing either test is left unclaimed and falls to the unreadable count below rather than
+    // being guessed at.
+    const files = attachmentMarkers(el);
+    if (files) {
+      const entry = { role: 'user' as Role, parts: [files], claimed: false };
+      entries.push(entry);
+      byRow.set(el, entry);
+    } else if (el.querySelector(selectors.messageArticle)) {
+      // Only a row that looks like a conversation row may FAIL the export. `data-index` is a
+      // generic virtualizer attribute, not a message-list marker, and on the live fallback
+      // `root` is the whole document — so without this gate one stray indexed element anywhere
+      // on the page (a sidebar, a menu, any other virtualized widget) would abort an otherwise
+      // working export. The walk is not exposed the same way: a stray index only reaches
+      // `seenRowIndices`, which selects error wording, and `declaredRowTotal` already reads
+      // `messageArticle` and so ignores it.
+      //
+      // Gating the FAILURE and not the marker scan is deliberate: an over-narrow gate here can
+      // only lose a loud error, never invent content, and `messageArticle` was measured on
+      // every indexed row — 112/112 across four conversations, explicitly including the
+      // attachment-only row that has no `user-message` node, which is the shape this check
+      // exists to catch (docs/live-dom-verification.md → Claude → 2026-07-25).
+      markerlessRows.push(el);
+    }
+  }
+
+  const messages: Message[] = [];
+  // A row nothing ever claimed — no turn node, no readable tile — is a position this adapter
+  // could not read. It has to fail the export rather than go missing from it (AGENTS.md #4).
+  let dropped = markerlessRows.filter((row) => !byRow.has(row)).length;
+  for (const entry of entries) {
+    const content = entry.parts
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join('\n\n');
+    if (content) messages.push({ role: entry.role, content });
+    else dropped++;
+  }
+
+  if (messages.length > 0 && dropped > 0) {
     throw new ExtractionError(
       'Some conversation turns could not be read (empty or malformed). The conversation may ' +
         'still be loading — wait for it to finish, then try again.',
@@ -284,11 +378,23 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     // the user-exclusive edit control. A row failing either test is left unclaimed and still
     // fails loud — this recognizes the shapes that were measured rather than guessing at every
     // row the turn query happens to miss.
+    //
+    // Applied at most ONCE per index per round. This loop iterates row ELEMENTS, so two rows
+    // carrying the same `data-index` in one round would each unshift the markers onto the same
+    // accumulated turn and yield a duplicated `[File: x]`. Whether Claude's recycling
+    // virtualizer ever renders that state is unmeasured; the guard is cheap, and skipping the
+    // second row is the only behaviour that cannot invent content. It covers the MARKERS only —
+    // the turn-node grouping above joins duplicate-index rows as well, which is left alone
+    // because no measurement says what such a pair would contain (AGENTS.md #5).
+    const markedIndices = new Set<number>();
     for (const row of Array.from(doc.querySelectorAll(selectors.turnRow))) {
       const index = rowIndex(row);
-      if (!Number.isInteger(index)) continue;
+      if (!Number.isInteger(index) || markedIndices.has(index)) continue;
       const files = attachmentMarkers(row);
+      // Recorded only when the row actually yielded markers, so a marker-less row sharing the
+      // index cannot block a later one that has them.
       if (!files) continue;
+      markedIndices.add(index);
       const claimed = round.get(index);
       if (claimed) claimed.parts.unshift(files);
       else round.set(index, { role: 'user', parts: [files], thinkingOnly: false });
@@ -660,13 +766,6 @@ function dropThinkingBlocks(nodes: Element[]): Element[] {
  */
 function isThinkingBlock(el: Element): boolean {
   return el.closest(selectors.thinkingContainer) !== null;
-}
-
-/** Map one turn node to a normalized Message, or null if it has no content. */
-function toMessage(el: Element): Message | null {
-  const content = readTurn(el);
-  if (!content.trim()) return null;
-  return { role: roleOf(el), content };
 }
 
 /**
