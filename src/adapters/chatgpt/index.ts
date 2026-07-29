@@ -107,6 +107,24 @@ export interface LoadMoreScrollOptions extends AutoScrollOptions {
    * present the result as complete (AGENTS.md #4); omit it and the loop is unchanged.
    */
   onIncomplete?: () => void;
+  /**
+   * A page size an earlier walk over the same list measured (see `onPageSize`). Supplying it
+   * lets `pageParityGate` judge parity on a **re-run over an already-loaded list**, where its
+   * own first-read seed would be the whole list rather than one page. Omit on a first walk over
+   * a fresh sidebar, where the seed is the measured truth.
+   *
+   * A wrong size (a stale one, or one carried over from a different list) costs only the wait:
+   * no increment matches it, so the gate goes quiet and the walk falls back to the plain dwell.
+   * It cannot manufacture a truncation or a false alarm — rows are collected either way.
+   */
+  knownPageSize?: number;
+  /**
+   * Fired with the page size whenever a full page is *observed* arriving, so a caller can cache
+   * it and hand it back as `knownPageSize` on the next call. Never fired for evidence the gate
+   * only guessed at — a short final page, or a seed taken over an already-loaded list. May fire
+   * more than once with the same value; the latest is the one to keep.
+   */
+  onPageSize?: (size: number) => void;
 }
 
 // ChatGPT's own icon-button classes — the same shape as the header's native square
@@ -765,7 +783,10 @@ export async function loadMoreConversations(
       settled: endOfListGate(),
       // Counted over EVERY conversation row, not the `/c/` ids accumulated above — only the
       // raw row count pages in at a fixed size (see `pageParityGate`).
-      pending: pageParityGate(() => history.querySelectorAll(selectors.sidebarConversationRow).length),
+      pending: pageParityGate(() => history.querySelectorAll(selectors.sidebarConversationRow).length, {
+        knownPageSize: options.knownPageSize,
+        onPageSize: options.onPageSize,
+      }),
       pendingExtraRounds: SIDEBAR_PENDING_EXTRA_ROUNDS,
       defaults: SIDEBAR_SCROLL_DEFAULTS,
       onProgress: options.onProgress,
@@ -895,27 +916,33 @@ function endOfListGate(): (container: HTMLElement) => boolean {
  * Stays `false` until a page has been seen at all, so a history shorter than one page — where
  * no increment is ever observed — never claims a page is owed.
  */
-function pageParityGate(rowCount: () => number): () => boolean {
+function pageParityGate(
+  rowCount: () => number,
+  { knownPageSize = 0, onPageSize }: { knownPageSize?: number; onPageSize?: (size: number) => void } = {},
+): () => boolean {
   let previousRows = -1;
-  let pageSize = 0;
+  let pageSize = knownPageSize;
   let pending = false;
   let batch = 0;
   return () => {
     const rows = rowCount();
     if (previousRows < 0) {
-      // Seed from the rows already rendered when the walk starts, which live measurement
-      // recorded as exactly one page (`28 (initial render) + 36 × 28 + 6 = 1042`). Without a
-      // seed the FIRST increment would always define the size and so always satisfy the test
-      // below — so a history holding one short final page beyond the initial render would
-      // warn on every single load, complete or not.
+      // With no size handed in, seed from the rows already rendered when the walk starts, which
+      // live measurement recorded as exactly one page (`28 (initial render) + 36 × 28 + 6 =
+      // 1042`). Without a seed the FIRST increment would always define the size and so always
+      // satisfy the test below — so a history holding one short final page beyond the initial
+      // render would warn on every single load, complete or not.
       //
-      // Two limits worth naming. On a re-run over an already-loaded list (the retry the
-      // warning invites) the seed is the whole list, far larger than a page, so no increment
-      // ever matches and the gate simply goes quiet — it degrades to the pre-parity dwell
-      // rather than to a false alarm, and the panel carries the doubt across retries instead.
-      // And an empty sidebar seeds 0, which is no evidence at all; the `established` test
-      // below then withholds a verdict until an increment has actually set the size.
-      pageSize = rows;
+      // That seed only holds on a FRESH sidebar. On a re-run over an already-loaded list (the
+      // retry the incomplete warning invites) the rendered rows are the whole accumulated list,
+      // far larger than a page, so no increment could ever match and the gate would go quiet —
+      // leaving the retry on the bare dwell exactly when a page is most likely still owed. A
+      // caller that has seen a page land therefore passes `knownPageSize` back in, and it takes
+      // precedence over the seed: measured evidence over a positional assumption.
+      //
+      // An empty sidebar seeds 0, which is no evidence at all; the `established` test below
+      // then withholds a verdict until an increment has actually set the size.
+      if (pageSize === 0) pageSize = rows;
     } else if (rows > previousRows) {
       // Still arriving — accumulate, do not judge yet (see the settling note above).
       batch += rows - previousRows;
@@ -924,6 +951,10 @@ function pageParityGate(rowCount: () => number): () => boolean {
       const established = pageSize > 0;
       if (batch > pageSize) pageSize = batch;
       pending = established && batch === pageSize;
+      // Report only a size a full-size increment actually demonstrated. A short batch never
+      // matches, and neither does anything measured against an over-large seed — so a caller
+      // caching this can only ever be handed evidence, never one of the gate's own guesses.
+      if (batch === pageSize) onPageSize?.(pageSize);
       batch = 0;
     }
     previousRows = rows;
