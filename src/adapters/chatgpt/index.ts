@@ -893,10 +893,25 @@ function pageParityGate(rowCount: () => number): () => boolean {
   let pending = false;
   return () => {
     const rows = rowCount();
-    if (previousRows >= 0 && rows > previousRows) {
+    if (previousRows < 0) {
+      // Seed from the rows already rendered when the walk starts, which live measurement
+      // recorded as exactly one page (`28 (initial render) + 36 × 28 + 6 = 1042`). Without a
+      // seed the FIRST increment would always define the size and so always satisfy the test
+      // below — so a history holding one short final page beyond the initial render would
+      // warn on every single load, complete or not.
+      //
+      // Two limits worth naming. On a re-run over an already-loaded list (the retry the
+      // warning invites) the seed is the whole list, far larger than a page, so no increment
+      // ever matches and the gate simply goes quiet — it degrades to the pre-parity dwell
+      // rather than to a false alarm, and the panel carries the doubt across retries instead.
+      // And an empty sidebar seeds 0, which is no evidence at all; the `established` test
+      // below then withholds a verdict until an increment has actually set the size.
+      pageSize = rows;
+    } else if (rows > previousRows) {
       const increment = rows - previousRows;
+      const established = pageSize > 0;
       if (increment > pageSize) pageSize = increment;
-      pending = increment === pageSize;
+      pending = established && increment === pageSize;
     }
     previousRows = rows;
     return pending;

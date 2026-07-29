@@ -250,6 +250,36 @@ describe('openBulkPanel', () => {
     expect(buttonByText(panel, 'Load more').disabled).toBe(false);
   });
 
+  it('keeps warning when a retry after an incomplete load still surfaces nothing', async () => {
+    // The warning tells the user to click Load more again, so the retry is the expected path —
+    // and the adapter's oracle is stateless per call, so a retry that never sees a page has no
+    // evidence either way and cannot report incompleteness a second time. Latching
+    // "All conversations loaded" on that silence would restore the exact truncation this
+    // whole change removes, at the one moment we invited the user into (AGENTS.md #4).
+    const doc = freshDoc();
+    let call = 0;
+    const d: BulkPanelDeps = {
+      ...deps({ total: 0, succeeded: 0, failed: [] }),
+      loadMore: (_onProgress, onIncomplete) => {
+        call += 1;
+        if (call === 1) onIncomplete?.(); // first walk gave up with a page still owed
+        return Promise.resolve(CONVS); // the stalled page never arrives on either walk
+      },
+    };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    buttonByText(panel, 'Load more').click();
+    await flush();
+    buttonByText(panel, 'Load more').click();
+    await flush();
+
+    expect(call).toBe(2);
+    expect(panel.textContent).toContain(bulkLoadMoreIncompleteMessage(CONVS.length));
+    expect(panel.textContent).not.toContain('All conversations loaded');
+    expect(buttonByText(panel, 'Load more').disabled).toBe(false);
+  });
+
   it('surfaces a rejected Load more in the status line and re-enables the button', async () => {
     const doc = freshDoc();
     const d = {

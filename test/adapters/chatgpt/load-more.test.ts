@@ -351,6 +351,19 @@ describe('loadMoreConversations (history sidebar)', () => {
     expect(incomplete).toHaveBeenCalledTimes(1);
   });
 
+  it('does not claim incompleteness when the only page that lands is a short final one', async () => {
+    // The gate learns the page size from the increments it sees, and the rows rendered before
+    // the walk starts are its baseline, never an increment. So a history holding exactly one
+    // page beyond that baseline offers a single increment — and if the oracle lets that lone
+    // increment define the page size, `increment === pageSize` is trivially true even for a
+    // SHORT final page, warning on every load of a complete list.
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 3, fetchMs: 0 });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(8));
+    expect(incomplete).not.toHaveBeenCalled();
+  });
+
   it('does not claim incompleteness for a history shorter than one page', async () => {
     // No page ever lands, so no increment is ever observed and the oracle must stay silent —
     // otherwise every small account would be warned on every load (a false alarm is as bad as
