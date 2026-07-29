@@ -115,15 +115,46 @@ export const selectors = {
    * **Re-verified 2026-07-29, and it covers only HALF the attachments Claude renders.** There
    * are two tile shapes; this matches the first — a preview tile
    * `div[data-testid="<filename>"] > button > img[alt="<filename>"]`, measured for a PDF and a
-   * 600×400 PNG. The second is a *file card*, `div[data-testid="file-thumbnail"] > button > div
-   * > h3` with the name in the `h3` text and **no `<img>` in the row at all**, measured for a
-   * `.txt`, a 4×4 PNG, and a pasted image. Nothing here matches that shape, so an
-   * attachment-ONLY turn carrying one is claimed by neither path and blocks the whole export,
-   * and in a mixed turn it is silently unreported. See docs/live-dom-verification.md → Claude →
-   * 2026-07-29. Deliberately not widened in that session: it is a behaviour change, tracked in
-   * backlog.md rather than smuggled in under a stamp.
+   * 600×400 PNG. The second is a *file card* with no `<img>` in the row at all; it is matched
+   * by `attachmentCard` below, and the adapter reads BOTH. See docs/live-dom-verification.md →
+   * Claude → 2026-07-29.
    */
   attachmentImage: 'button > img[alt]',
+
+  /**
+   * The second attachment shape — a *file card*, which carries the file name in an `h3` and
+   * renders **no `<img>` anywhere in the row**, so `attachmentImage` cannot see it. Measured
+   * against the live page (2026-07-29) for a `.txt`, a 4×4 PNG, and a pasted image, each file
+   * created in the session so the shape is attributable to a known file.
+   *
+   * Both shapes must be read, and neither may be selected by file type: a PNG was measured
+   * producing **each** of them (600×400 → preview tile, 4×4 → card), which rules out extension
+   * as the determinant, and what does select between them was NOT established (AGENTS.md #5).
+   * Until it is, the adapter matches on either shape rather than dispatching.
+   *
+   * The measured path is `div[data-testid="file-thumbnail"] > button > div > h3`. A descendant
+   * `h3` is used rather than that full child chain because — unlike `attachmentImage`, whose
+   * own anchor is a bare `img[alt]` and so needed `button >` to avoid claiming decorative
+   * images — the `file-thumbnail` test id is a **constant** rather than user data, so it
+   * already confines the query to the card, and an inserted wrapper must not silently stop
+   * extraction. The name comes from the `h3` and not the button's `aria-label`, which was
+   * measured as `"pv-probe-note.txt, txt, 4줄"` — localized and carrying extra metadata, so it
+   * is not a clean name source.
+   */
+  attachmentCard: '[data-testid="file-thumbnail"] h3',
+
+  /**
+   * Ancestor marking an extended-thinking block, so its text can be told from the answer's.
+   * Expanding a turn's thinking chip adds a SECOND, un-nested `.standard-markdown` to the row
+   * — `selectors.turn` goes from 1 match to 2 — and every match in a row is joined, so without
+   * this the exported message silently depends on whether the user had the block open.
+   *
+   * Measured rather than guessed (2026-07-29): the thinking block has an ancestor carrying
+   * `data-timeline-text` (class `group/timeline-text`) three levels above the
+   * `.standard-markdown`; the answer block has no such ancestor. Matched on the data attribute
+   * rather than the class, which is Tailwind-ish and far likelier to churn.
+   */
+  thinkingContainer: '[data-timeline-text]',
 
   /**
    * Claude's per-message "edit" control, which exists ONLY on the user's own messages.

@@ -131,7 +131,10 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
  * (AGENTS.md #4).
  */
 function readSnapshot(root: ParentNode): Message[] {
-  const nodes = Array.from(root.querySelectorAll(selectors.turn));
+  // Filtered BEFORE the completeness check below, which compares against `nodes.length`: a
+  // dropped thinking block is not a turn that could not be read, and counting it as one would
+  // fail every export of a conversation with a block expanded.
+  const nodes = dropThinkingBlocks(Array.from(root.querySelectorAll(selectors.turn)));
   const messages = nodes.map(toMessage).filter((m): m is Message => m !== null);
   if (messages.length > 0 && messages.length < nodes.length) {
     throw new ExtractionError(
@@ -146,6 +149,13 @@ function readSnapshot(root: ParentNode): Message[] {
 interface CollectedTurn {
   role: Role;
   content: string;
+  /**
+   * Every node this content came from was an extended-thinking block — the row was caught
+   * mid-generation, with the reasoning rendered and the answer not yet. Such content is
+   * PROVISIONAL: it must lose to the first sighting that carries a real answer, whatever the
+   * two lengths are. See the dedupe in `collectVirtualizedTurns`.
+   */
+  thinkingOnly: boolean;
 }
 
 /**
@@ -213,8 +223,8 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     // silently (AGENTS.md #4). This is not a defensive hypothetical: a 56-row conversation
     // measured live 2026-07-25 held a row with FOUR `.standard-markdown` blocks, all of them
     // one assistant turn's content.
-    const round = new Map<number, { role: Role; parts: string[] }>();
-    for (const el of Array.from(doc.querySelectorAll(selectors.turn))) {
+    const round = new Map<number, { role: Role; parts: string[]; thinkingOnly: boolean }>();
+    for (const el of dropThinkingBlocks(Array.from(doc.querySelectorAll(selectors.turn)))) {
       const index = rowIndex(el.closest(selectors.turnRow));
       if (!Number.isInteger(index)) {
         // No stable key to dedupe this turn across windows, so it can never be collected
@@ -222,44 +232,97 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
         sawUnindexedTurn = true;
         continue;
       }
+      // A block survives the filter either because it is the answer, or because it is a
+      // thinking block with no answer beside it yet. Only the second kind is provisional, so
+      // one non-thinking node anywhere in the row settles it.
+      if (!isThinkingBlock(el)) {
+        const claimed = round.get(index);
+        if (claimed) claimed.thinkingOnly = false;
+      }
       const existing = round.get(index);
       if (existing) existing.parts.push(readTurn(el));
-      else round.set(index, { role: roleOf(el), parts: [readTurn(el)] });
+      else
+        round.set(index, {
+          role: roleOf(el),
+          parts: [readTurn(el)],
+          thinkingOnly: isThinkingBlock(el),
+        });
     }
 
-    // A user turn holding ONLY attachments renders no `user-message` node at all — the
-    // tiles sit in the row beside the action bar, with nothing the turn query can match
-    // (verified live 2026-07-25 on row 50 of a 56-row conversation). Left alone, that row
-    // is a position no turn claims, so `buildMessages` reports it as unreadable and the
-    // WHOLE conversation fails to export. Describe it instead, the way the ChatGPT adapter
-    // describes its attachment tiles.
+    // Attachments live OUTSIDE the turn node — the tiles sit in the row beside the action bar
+    // — so they are read off the row rather than the turn, in both of the shapes a row can
+    // take:
     //
-    // Deliberately narrow: a row qualifies only if it carries attachment images AND the
-    // user-exclusive edit control. A row failing either test is left unclaimed and still
-    // fails loud (AGENTS.md #4) — this recognizes the one shape that was measured rather
-    // than guessing at every row the turn query happens to miss.
+    //   - A turn holding ONLY attachments renders no `user-message` node at all (verified live
+    //     2026-07-25 on row 50 of a 56-row conversation). Left alone, that row is a position no
+    //     turn claims, so `buildMessages` reports it as unreadable and the WHOLE conversation
+    //     fails to export.
+    //   - A MIXED turn (text plus a file) renders both. This scan used to skip any row the turn
+    //     query had already claimed, so the export carried the text and said nothing about the
+    //     file — a silent omission rather than a loud failure (AGENTS.md #4).
+    //
+    // Scanning claimed rows is safe against the worry that BLOCKED it, and that much was
+    // measured rather than assumed: a row-level query might sweep up a pasted image inside the
+    // turn body and mislabel it as a file. Live 2026-07-29, across four mixed turns and one
+    // attachment-only turn (files attached AND an image pasted, txt/pdf/png),
+    // `imgsInsideUserMessage` was **0 every time** — every tile is a sibling subtree earlier in
+    // the row, never inside `user-message`.
+    //
+    // What that evidence does NOT cover, stated plainly because the numbers above are easy to
+    // over-read: every user row in the probe conversation carried an attachment, so what these
+    // two tile queries return on a user row with NO attachment is unmeasured. If some ordinary
+    // control in a plain user row matched `button > img[alt]`, this scan would now prepend a
+    // fabricated `[File: …]` to that turn — and it reaches every user row, where before the
+    // widening it only ran on rows the turn query could not claim. Tracked in backlog.md for a
+    // live session; not narrowed on a guess here, since inventing a tighter anchor without
+    // measuring one is the same failure in the other direction (AGENTS.md #5).
+    //
+    // Markers go FIRST for the same reason: the tile precedes the text body in document order
+    // (measured on row 0 — neither contains the other, tile first).
+    //
+    // Deliberately narrow: `attachmentMarkers` claims a row only if it carries named tiles AND
+    // the user-exclusive edit control. A row failing either test is left unclaimed and still
+    // fails loud — this recognizes the shapes that were measured rather than guessing at every
+    // row the turn query happens to miss.
     for (const row of Array.from(doc.querySelectorAll(selectors.turnRow))) {
       const index = rowIndex(row);
-      if (!Number.isInteger(index) || round.has(index)) continue;
+      if (!Number.isInteger(index)) continue;
       const files = attachmentMarkers(row);
-      if (files) round.set(index, { role: 'user', parts: [files] });
+      if (!files) continue;
+      const claimed = round.get(index);
+      if (claimed) claimed.parts.unshift(files);
+      else round.set(index, { role: 'user', parts: [files], thinkingOnly: false });
     }
 
-    for (const [index, { role, parts }] of round) {
+    for (const [index, { role, parts, thinkingOnly }] of round) {
       const content = parts
         .map((part) => part.trim())
         .filter(Boolean)
         .join('\n\n');
       const seen = turns.get(index);
       if (!seen) {
-        turns.set(index, { role, content });
-      } else if (content.length > seen.content.trim().length) {
+        turns.set(index, { role, content, thinkingOnly });
+      } else if (seen.thinkingOnly && !thinkingOnly && content.trim()) {
+        // A sighting that finally caught the answer REPLACES a thinking-only one outright,
+        // whatever the two lengths are. Length cannot arbitrate here: the thinking-only
+        // sighting holds the whole reasoning, while this one holds the answer with the
+        // reasoning filtered out, and an answer is routinely the shorter of the two ("yes").
+        // Left to the length rule below, the export would keep Claude's internal reasoning and
+        // silently discard the real answer (AGENTS.md #4).
+        seen.content = content;
+        seen.thinkingOnly = false;
+      } else if (seen.thinkingOnly === thinkingOnly && content.length > seen.content.trim().length) {
         // Keep the fullest sighting of this turn, not merely the first non-empty one.
         // Upgrading only from empty would permanently pin a fragment captured while the
         // response was still streaming or hydrating: the walk would then go on to see the
         // finished turn and still export the truncated text — a silent content truncation
         // (AGENTS.md #4). Length is the ordering because a fuller render is a superset of
         // a partial one; a node caught mid-teardown renders shorter and is ignored.
+        //
+        // Gated on the two sightings being the same KIND, so this only ever compares like with
+        // like. The reverse of the branch above — a settled answer meeting a later
+        // thinking-only sighting, which happens when a recycled row re-renders mid-stream —
+        // falls through both branches and leaves the answer standing.
         seen.content = content;
       }
     }
@@ -522,9 +585,8 @@ function readUserContent(el: Element): string {
   // of `<img>` inside `user-message` was **0 every time**; every tile sits outside this node,
   // as a sibling subtree earlier in the row. So the mixed-turn layout is no longer unknown, and
   // the worry that a row-level scan would sweep up a pasted image inside the turn body is
-  // disproved. What remains true is the omission: a mixed turn exports its text and reports
-  // nothing about the file, because `attachmentMarkers` runs only on rows the turn query did
-  // not claim. See docs/live-dom-verification.md → Claude → 2026-07-29.
+  // disproved — which is what let the row scan in `record()` start covering claimed rows, so a
+  // mixed turn now reports its file too. See docs/live-dom-verification.md → Claude → 2026-07-29.
   //
   // Kept anyway: it costs nothing, and it is the safe direction if Claude ever does render an
   // image inside the turn body — an empty turn would otherwise fail the WHOLE export.
@@ -533,19 +595,71 @@ function readUserContent(el: Element): string {
 }
 
 /**
- * `[File: name]` for each attachment thumbnail in a row that holds no readable turn node,
- * or an empty string when the row is not an identifiable user attachment turn. The names
- * come from each thumbnail's `alt`, so a tile that renders without one is skipped rather
- * than reported under a fabricated name — and a row whose tiles are ALL nameless yields no
+ * The two shapes an attachment tile renders in, queried together so a row holding both
+ * reports them in document order instead of grouped by shape. Reading only one of them is
+ * what let a `.txt` block an entire export (see `selectors.attachmentCard`).
+ */
+const ATTACHMENT_TILES = `${selectors.attachmentImage}, ${selectors.attachmentCard}`;
+
+/**
+ * `[File: name]` for each attachment tile in a row, or an empty string when the row is not
+ * an identifiable user attachment turn. The name comes from the preview tile's `alt` or the
+ * file card's `h3` text, so a tile that renders without one is skipped rather than reported
+ * under a fabricated name (AGENTS.md #5) — and a row whose tiles are ALL nameless yields no
  * markers, leaving it to fail loud rather than exporting a contentless turn.
+ *
+ * The `userActionBar` guard stays: `action-bar-edit` is user-exclusive (verified 2026-07-25 by
+ * partitioning every test id in a 56-row conversation by role), and it is what attributes a
+ * row with no `user-message` node to the user without guessing. It also keeps this safe to run
+ * on assistant rows, which carry no such control.
  */
 function attachmentMarkers(row: Element): string {
   if (!row.querySelector(selectors.userActionBar)) return '';
-  return Array.from(row.querySelectorAll(selectors.attachmentImage))
-    .map((img) => img.getAttribute('alt')?.trim())
+  return Array.from(row.querySelectorAll(ATTACHMENT_TILES))
+    .map((tile) =>
+      tile.matches(selectors.attachmentImage)
+        ? tile.getAttribute('alt')?.trim()
+        : (tile.textContent ?? '').trim(),
+    )
     .filter((name): name is string => Boolean(name))
     .map((name) => `[File: ${name}]`)
     .join('\n\n');
+}
+
+/**
+ * `nodes` minus the extended-thinking blocks — a turn node is dropped when it sits under a
+ * `thinkingContainer` AND its row also holds a node that does not. Applied wherever turn nodes
+ * are enumerated, so the walk and the one-shot snapshot cannot drift apart.
+ *
+ * The row condition is not defensive padding. Dropping every thinking block unconditionally
+ * would leave a row whose only rendered node is one — a turn caught while it is still
+ * generating, thinking shown and answer not yet — claimed by nothing, and an unclaimed row
+ * fails the WHOLE export (`buildMessages`). Exporting the reasoning text is what happens today
+ * and is the safe direction to degrade to; turning a working export into a hard failure is not.
+ * A node with no row ancestor (the fixture path) is kept for the same reason: with no row there
+ * is no evidence an answer was rendered beside it.
+ */
+function dropThinkingBlocks(nodes: Element[]): Element[] {
+  const rowsWithAnswer = new Set<Element>();
+  for (const el of nodes) {
+    if (isThinkingBlock(el)) continue;
+    const row = el.closest(selectors.turnRow);
+    if (row) rowsWithAnswer.add(row);
+  }
+  return nodes.filter((el) => {
+    if (!isThinkingBlock(el)) return true;
+    const row = el.closest(selectors.turnRow);
+    return row === null || !rowsWithAnswer.has(row);
+  });
+}
+
+/**
+ * Whether a turn node is an extended-thinking block rather than the answer. Shared by the
+ * filter above and the walk's dedupe, which needs to know that a block only survived the
+ * filter because no answer had rendered beside it yet.
+ */
+function isThinkingBlock(el: Element): boolean {
+  return el.closest(selectors.thinkingContainer) !== null;
 }
 
 /** Map one turn node to a normalized Message, or null if it has no content. */

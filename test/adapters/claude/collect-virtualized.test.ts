@@ -46,14 +46,67 @@ interface Turn {
    * renders NO `user-message` node — the tiles sit beside the action bar — so the turn query
    * matches nothing and the row must be read off its thumbnails instead. Values are the
    * `alt` texts; an empty string models a tile that rendered without one.
+   *
+   * Shorthand for `tiles` in the preview-tile shape; give `tiles` directly to model the file
+   * card, or to interleave the two.
    */
   attachments?: string[];
+  /**
+   * Attachment tiles on this row in DOCUMENT order, across BOTH shapes Claude was measured
+   * rendering (2026-07-29). Combining them in one ordered list is the point: a row can hold
+   * either shape, and the adapter must report them in the order they appear rather than
+   * grouping by shape.
+   *
+   * A tile row that ALSO has `content` models a mixed turn — text plus a file, which renders
+   * a `user-message` node AND tiles beside it.
+   */
+  tiles?: Tile[];
   /**
    * Suppress the user-exclusive edit control on an `attachments` row, so it cannot be
    * attributed to the user. Such a row must stay unclaimed and fail loud, not be guessed at.
    */
   noEditBar?: boolean;
+  /**
+   * An EXPANDED extended-thinking block: a second `.standard-markdown` in the same row,
+   * holding this text and rendered BEFORE the answer (live 2026-07-29: `md[0]` thinking,
+   * `md[1]` answer). It is distinguished by an ancestor carrying `data-timeline-text`.
+   */
+  thinking?: string;
+  /** Render the thinking block as the row's ONLY turn node — a turn still generating. */
+  thinkingOnly?: boolean;
+  /**
+   * Render thinking-only for the first N record() rounds, then thinking AND the answer — the
+   * TRANSITION a fixed `thinkingOnly` flag cannot express. Keyed to elapsed rounds rather than
+   * scroll position for the same reason `partial` is: a response finishes on wall time whether
+   * or not the walk happens to be looking at that row.
+   *
+   * Put it on the LAST turn. Round-keying alone does not make a turn observable: the walk starts
+   * at the bottom, so an early-index row is off-screen for the first rounds and is not seen until
+   * well past N — by which time the fake already renders the settled shape and the test passes
+   * against broken code. Same trap `partial` documents at its own test below; it caught this flag
+   * too, on its first draft.
+   */
+  thinkingUntilRound?: number;
 }
+
+/**
+ * One attachment tile. `tile` is the preview shape (name on the thumbnail's `alt`), `card`
+ * the file-card shape (name in the card's `h3`, and no `<img>` in the row at all). Live
+ * measurement could not establish what selects between them — a PNG produced each — so both
+ * must be read (docs/live-dom-verification.md → Claude → 2026-07-29).
+ */
+interface Tile {
+  shape: 'tile' | 'card';
+  name: string;
+}
+
+/** The combined query the adapter runs against a row to find tiles of either shape. */
+const ATTACHMENT_TILES = 'button > img[alt], [data-testid="file-thumbnail"] h3';
+
+const tilesOf = (t: Turn): Tile[] =>
+  t.tiles ?? (t.attachments ?? []).map((name) => ({ shape: 'tile' as const, name }));
+
+const hasTiles = (t: Turn): boolean => tilesOf(t).length > 0;
 
 const TURN_H = 100;
 // How many record() rounds a `partial` turn stays mid-stream. Kept low enough that the
@@ -113,7 +166,21 @@ function makeWindowedDoc({
   const declaredTotal = (): number | null =>
     typeof setSize === 'function' ? setSize(rounds) : setSize;
 
-  const makeRow = (t: Turn, i: number) => ({
+  // One row OBJECT per position, shared by every node in it. Identity matters: the real
+  // `closest('[data-index]')` returns the same element from every node in a row, and code that
+  // groups nodes by row (the thinking-block filter) compares those references. Handing out a
+  // fresh object per call would make two nodes in one row look like two rows.
+  const rowCache = new Map<number, ReturnType<typeof buildRow>>();
+  const makeRow = (t: Turn, i: number): ReturnType<typeof buildRow> => {
+    let row = rowCache.get(i);
+    if (!row) {
+      row = buildRow(t, i);
+      rowCache.set(i, row);
+    }
+    return row;
+  };
+
+  const buildRow = (t: Turn, i: number) => ({
     getAttribute: (name: string): string | null =>
       name === 'data-index' && !t.unindexed ? String(t.indexOverride ?? i) : null,
     // Only an attachment row carries tiles and the user-exclusive edit control; every other
@@ -130,17 +197,23 @@ function makeWindowedDoc({
                 name === 'aria-setsize' ? String(total) : null,
             };
       }
-      return sel === '[data-testid="action-bar-edit"]' && t.attachments && !t.noEditBar ? {} : null;
+      return sel === '[data-testid="action-bar-edit"]' && hasTiles(t) && !t.noEditBar ? {} : null;
     },
+    // Both tile shapes come back from ONE query, in the order they were declared — so an
+    // adapter that grouped by shape instead of preserving document order is visible here.
     querySelectorAll: (sel: string): unknown[] =>
-      sel === 'button > img[alt]' && t.attachments
-        ? t.attachments.map((alt) => ({
-            getAttribute: (name: string): string | null => (name === 'alt' ? alt : null),
+      sel === ATTACHMENT_TILES
+        ? tilesOf(t).map((tile) => ({
+            matches: (s: string): boolean => s === 'button > img[alt]' && tile.shape === 'tile',
+            getAttribute: (name: string): string | null =>
+              name === 'alt' && tile.shape === 'tile' ? tile.name : null,
+            // The card carries its name as the `h3`'s text, not an attribute.
+            textContent: tile.shape === 'card' ? tile.name : '',
           }))
         : [],
   });
 
-  const makeNode = (t: Turn, i: number, override?: string) => {
+  const makeNode = (t: Turn, i: number, override?: string, thinking = false) => {
     const hydrated = (): boolean => (t.skeleton ? fullyInside(i) : true);
     const text = (): string => {
       if (override !== undefined) return override;
@@ -154,7 +227,12 @@ function makeWindowedDoc({
     // assistant node is the `.standard-markdown` container and matches neither.
     return {
       matches: (sel: string): boolean => sel === '[data-testid="user-message"]' && t.role === 'user',
-      closest: (sel: string) => (sel === '[data-index]' && !t.unindexed ? row : null),
+      closest: (sel: string) => {
+        // The measured discriminator for an extended-thinking block: an ancestor carrying
+        // `data-timeline-text`, which the answer container does not have.
+        if (sel === '[data-timeline-text]') return thinking ? ({} as Element) : null;
+        return sel === '[data-index]' && !t.unindexed ? row : null;
+      },
       // `readUserContent` walks `children`; giving it none makes it fall back to textContent.
       children: [] as Element[],
       // Consulted only when a user turn has no readable text: an image-only turn must be
@@ -170,14 +248,25 @@ function makeWindowedDoc({
     };
   };
 
-  // Every turn node currently rendered, including any `extraNodes` sharing a turn's row.
-  // An `attachments` turn contributes NO turn node — that is the whole point of the shape.
+  // Every turn node currently rendered, including any `extraNodes` sharing a turn's row and
+  // any expanded thinking block. An attachment turn with no text contributes NO turn node —
+  // that is the whole point of the shape; one that HAS text is a mixed turn and renders both.
   const visibleNodes = (): unknown[] =>
-    turns.flatMap((t, i) =>
-      intersects(i) && !t.attachments
-        ? [makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c))]
-        : [],
-    );
+    turns.flatMap((t, i) => {
+      if (!intersects(i)) return [];
+      if (hasTiles(t) && !t.content) return [];
+      const nodes: unknown[] = [];
+      // Thinking first: live 2026-07-29 measured `md[0]` as the thinking text and `md[1]` as
+      // the answer, which is why an unfiltered join PREPENDS the reasoning to the message.
+      if (t.thinking !== undefined) nodes.push(makeNode(t, i, t.thinking, true));
+      const thinkingOnlyNow =
+        t.thinkingOnly === true ||
+        (t.thinkingUntilRound !== undefined && rounds <= t.thinkingUntilRound);
+      if (!thinkingOnlyNow) {
+        nodes.push(makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c)));
+      }
+      return nodes;
+    });
 
   return {
     querySelector: (sel: string) => (sel === '[data-autoscroll-container]' ? container : null),
@@ -409,6 +498,141 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
       /could not read/,
     );
+  });
+
+  // Claude renders attachments in TWO shapes and only the preview tile was ever matched, so
+  // the SECOND — the file card, which puts no `<img>` in the row at all — reproduced the
+  // pre-PR #35 failure in full: measured live 2026-07-29 on a 10-row conversation, rows 10,
+  // claimed 9. One `.txt` made the whole conversation unexportable.
+  it('describes an attachment-only turn whose file renders as a card, not a tile', async () => {
+    const turns = alternating(9);
+    turns[4] = { role: 'user', content: '', tiles: [{ shape: 'card', name: 'pv-probe-note.txt' }] };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(9);
+    expect(messages[4]).toEqual({ role: 'user', content: '[File: pv-probe-note.txt]' });
+  });
+
+  // What selects one shape over the other was NOT established — a PNG produced each — so the
+  // adapter must read both from one row and keep them in document order rather than grouping
+  // by shape. The card is declared first here precisely so a `[...tiles, ...cards]` reading
+  // would flip the output and fail.
+  it('reports both tile shapes in one row, in document order', async () => {
+    const turns = alternating(9);
+    turns[4] = {
+      role: 'user',
+      content: '',
+      tiles: [
+        { shape: 'card', name: 'notes.txt' },
+        { shape: 'tile', name: 'report.pdf' },
+      ],
+    };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages[4].content).toBe('[File: notes.txt]\n\n[File: report.pdf]');
+  });
+
+  // Skipping is per TILE, not per row: a row that renders one nameless card beside a named one
+  // still reports the named file. Only a row whose tiles are ALL nameless yields nothing and
+  // falls through to the loud failure below.
+  it('skips only the nameless tile on a row that also carries a named one', async () => {
+    const turns = alternating(9);
+    turns[4] = {
+      role: 'user',
+      content: '',
+      tiles: [
+        { shape: 'card', name: '' },
+        { shape: 'card', name: 'notes.txt' },
+      ],
+    };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages[4].content).toBe('[File: notes.txt]');
+  });
+
+  it('leaves a turnless card row unclaimed when its card carries no name', async () => {
+    const turns = alternating(9);
+    turns[4] = { role: 'user', content: '', tiles: [{ shape: 'card', name: '' }] };
+    await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
+      /could not read/,
+    );
+  });
+
+  it('leaves a card row unclaimed when it cannot be attributed to the user', async () => {
+    const turns = alternating(9);
+    turns[4] = {
+      role: 'user',
+      content: '',
+      tiles: [{ shape: 'card', name: 'notes.txt' }],
+      noEditBar: true,
+    };
+    await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
+      /could not read/,
+    );
+  });
+
+  // A MIXED turn used to export its text and say nothing about the file, because the row scan
+  // ran only on rows the turn query had not claimed — a silent omission rather than a failure.
+  // Scanning claimed rows is safe: live 2026-07-29 measured `imgsInsideUserMessage` 0 in every
+  // row, attached or pasted, so a row-level query cannot reach turn-body content.
+  it('reports the attachment on a mixed turn instead of exporting the text alone', async () => {
+    const turns = alternating(9);
+    turns[4] = {
+      role: 'user',
+      content: 'have a look at this',
+      tiles: [{ shape: 'card', name: 'notes.txt' }],
+    };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(9);
+    // Marker FIRST: live measurement put the tile ahead of the text body in document order.
+    expect(messages[4]).toEqual({
+      role: 'user',
+      content: '[File: notes.txt]\n\nhave a look at this',
+    });
+  });
+
+  // Expanding a turn's thinking chip adds a second, un-nested `.standard-markdown` to the row,
+  // and every turn node in a row is joined — so the exported text silently depended on whether
+  // the user happened to have the block open.
+  it('excludes an expanded extended-thinking block from the assistant message', async () => {
+    const turns = alternating(12);
+    turns[3] = { ...turns[3], thinking: 'the user wants X, so I should…' };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(12);
+    expect(messages[3].content).toBe('content 3');
+  });
+
+  // The exclusion must not convert a working export into a hard failure. A turn caught while
+  // it is still generating can render its thinking block and no answer yet; dropping that node
+  // unconditionally would leave the row unclaimed, and an unclaimed row fails the WHOLE export.
+  it('keeps a thinking block when it is the only turn node in its row', async () => {
+    const turns = alternating(12);
+    turns[3] = { ...turns[3], thinking: 'still reasoning', thinkingOnly: true };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(12);
+    expect(messages[3].content).toBe('still reasoning');
+  });
+
+  // …and keeping it must not make it STICK. The cross-round upgrade rule keeps the longest
+  // sighting, justified by "a fuller render is a superset of a partial one" — which the thinking
+  // filter breaks: a row first seen thinking-only records the whole reasoning, and the later
+  // sighting that finally catches the answer is the answer ALONE, which is routinely SHORTER.
+  // Length alone would then pin Claude's internal reasoning and silently discard the real
+  // answer. The transition is the whole point here; the fixed-flag test above cannot see it.
+  it('replaces a thinking-only sighting once the answer renders, even if the answer is shorter', async () => {
+    const reasoning = 'the user is asking about X, so the relevant consideration is Y and then Z';
+    const answer = 'yes';
+    // The regression only exists when the answer loses a length comparison — pin that premise
+    // rather than trusting the two literals to stay this way.
+    expect(reasoning.length).toBeGreaterThan(answer.length);
+
+    // The LAST turn, for the same reason the streaming test uses it: the walk starts at the
+    // bottom, so this is the one row observed on the very first rounds — while it is still
+    // thinking — and re-observed on the downward pass once the answer has landed. Any earlier
+    // index is off-screen until well past `thinkingUntilRound` and never seen mid-thought,
+    // which makes the test pass against the broken code.
+    const turns = alternating(12);
+    turns[11] = { ...turns[11], content: answer, thinking: reasoning, thinkingUntilRound: 2 };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(12);
+    expect(messages[11].content).toBe(answer);
   });
 
   // The trailing end — the one direction the index checks are blind to. Contiguity plus the

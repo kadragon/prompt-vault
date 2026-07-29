@@ -86,6 +86,45 @@ describe('claudeAdapter.extract', () => {
     await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
   });
 
+  // The thinking-block filter is applied on BOTH paths — the scroll walk and this one-shot
+  // read — so that the two cannot drift apart. `collect-virtualized.test.ts` pins the walk;
+  // this pins the snapshot, against a real DOM rather than a hand-rolled fake, so the
+  // `closest('[data-timeline-text]')` ancestor test is exercised for real.
+  //
+  // It also pins the ORDER of the filter against the completeness check: `readSnapshot`
+  // compares its message count to `nodes.length`, so filtering after that check would count
+  // the dropped block as a turn that could not be read and fail this export outright.
+  it('excludes an expanded thinking block on the one-shot path too', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1">' +
+      // Live 2026-07-29: the thinking container is distinguished by a `data-timeline-text`
+      // ancestor, and renders BEFORE the answer in the same row.
+      '<div data-timeline-text><div class="standard-markdown"><p>the user wants X</p></div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div>' +
+      '</body>';
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages).toHaveLength(2);
+    expect(convo.messages[1].content).toBe('the answer');
+  });
+
+  // The filter drops a thinking block only when its row holds a non-thinking node too. With no
+  // row ancestor at all there is no evidence an answer was rendered beside it, so it is kept —
+  // dropping it would turn the only content there is into an empty turn, which fails the whole
+  // export.
+  it('keeps a thinking block that has no row to prove an answer rendered beside it', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-timeline-text><div class="standard-markdown"><p>still reasoning</p></div></div>' +
+      '</body>';
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages).toHaveLength(2);
+    expect(convo.messages[1].content).toBe('still reasoning');
+  });
+
   it('does not double-count: a user bubble and an assistant container never overlap', async () => {
     // Live-verified (2026-07-25): zero `.standard-markdown` nested inside a user turn, so
     // the union selector yields each turn exactly once.
