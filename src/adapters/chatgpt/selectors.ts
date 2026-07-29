@@ -69,6 +69,19 @@ export const selectors = {
   sidebarConversationLink: 'a[href^="/c/"]',
 
   /**
+   * EVERY conversation row inside `sidebarHistory`, top-level and project/GPT-scoped alike
+   * — deliberately wider than `sidebarConversationLink`, which takes only the `/c/…` rows
+   * the bulk list exports. This is the row count the server pages in, so it is the only
+   * count that reveals the page size: measured 2026-07-29 on a 1042-conversation account,
+   * `#history` appended a fixed **28 rows** per page across 36 consecutive pages while the
+   * `/c/`-only increment varied 15-27, because the split between the two kinds varies per
+   * page (`852 /c/ + 190 /g/…/c/ = 1042`, every anchor in `#history`). Used by the
+   * parity oracle in `loadMoreConversations`, never for extraction. Verified against the
+   * live page (2026-07-29); re-verify if the load-more walk starts warning on healthy lists.
+   */
+  sidebarConversationRow: 'a[href*="/c/"]',
+
+  /**
    * A conversation link on a Project home page (`/g/g-p-<id>/project`) or in the
    * persistent project sidebar expando shown while a project conversation is open.
    * `href` is `/g/g-p-<id>[-slug]/c/<convId>` — the slug varies by context, so match

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- [done] Closed the bulk panel's silent "Load more" truncation (v1.7.4, 2026-07-29). Implements the
+  completeness oracle the 2026-07-28 live session unblocked, and takes that session's warnings as
+  binding. Three layers. The dwell rises 5 s -> 11.5 s: not a hand-picked number, but what the repo's
+  existing ratchet test demands once its stale 2830 ms constant is replaced with the confirmed
+  7516 ms worst-case inter-batch gap (gaps beat the old 5 s dwell in BOTH cold runs, 5 of 74 batches,
+  every one while the container was already clamped). `pageParityGate` adds the structural evidence a
+  constant cannot: pages are a fixed 28 raw rows, so a full-size last batch means the walk stopped on
+  a page boundary, and it holds the walk open a bounded 20 rounds more. It counts raw conversation
+  rows, never the `/c/` ids -- those increment 11-27 per page, which is exactly why the oracle looked
+  impossible from the counts the loader already had. And when that budget still runs out the panel
+  says the list may be incomplete and keeps the button live rather than latching "All conversations
+  loaded". Both holes the prior session flagged are handled rather than rediscovered: a batch is
+  classified only after it stops growing (anchors lag their rows, so a full page sampled mid-hydration
+  reads short -- judging per round would recreate the truncation), and an exact multiple of the page
+  size ends on a full page that parity cannot distinguish from one page short, so the walk warns
+  instead of failing loud, which would have broken those accounts permanently. The page size is
+  derived from the largest settled batch, never hardcoded. Review caught two further defects, both
+  reproduced before fixing: the doubt died between clicks so the retry the warning invites could latch
+  "done" over a missing page, and the gate's first observed increment always defined the page size so
+  a lone short final page warned on every load. -> `docs/live-dom-verification.md`
+
 - [done] Closed the privacy gate's `<iframe srcdoc>` residual — the last known subresource vector the
   static scan could not see (2026-07-26). The tag scan resumes after each tag's own `>` on purpose,
   so a tag-shaped attribute VALUE (`<div data-html="<img src='https://…'>">`) is not re-matched as a

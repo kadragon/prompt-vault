@@ -1,8 +1,21 @@
 ## Review Backlog
 
-### Bulk panel "Load more" — residual: a fetch slower than the dwell still truncates silently
+### Bulk panel "Load more" — parity patience is lost on the retry it asks for
 
-- [ ] [FIX] The loaders end on a fixed dwell (`SIDEBAR_STABLE_ROUNDS × SIDEBAR_STEP_DELAY_MS` = 5 s), so a `#history` page that takes longer than that — slow/tethered link, throttled or cold backend, rate-limit backoff on the last page — still returns a silent partial with no `ExtractionError`. **Measured 2026-07-25, no longer hypothetical:** the built extension's first "Load more" run stopped at **725 of 852** conversations (14.9% missing), cleared its status line and re-enabled the button exactly as a complete run does — see `docs/live-dom-verification.md`. Which exit fired (dwell expiry vs `endOfListGate`) was NOT isolated, so that session raises the priority without narrowing the fix. It also measured one thing that bears on the fix: reaching the panel's `All conversations loaded` state requires an extra run that grows nothing, which is strictly stronger than one run but still latches falsely if that confirming run stalls at its first page boundary. Raised by Codex (P1) and the Claude reviewer (P3, conf 70) on PR #32; the verifier **refuted it as a blocker for that PR** (`main` had the same exit with a 450 ms dwell and no end-of-list gate, so the branch improves the hazard ~11×) but it remains a real residual. Two candidate resolutions were assessed and both rejected as-is: an *adaptive* dwell (`max(floor, 2× longest observed gap)`) cannot bootstrap — the uniformly-slow case stalls out at the **first** page boundary with zero gap samples, so the floor still does all the work; and "fail loud on the ambiguous timeout" fires on every successful run, because a genuinely complete load exits through the same stall-counter expiry. A real fix needs a completeness oracle. The only non-fabricated candidate identified is **page-size parity** ("last increment == page size ⇒ another page exists"), which is asymmetric evidence derived from counts the loader already has. **Unblocked 2026-07-28** by the live-DOM session that measured what it needed (recorded in `docs/live-dom-verification.md`): the raw page is **exactly 28 rows** — zero variance across all **72 full pages** measured in two independent cold runs (74 batches; the two terminal pages were short, at 11) — confirmed independently by `scrollHeight` growing 1008 px per full page. The blocker's premise also held: the top-level `/c/` increment the loader counts ranged **11–27** and was never 28, so the oracle must count **raw rows** (`#history a[href]`, not `li`). **Do not implement the naive "pull until a page arrives short or empty" rule** — review on PR #47 found a hole at each end, both recorded in the doc. (a) An empty page is indistinguishable from an in-flight one or a >5 s stall when all you have is a row count, so parity is definitive only when the total is *not* a multiple of 28 and otherwise degrades to today's dwell heuristic. (b) Anchors lag their rows mid-fetch, so a full page can transiently read as short and fire "short ⇒ exhausted" early, recreating the very truncation this guards against; the increment must settle before it is classified. Same session re-measured the latency this guard exists for — gaps up to **7516 ms**, above the shipped 5 s dwell in both runs.
+- [ ] [FIX] `pageParityGate` seeds its page size from the rows already rendered at the walk's
+      first read, which is correct on a fresh sidebar (measured: the initial render IS one page)
+      but wrong on a **re-run over an already-loaded list** — the seed is then the whole list, no
+      increment ever matches it, and the gate goes quiet. So the retry the incomplete-warning
+      explicitly asks the user to make gets only the 10 s dwell, not the 20 s parity-backed wait,
+      which is backwards: the retry is exactly when a page is most likely still owed. Not a
+      correctness hole — `bulk-panel.ts` carries the doubt across clicks, so a stalled retry keeps
+      warning rather than latching "All conversations loaded" (covered by a test) — but it does
+      mean the retry is less likely to actually land the missing page than the first attempt was.
+      Fix by threading the established page size back out of the walk and into the next call
+      (an `onPageSize`/`knownPageSize` pair on `LoadMoreOptions`) so a retry seeds from measured
+      evidence instead of re-guessing. Deliberately out of scope of PR #48, which fixed the two
+      review findings without widening the adapter interface. See the seeding comment in
+      `src/adapters/chatgpt/index.ts` → `pageParityGate`.
 
 ### Claude adapter — follow-ups from the 2026-07-25 live session
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   loadMoreConversations,
   loadMoreProjectConversations,
@@ -85,50 +85,104 @@ function makeRoot({
 }
 
 // Build a fake `#history` sidebar as a **server-paged, append-only lazy list** — the shape
-// live measurement found (2026-07-24, 1042 conversations): the rendered node count grows
-// monotonically and never recycles, and reaching the bottom triggers a server round-trip
-// (measured 1418–2830 ms) that appends the next page. `fetchMs` is that round-trip;
+// live measurement found on a 1042-conversation account: the rendered node count grows
+// monotonically and never recycles (2026-07-24), and reaching the bottom triggers a server
+// round-trip that appends the next page (1509–7516 ms confirmed, re-measured 2026-07-28 over
+// two cold runs; the 2026-07-24 reading of 1418–2830 ms understated it). `fetchMs` is that
+// round-trip;
 // `hydrateRounds` is how many further re-reads the landed rows stay href-less (present in
 // the DOM, raising the container height, but not yet countable conversations).
+//
+// `cPerPage` models the split measured live: a page is a FIXED `pageSize` rows, but only some
+// are top-level `/c/` conversations — the rest are project/GPT-scoped `/g/g-p-…/c/` rows living
+// in the same `#history`. The split varies page to page (11–27 of 28 across 74 batches), which
+// is why the `/c/` increment is not the page size. Defaults to an all-`/c/` page, leaving the
+// pre-existing cases unchanged.
 function makeLazyRoot({
   pageSize,
   pages,
   fetchMs,
   hydrateRounds = 0,
   view = 3,
+  cPerPage = () => pageSize,
+  lastPageRows,
+  hydrateSplit = 0,
 }: {
   pageSize: number;
   pages: number;
-  fetchMs: number;
+  /** Round-trip for each page, by 0-based page index — measured live to vary 1509-7516 ms. */
+  fetchMs: number | ((page: number) => number);
   hydrateRounds?: number;
   view?: number;
-}): { root: ParentNode } {
+  cPerPage?: (page: number) => number;
+  /**
+   * Rows in the final page, when the list does not divide evenly — the shape measured live
+   * (36 full pages of 28, then a short one). Omit for a list whose last page is full-size,
+   * which is the case parity cannot distinguish from "one more page is still owed".
+   */
+  lastPageRows?: number;
+  /**
+   * Anchors of a landed page withheld on its first countable read, so the page arrives as two
+   * increments instead of one. Models the mid-fetch divergence measured 2026-07-28: anchors lag
+   * their rows, so a sample taken during hydration shows a full 28-row page as a short one.
+   */
+  hydrateSplit?: number;
+}): { root: ParentNode; conversationCount: () => number } {
   const clientHeight = view * ROW;
-  let loaded = pageSize;
+  // Every rendered row's href, in DOM order. A page contributes `cPerPage(p)` plain rows
+  // and `pageSize - cPerPage(p)` project-scoped ones.
+  const hrefs: string[] = [];
+  let nextPlain = 0;
+  let nextProject = 0;
+  let lastPageAdded = 0; // rows the newest page contributed — what hydration hides
+  const addPage = (p: number): void => {
+    const rows = p === pages - 1 && lastPageRows !== undefined ? lastPageRows : pageSize;
+    const plain = Math.max(0, Math.min(rows, cPerPage(p)));
+    // Plain rows keep the global sequential `/c/<n>` ids the all-`/c/` cases assert on.
+    for (let i = 0; i < plain; i++) hrefs.push(`/c/${nextPlain++}`);
+    for (let i = plain; i < rows; i++) hrefs.push(`/g/g-p-proj/c/p${nextProject++}`);
+    lastPageAdded = rows;
+  };
+  addPage(0);
   let pagesIn = 1;
   let fetching = false;
   let reads = 0;
   let countableFromRead = 0; // reads before this still hide the newest page
-  const anchorsUpTo = (n: number): Element[] =>
-    Array.from({ length: n }, (_, i) => ({
-      getAttribute: (name: string) => (name === 'href' ? `/c/${i}` : null),
-      closest: () => listRoot,
-      querySelector: () => null,
-    })) as unknown as Element[];
+  // The loader asks for two different row sets: `a[href^="/c/"]` (conversations it collects)
+  // and `a[href*="/c/"]` (every conversation row, the parity counter). Honour the difference
+  // — collapsing them is exactly the blindness this fixture exists to reproduce.
+  const matches = (sel: string, href: string): boolean =>
+    sel.includes('^=') ? href.startsWith('/c/') : href.includes('/c/');
+  const anchorsFor = (sel: string, upTo: number): Element[] =>
+    hrefs
+      .slice(0, upTo)
+      .filter((href) => matches(sel, href))
+      .map(
+        (href) =>
+          ({
+            getAttribute: (name: string) => (name === 'href' ? href : null),
+            closest: () => listRoot,
+            querySelector: () => null,
+          }) as unknown as Element,
+      );
   const maybeFetch = (): void => {
     if (fetching || pagesIn >= pages) return;
-    if (listRoot._top + clientHeight < loaded * ROW - 1) return; // more to scroll first
+    if (listRoot._top + clientHeight < hrefs.length * ROW - 1) return; // more to scroll first
     fetching = true;
-    setTimeout(() => {
-      loaded += pageSize;
-      pagesIn++;
-      countableFromRead = reads + hydrateRounds + 1;
-      fetching = false;
-    }, fetchMs);
+    const incoming = pagesIn;
+    setTimeout(
+      () => {
+        addPage(incoming);
+        pagesIn++;
+        countableFromRead = reads + hydrateRounds + 1;
+        fetching = false;
+      },
+      typeof fetchMs === 'function' ? fetchMs(incoming) : fetchMs,
+    );
   };
   const listRoot = {
     get scrollHeight(): number {
-      return loaded * ROW;
+      return hrefs.length * ROW;
     },
     clientHeight,
     parentElement: null,
@@ -138,12 +192,17 @@ function makeLazyRoot({
       return this._top;
     },
     set scrollTop(v: number) {
-      this._top = Math.max(0, Math.min(v, loaded * ROW - clientHeight));
+      this._top = Math.max(0, Math.min(v, hrefs.length * ROW - clientHeight));
       maybeFetch();
     },
-    querySelectorAll: (): Element[] => {
-      reads++;
-      return anchorsUpTo(reads < countableFromRead ? loaded - pageSize : loaded);
+    querySelectorAll: (sel: string): Element[] => {
+      // Count only the collect query, which the loop makes exactly once per round. The
+      // parity counter reads the same DOM in the same round and must not age hydration.
+      if (sel.includes('^=')) reads++;
+      let upTo = hrefs.length;
+      if (reads < countableFromRead) upTo -= lastPageAdded;
+      else if (hydrateSplit > 0 && reads === countableFromRead) upTo -= hydrateSplit;
+      return anchorsFor(sel, upTo);
     },
   };
   const root = {
@@ -151,15 +210,23 @@ function makeLazyRoot({
     querySelectorAll: (sel: string) =>
       sel.includes('/g/g-p-') ? [{ closest: () => listRoot } as unknown as Element] : [],
   } as unknown as ParentNode;
-  return { root };
+  return { root, conversationCount: (): number => nextPlain };
 }
 
 const fast = { stepDelayMs: 0, stableRounds: 3, maxSteps: 200 };
 
-// Slowest `#history` page round-trip measured live (2026-07-24, 1042-conversation account;
-// range 1418-2830 ms over four consecutive batches). `SCALE` runs the production timings that
-// much faster so a real-latency test stays a sub-second unit test.
-const SLOWEST_MEASURED_FETCH_MS = 2830;
+// The longest inter-batch gap measured live — 7516 ms, directly measured across two
+// independent cold runs on a ~1047-row account (2026-07-28), against a floor of 1509 ms and a
+// median near 3011-4504 ms. This is the stretch during which the loader sees no progress at
+// all, so it is what the dwell must outlast rather than any single fetch: the rows of a
+// pending page render before their anchors do, so the conversation count stays flat across
+// both. Gaps above the old 5000 ms dwell landed in BOTH runs (5 of 74 batches), every one
+// while the container was already clamped — the exact state stalls are counted in. A separate
+// 2026-07-29 run over the same account saw a narrower 757-6123 ms band; the wider confirmed
+// bound governs. Details: docs/live-dom-verification.md, 2026-07-28.
+const LONGEST_LOADER_BLIND_MS = 7516;
+// `SCALE` runs the production timings that much faster so a real-latency test stays a
+// sub-second unit test.
 const SCALE = 100;
 
 // The stable `/c/<n>` ids the loader is expected to return, in order, for a list of `n`.
@@ -216,7 +283,7 @@ describe('loadMoreConversations (history sidebar)', () => {
     // real latency fails here, not just in the arithmetic guard below. Timing jitter can only
     // lengthen a round, i.e. make the loader more patient, so this cannot flake the other way.
     const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
-    const { root } = makeLazyRoot({ pageSize: 5, pages: 4, fetchMs: SLOWEST_MEASURED_FETCH_MS / SCALE });
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 4, fetchMs: LONGEST_LOADER_BLIND_MS / SCALE });
     const result = await loadMoreConversations(root, { stepDelayMs: stepDelayMs / SCALE, stableRounds, maxSteps });
     expect(result.map((c) => c.id)).toEqual(idsUpTo(20));
   });
@@ -234,7 +301,104 @@ describe('loadMoreConversations (history sidebar)', () => {
     // shrunk constant fails loudly instead of leaving the suite to rely on measured latency
     // staying put. Keeps the defaults from drifting back to the viewport's 450 ms window.
     const { stepDelayMs, stableRounds } = SIDEBAR_SCROLL_DEFAULTS_TEST;
-    expect((stepDelayMs ?? 0) * (stableRounds ?? 0)).toBeGreaterThanOrEqual(SLOWEST_MEASURED_FETCH_MS * 1.5);
+    expect((stepDelayMs ?? 0) * (stableRounds ?? 0)).toBeGreaterThanOrEqual(LONGEST_LOADER_BLIND_MS * 1.5);
+  });
+
+  it('loads a list whose pages hide their size behind a varying /c/ split', async () => {
+    // Reproduces the silent truncation measured live on 2026-07-25 (725 of 852, 14.9% lost,
+    // status line cleared exactly as a complete run does). The shape that causes it, measured
+    // 2026-07-29: a page is a FIXED number of rows, but the share of them that are top-level
+    // `/c/` conversations varies (15-27 of 28), so the count the loader watches grows by a
+    // different amount every page and can go flat for longer than the dwell.
+    const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+    const plainPerPage = [8, 3, 6, 2];
+    const { root } = makeLazyRoot({
+      pageSize: 8,
+      pages: 4,
+      lastPageRows: 3,
+      cPerPage: (p) => plainPerPage[p],
+      fetchMs: LONGEST_LOADER_BLIND_MS / SCALE,
+    });
+    const result = await loadMoreConversations(root, { stepDelayMs: stepDelayMs / SCALE, stableRounds, maxSteps });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(19));
+  });
+
+  it('keeps waiting on a gap longer than the dwell when parity says a page is still owed', async () => {
+    // Isolates the oracle from the constant: this gap exceeds the *raised* dwell, so a bigger
+    // number alone does not rescue it — only the structural evidence that the last page came
+    // in full-size does. The gap is synthetic (chosen to sit between the dwell and the pending
+    // budget), NOT a measured latency; the measured worst case is LONGEST_LOADER_BLIND_MS.
+    //
+    // The slow gap is the SECOND one on purpose. Parity is deliberately silent until it has
+    // seen a page land, so the first boundary is covered by the dwell alone — putting the gap
+    // there would test the constant again rather than the oracle.
+    const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+    const dwellMs = (stepDelayMs / SCALE) * (stableRounds ?? 0);
+    const gapMs = dwellMs * 1.5;
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({
+      pageSize: 6,
+      pages: 3,
+      lastPageRows: 2,
+      fetchMs: (page) => (page === 1 ? 0 : gapMs),
+    });
+    const result = await loadMoreConversations(root, {
+      stepDelayMs: stepDelayMs / SCALE,
+      stableRounds,
+      maxSteps,
+      onIncomplete: incomplete,
+    });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(14));
+    // The list ended on a SHORT page, which is the one thing parity can read as a real end.
+    expect(incomplete).not.toHaveBeenCalled();
+  });
+
+  it('reports possible incompleteness when the list ends on a full-size page', async () => {
+    // A history whose length is an exact multiple of the page size is indistinguishable from
+    // one page short. Returning the rows is right (failing loud would break such accounts
+    // permanently), but claiming completeness is not — so the caller is told (AGENTS.md #4).
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 3, fetchMs: 0 });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(15));
+    expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies a page by its settled size, not by a mid-hydration sample of it', async () => {
+    // The 2026-07-28 session measured anchors lagging their rows mid-fetch (1039 li vs 1036
+    // anchors). So a full page can be sampled as a SHORT one, and "short => exhausted" firing
+    // on that sample recreates the silent truncation the oracle exists to prevent. Here the
+    // final page is full-size but arrives as 4 anchors then 2: judged per round it reads short
+    // twice and the walk claims completeness; judged once the increment settles it reads 6.
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 6, pages: 2, hydrateSplit: 2, fetchMs: 0 });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(12));
+    expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not claim incompleteness when the only page that lands is a short final one', async () => {
+    // The gate learns the page size from the increments it sees, and the rows rendered before
+    // the walk starts are its baseline, never an increment. So a history holding exactly one
+    // page beyond that baseline offers a single increment — and if the oracle lets that lone
+    // increment define the page size, `increment === pageSize` is trivially true even for a
+    // SHORT final page, warning on every load of a complete list.
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 3, fetchMs: 0 });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(8));
+    expect(incomplete).not.toHaveBeenCalled();
+  });
+
+  it('does not claim incompleteness for a history shorter than one page', async () => {
+    // No page ever lands, so no increment is ever observed and the oracle must stay silent —
+    // otherwise every small account would be warned on every load (a false alarm is as bad as
+    // the silence this fix removes).
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 1, fetchMs: 0 });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(5));
+    expect(incomplete).not.toHaveBeenCalled();
   });
 
   it('fails loud when new conversations never stop appearing (runaway) within the step cap', async () => {

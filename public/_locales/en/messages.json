@@ -108,6 +108,15 @@
       }
     }
   },
+  "bulkLoadMoreIncompleteMessage": {
+    "message": "Conversations loaded: $count$. The list may be incomplete — click Load more again.",
+    "description": "Shown when Load more stopped while the page-size parity check still expected another page, so the list may be short. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "bulkEmptyMessage": {
     "message": "No conversations were found to export.",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."

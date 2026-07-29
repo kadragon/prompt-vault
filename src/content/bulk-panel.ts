@@ -21,6 +21,7 @@ import {
   BULK_PANEL_SELECT_ALL,
   BULK_PANEL_TITLE,
   bulkExportButtonLabel,
+  bulkLoadMoreIncompleteMessage,
   bulkLoadMoreProgressMessage,
   bulkProgressMessage,
   bulkSummaryMessage,
@@ -58,9 +59,14 @@ export interface BulkPanelDeps {
    * newly-revealed conversations to the checklist, preserving existing selections.
    * Omit when the source is not virtualized — the button is then not shown. Accepts an
    * optional `onProgress(loaded)` reporting the running count surfaced so far, so the
-   * panel can stream a status line during the (potentially multi-minute) scroll.
+   * panel can stream a status line during the (potentially multi-minute) scroll, and an
+   * optional `onIncomplete()` fired when the walk gave up with items still owed — the
+   * panel then warns instead of reporting the list as fully loaded.
    */
-  loadMore?: (onProgress?: (loaded: number) => void) => Promise<SidebarConversation[]>;
+  loadMore?: (
+    onProgress?: (loaded: number) => void,
+    onIncomplete?: () => void,
+  ) => Promise<SidebarConversation[]>;
 }
 
 /**
@@ -350,6 +356,8 @@ function renderSelection(
   // must therefore NOT touch the UI when it settles (see `loadMore`), so both paths
   // read this shared flag.
   let batchStarted = false;
+  // Panel-lifetime, so a second Load more click still knows the first one ended in doubt.
+  const doubt = { reported: false };
   if (loadMoreBtn) {
     loadMoreBtn.addEventListener('click', () => {
       void loadMore({
@@ -361,6 +369,7 @@ function renderSelection(
         status,
         deps,
         isBatchStarted: () => batchStarted,
+        doubt,
       });
     });
   }
@@ -394,6 +403,11 @@ interface LoadMoreArgs {
   deps: BulkPanelDeps;
   /** True once an export batch has started — the load-more completion must then not touch the UI. */
   isBatchStarted: () => boolean;
+  /**
+   * Whether some earlier walk reported the list may be incomplete. Lives with the panel, not
+   * the walk, so the doubt survives the retry the warning asks the user to make.
+   */
+  doubt: { reported: boolean };
 }
 
 /**
@@ -412,22 +426,43 @@ interface LoadMoreArgs {
  * have its progress line overwritten by a late-arriving load-more tick either.
  */
 async function loadMore(args: LoadMoreArgs): Promise<void> {
-  const { loadMoreBtn, appendRow, shown, refreshExport, syncSelectAll, status, deps, isBatchStarted } = args;
+  const { loadMoreBtn, appendRow, shown, refreshExport, syncSelectAll, status, deps, isBatchStarted, doubt } = args;
   if (loadMoreBtn.disabled || !deps.loadMore) return;
   loadMoreBtn.disabled = true;
   loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_BUSY;
   const before = shown.length;
+  let mayBeIncomplete = false;
   try {
-    const updated = await deps.loadMore((loaded) => {
-      if (isBatchStarted() || loaded <= 0) return;
-      status.textContent = bulkLoadMoreProgressMessage(loaded);
-    });
+    const updated = await deps.loadMore(
+      (loaded) => {
+        if (isBatchStarted() || loaded <= 0) return;
+        status.textContent = bulkLoadMoreProgressMessage(loaded);
+      },
+      () => {
+        mayBeIncomplete = true;
+      },
+    );
     if (isBatchStarted()) return; // A batch took over while loading — leave the modal to it.
     status.textContent = ''; // Loading… line is stale now the scroll settled either way.
     for (const conversation of updated) appendRow(conversation);
-    if (shown.length > before) {
+    const grew = shown.length > before;
+    if (grew) {
       syncSelectAll();
       refreshExport();
+    }
+    // The doubt is sticky across clicks, because the adapter's completeness oracle is
+    // per-call: a retry that never sees a page has no evidence either way and stays silent,
+    // so treating this walk's silence as proof would let the very retry the warning asks for
+    // latch "All conversations loaded" over a page still missing. Only a walk that actually
+    // surfaced new rows without re-reporting clears it — silence alone never does.
+    if (mayBeIncomplete) doubt.reported = true;
+    else if (grew) doubt.reported = false;
+
+    if (doubt.reported) {
+      status.textContent = bulkLoadMoreIncompleteMessage(shown.length);
+      loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
+      loadMoreBtn.disabled = false;
+    } else if (grew) {
       loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
       loadMoreBtn.disabled = false;
     } else {

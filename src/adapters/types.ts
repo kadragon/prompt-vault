@@ -169,6 +169,13 @@ export interface LoadMoreOptions {
    * omit it and the loop is unchanged.
    */
   onProgress?: (loaded: number) => void;
+  /**
+   * Fired once if the walk gave up while the provider still had structural evidence that more
+   * items were owed, so the resolved list may be short. Callers must surface this rather than
+   * present the result as complete (AGENTS.md #4). Optional on both sides: a provider with no
+   * such evidence simply never calls it, and omitting it leaves the loop unchanged.
+   */
+  onIncomplete?: () => void;
 }
 
 /** Polling knobs for `openConversation`'s wait-for-render loop. */
