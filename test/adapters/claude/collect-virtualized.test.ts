@@ -74,6 +74,19 @@ interface Turn {
   thinking?: string;
   /** Render the thinking block as the row's ONLY turn node — a turn still generating. */
   thinkingOnly?: boolean;
+  /**
+   * Render thinking-only for the first N record() rounds, then thinking AND the answer — the
+   * TRANSITION a fixed `thinkingOnly` flag cannot express. Keyed to elapsed rounds rather than
+   * scroll position for the same reason `partial` is: a response finishes on wall time whether
+   * or not the walk happens to be looking at that row.
+   *
+   * Put it on the LAST turn. Round-keying alone does not make a turn observable: the walk starts
+   * at the bottom, so an early-index row is off-screen for the first rounds and is not seen until
+   * well past N — by which time the fake already renders the settled shape and the test passes
+   * against broken code. Same trap `partial` documents at its own test below; it caught this flag
+   * too, on its first draft.
+   */
+  thinkingUntilRound?: number;
 }
 
 /**
@@ -246,7 +259,10 @@ function makeWindowedDoc({
       // Thinking first: live 2026-07-29 measured `md[0]` as the thinking text and `md[1]` as
       // the answer, which is why an unfiltered join PREPENDS the reasoning to the message.
       if (t.thinking !== undefined) nodes.push(makeNode(t, i, t.thinking, true));
-      if (!t.thinkingOnly) {
+      const thinkingOnlyNow =
+        t.thinkingOnly === true ||
+        (t.thinkingUntilRound !== undefined && rounds <= t.thinkingUntilRound);
+      if (!thinkingOnlyNow) {
         nodes.push(makeNode(t, i), ...(t.extraNodes ?? []).map((c) => makeNode(t, i, c)));
       }
       return nodes;
@@ -592,6 +608,31 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
     expect(messages).toHaveLength(12);
     expect(messages[3].content).toBe('still reasoning');
+  });
+
+  // …and keeping it must not make it STICK. The cross-round upgrade rule keeps the longest
+  // sighting, justified by "a fuller render is a superset of a partial one" — which the thinking
+  // filter breaks: a row first seen thinking-only records the whole reasoning, and the later
+  // sighting that finally catches the answer is the answer ALONE, which is routinely SHORTER.
+  // Length alone would then pin Claude's internal reasoning and silently discard the real
+  // answer. The transition is the whole point here; the fixed-flag test above cannot see it.
+  it('replaces a thinking-only sighting once the answer renders, even if the answer is shorter', async () => {
+    const reasoning = 'the user is asking about X, so the relevant consideration is Y and then Z';
+    const answer = 'yes';
+    // The regression only exists when the answer loses a length comparison — pin that premise
+    // rather than trusting the two literals to stay this way.
+    expect(reasoning.length).toBeGreaterThan(answer.length);
+
+    // The LAST turn, for the same reason the streaming test uses it: the walk starts at the
+    // bottom, so this is the one row observed on the very first rounds — while it is still
+    // thinking — and re-observed on the downward pass once the answer has landed. Any earlier
+    // index is off-screen until well past `thinkingUntilRound` and never seen mid-thought,
+    // which makes the test pass against the broken code.
+    const turns = alternating(12);
+    turns[11] = { ...turns[11], content: answer, thinking: reasoning, thinkingUntilRound: 2 };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages).toHaveLength(12);
+    expect(messages[11].content).toBe(answer);
   });
 
   // The trailing end — the one direction the index checks are blind to. Contiguity plus the

@@ -25,6 +25,15 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > session recorded no markup for the first and explicitly did not measure the case the second
 > turns on. Both need their own live-DOM session before they can be started at all.
 
+- [ ] [VERIFY] Claude: count `button > img[alt]` and `[data-testid="file-thumbnail"] h3` on user
+      rows that carry **no attachment at all**. v1.8.0 widened the row-level tile scan from "rows
+      the turn query could not claim" to every user row, and every user row in the 2026-07-29
+      probe conversation had an attachment — so what these queries return on a plain text turn is
+      unmeasured. If some ordinary control matches (an action-bar icon rendered as `<img>` rather
+      than `<svg>`, say), the export prepends a fabricated `[File: …]` to that turn, silently
+      (AGENTS.md #5). Expected 0; record the number either way and cite it in the row-scan comment
+      in `src/adapters/claude/index.ts` beside the existing `imgsInsideUserMessage` figure. If it
+      is NOT 0, anchor both tile queries on their thumbnail containers instead.
 - [ ] [FIX] Gemini: a **generated-image** response leaves `.markdown` present but EMPTY, so
       `readExchange` throws `unreadableExchangeError` and tells the user to wait and retry — advice
       that can never clear, which is precisely what `unreadableResponseError` exists to avoid.

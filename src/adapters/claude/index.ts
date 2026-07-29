@@ -149,6 +149,13 @@ function readSnapshot(root: ParentNode): Message[] {
 interface CollectedTurn {
   role: Role;
   content: string;
+  /**
+   * Every node this content came from was an extended-thinking block — the row was caught
+   * mid-generation, with the reasoning rendered and the answer not yet. Such content is
+   * PROVISIONAL: it must lose to the first sighting that carries a real answer, whatever the
+   * two lengths are. See the dedupe in `collectVirtualizedTurns`.
+   */
+  thinkingOnly: boolean;
 }
 
 /**
@@ -216,7 +223,7 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     // silently (AGENTS.md #4). This is not a defensive hypothetical: a 56-row conversation
     // measured live 2026-07-25 held a row with FOUR `.standard-markdown` blocks, all of them
     // one assistant turn's content.
-    const round = new Map<number, { role: Role; parts: string[] }>();
+    const round = new Map<number, { role: Role; parts: string[]; thinkingOnly: boolean }>();
     for (const el of dropThinkingBlocks(Array.from(doc.querySelectorAll(selectors.turn)))) {
       const index = rowIndex(el.closest(selectors.turnRow));
       if (!Number.isInteger(index)) {
@@ -225,9 +232,21 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
         sawUnindexedTurn = true;
         continue;
       }
+      // A block survives the filter either because it is the answer, or because it is a
+      // thinking block with no answer beside it yet. Only the second kind is provisional, so
+      // one non-thinking node anywhere in the row settles it.
+      if (!isThinkingBlock(el)) {
+        const claimed = round.get(index);
+        if (claimed) claimed.thinkingOnly = false;
+      }
       const existing = round.get(index);
       if (existing) existing.parts.push(readTurn(el));
-      else round.set(index, { role: roleOf(el), parts: [readTurn(el)] });
+      else
+        round.set(index, {
+          role: roleOf(el),
+          parts: [readTurn(el)],
+          thinkingOnly: isThinkingBlock(el),
+        });
     }
 
     // Attachments live OUTSIDE the turn node — the tiles sit in the row beside the action bar
@@ -242,11 +261,21 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     //     query had already claimed, so the export carried the text and said nothing about the
     //     file — a silent omission rather than a loud failure (AGENTS.md #4).
     //
-    // Scanning claimed rows is safe, and that was measured rather than assumed: the worry was
-    // that a row-level query would sweep up a pasted image inside the turn body and mislabel it
-    // as a file. Live 2026-07-29, across four mixed turns and one attachment-only turn (files
-    // attached AND an image pasted, txt/pdf/png), `imgsInsideUserMessage` was **0 every time** —
-    // every tile is a sibling subtree earlier in the row, never inside `user-message`.
+    // Scanning claimed rows is safe against the worry that BLOCKED it, and that much was
+    // measured rather than assumed: a row-level query might sweep up a pasted image inside the
+    // turn body and mislabel it as a file. Live 2026-07-29, across four mixed turns and one
+    // attachment-only turn (files attached AND an image pasted, txt/pdf/png),
+    // `imgsInsideUserMessage` was **0 every time** — every tile is a sibling subtree earlier in
+    // the row, never inside `user-message`.
+    //
+    // What that evidence does NOT cover, stated plainly because the numbers above are easy to
+    // over-read: every user row in the probe conversation carried an attachment, so what these
+    // two tile queries return on a user row with NO attachment is unmeasured. If some ordinary
+    // control in a plain user row matched `button > img[alt]`, this scan would now prepend a
+    // fabricated `[File: …]` to that turn — and it reaches every user row, where before the
+    // widening it only ran on rows the turn query could not claim. Tracked in backlog.md for a
+    // live session; not narrowed on a guess here, since inventing a tighter anchor without
+    // measuring one is the same failure in the other direction (AGENTS.md #5).
     //
     // Markers go FIRST for the same reason: the tile precedes the text body in document order
     // (measured on row 0 — neither contains the other, tile first).
@@ -262,24 +291,38 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       if (!files) continue;
       const claimed = round.get(index);
       if (claimed) claimed.parts.unshift(files);
-      else round.set(index, { role: 'user', parts: [files] });
+      else round.set(index, { role: 'user', parts: [files], thinkingOnly: false });
     }
 
-    for (const [index, { role, parts }] of round) {
+    for (const [index, { role, parts, thinkingOnly }] of round) {
       const content = parts
         .map((part) => part.trim())
         .filter(Boolean)
         .join('\n\n');
       const seen = turns.get(index);
       if (!seen) {
-        turns.set(index, { role, content });
-      } else if (content.length > seen.content.trim().length) {
+        turns.set(index, { role, content, thinkingOnly });
+      } else if (seen.thinkingOnly && !thinkingOnly && content.trim()) {
+        // A sighting that finally caught the answer REPLACES a thinking-only one outright,
+        // whatever the two lengths are. Length cannot arbitrate here: the thinking-only
+        // sighting holds the whole reasoning, while this one holds the answer with the
+        // reasoning filtered out, and an answer is routinely the shorter of the two ("yes").
+        // Left to the length rule below, the export would keep Claude's internal reasoning and
+        // silently discard the real answer (AGENTS.md #4).
+        seen.content = content;
+        seen.thinkingOnly = false;
+      } else if (seen.thinkingOnly === thinkingOnly && content.length > seen.content.trim().length) {
         // Keep the fullest sighting of this turn, not merely the first non-empty one.
         // Upgrading only from empty would permanently pin a fragment captured while the
         // response was still streaming or hydrating: the walk would then go on to see the
         // finished turn and still export the truncated text — a silent content truncation
         // (AGENTS.md #4). Length is the ordering because a fuller render is a superset of
         // a partial one; a node caught mid-teardown renders shorter and is ignored.
+        //
+        // Gated on the two sightings being the same KIND, so this only ever compares like with
+        // like. The reverse of the branch above — a settled answer meeting a later
+        // thinking-only sighting, which happens when a recycled row re-renders mid-stream —
+        // falls through both branches and leaves the answer standing.
         seen.content = content;
       }
     }
@@ -597,18 +640,26 @@ function attachmentMarkers(row: Element): string {
  * is no evidence an answer was rendered beside it.
  */
 function dropThinkingBlocks(nodes: Element[]): Element[] {
-  const isThinking = (el: Element): boolean => el.closest(selectors.thinkingContainer) !== null;
   const rowsWithAnswer = new Set<Element>();
   for (const el of nodes) {
-    if (isThinking(el)) continue;
+    if (isThinkingBlock(el)) continue;
     const row = el.closest(selectors.turnRow);
     if (row) rowsWithAnswer.add(row);
   }
   return nodes.filter((el) => {
-    if (!isThinking(el)) return true;
+    if (!isThinkingBlock(el)) return true;
     const row = el.closest(selectors.turnRow);
     return row === null || !rowsWithAnswer.has(row);
   });
+}
+
+/**
+ * Whether a turn node is an extended-thinking block rather than the answer. Shared by the
+ * filter above and the walk's dedupe, which needs to know that a block only survived the
+ * filter because no answer had rendered beside it yet.
+ */
+function isThinkingBlock(el: Element): boolean {
+  return el.closest(selectors.thinkingContainer) !== null;
 }
 
 /** Map one turn node to a normalized Message, or null if it has no content. */
