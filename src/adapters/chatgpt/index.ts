@@ -21,8 +21,9 @@ const SCROLL_ABSOLUTE_MAX_STEPS = 400;
  * Scroll tuning for the *conversation-list* loaders (`loadMoreConversations`,
  * `loadMoreProjectConversations`) — deliberately far more patient than the message-viewport
  * numbers above. Older turns are already in the client, but `#history` fetches each next
- * page from the server: measured round-trips of 1418–2830 ms across four consecutive batches
- * on a 1042-conversation account (2026-07-24). The viewport's 3 × 150 ms ≈ 450 ms stall
+ * page from the server: measured round-trips of 757–6123 ms across 37 consecutive pages on a
+ * 1042-conversation account (2026-07-29; the 1418–2830 ms first measured 2026-07-24 turned out
+ * to understate the worst case by more than 2×). The viewport's 3 × 150 ms ≈ 450 ms stall
  * window elapses long before a batch lands, so the loader read "no new items" mid-fetch and
  * returned 19 of 852 conversations — a silent 2% truncation (AGENTS.md #4).
  *
@@ -31,22 +32,39 @@ const SCROLL_ABSOLUTE_MAX_STEPS = 400;
  * `scrollUntilStable`: the walk never settles while the container still scrolls, so every
  * landed page — which lets it scroll further again — resets the stall counter no matter how
  * long the fetch took. This window covers the remaining case, dwelling at the end while the
- * last page is still in flight. Ten rounds of 500 ms means 5 s elapse between the scroll that
- * reaches the end (triggering the fetch) and giving up, or 4.5 s counted from the first
- * stalled round — ~1.6–1.8× the slowest measured round-trip either way.
- * `SIDEBAR_SCROLL_DEFAULTS_TEST` pins that margin so it cannot be tuned back down unnoticed.
+ * last page is still in flight.
+ *
+ * Sizing it needs the window the loader can actually *see*, which is longer than one fetch:
+ * a page is preceded by a row-render event carrying no hrefs, so the conversation count stays
+ * flat across that event and the fetch behind it — a measured 6632 ms at worst (2026-07-29,
+ * a lower bound). Twenty rounds of 500 ms gives 10 s from the scroll that triggers the fetch
+ * to giving up, ~1.5× that window. The previous ten rounds gave 5 s, which **2 of 37 page
+ * boundaries exceeded in a single healthy walk** — the mechanism behind the 725-of-852
+ * truncation measured 2026-07-25. `SIDEBAR_SCROLL_DEFAULTS_TEST` pins the margin so it cannot
+ * be tuned back down unnoticed. Time alone is still a guess about the worst case, which is why
+ * `pageParityGate` supplies structural evidence on top of it.
  *
  * The step cap is anti-runaway only, and must not be sized to the one account we measured.
  * Rounds scale with the conversation count N: stepping rounds ≈ N/17.5 (a ~700 px sidebar of
  * ~36 px rows, advanced 0.9 viewport per round) plus ~6 dwell rounds per 28-row page while its
- * fetch lands, plus the final dwell — `rounds(N) ≈ 0.271 N + 10`, which puts the measured
- * 1042-conversation account at ~292 rounds. A cap of 600 would therefore throw on a *healthy*
- * list at N ≈ 2200, discarding the entire accumulation; 2000 carries N ≈ 7300 and bounds a
- * genuinely runaway list at 2000 × 500 ms ≈ 17 minutes. The long pathological wait is the
- * deliberate side of that trade: failing early on a real history is the worse outcome.
+ * fetch lands, plus the final dwell — `rounds(N) ≈ 0.271 N + 20` (up to +40 when parity holds
+ * the walk open), which puts the measured 1042-conversation account at ~302 rounds. A cap of
+ * 600 would therefore throw on a *healthy* list at N ≈ 2100, discarding the entire
+ * accumulation; 2000 carries N ≈ 7200 and bounds a genuinely runaway list at
+ * 2000 × 500 ms ≈ 17 minutes. The long pathological wait is the deliberate side of that trade:
+ * failing early on a real history is the worse outcome.
  */
 const SIDEBAR_STEP_DELAY_MS = 500;
-const SIDEBAR_STABLE_ROUNDS = 10;
+const SIDEBAR_STABLE_ROUNDS = 20;
+/**
+ * Extra stall rounds granted while `pageParityGate` reports a page is still owed — 20 more,
+ * so a parity-backed wait runs to 20 s rather than 10. Bounded rather than open-ended because
+ * parity is asymmetric evidence: a list whose length is an exact multiple of the page size
+ * ends on a full-size page and looks identical to one page short, so an unbounded wait would
+ * spin to the step cap and fail loud on a perfectly complete account (~1 in 28 of them).
+ * When this budget runs out the walk returns what it has and reports it via `onIncomplete`.
+ */
+const SIDEBAR_PENDING_EXTRA_ROUNDS = 20;
 const SIDEBAR_ABSOLUTE_MAX_STEPS = 2000;
 const SIDEBAR_SCROLL_DEFAULTS: AutoScrollOptions = {
   stepDelayMs: SIDEBAR_STEP_DELAY_MS,
@@ -82,6 +100,12 @@ export interface AutoScrollOptions {
  */
 export interface LoadMoreScrollOptions extends AutoScrollOptions {
   onProgress?: (loaded: number) => void;
+  /**
+   * Fired once if the walk gave up while the page-size parity oracle still said another page
+   * was owed — i.e. the returned list may be short. Callers should surface this rather than
+   * present the result as complete (AGENTS.md #4); omit it and the loop is unchanged.
+   */
+  onIncomplete?: () => void;
 }
 
 // ChatGPT's own icon-button classes — the same shape as the header's native square
@@ -738,8 +762,13 @@ export async function loadMoreConversations(
         'Timed out loading the conversation list while scrolling. The sidebar may be ' +
         'unusually long; try again, or report if this persists.',
       settled: endOfListGate(),
+      // Counted over EVERY conversation row, not the `/c/` ids accumulated above — only the
+      // raw row count pages in at a fixed size (see `pageParityGate`).
+      pending: pageParityGate(() => history.querySelectorAll(selectors.sidebarConversationRow).length),
+      pendingExtraRounds: SIDEBAR_PENDING_EXTRA_ROUNDS,
       defaults: SIDEBAR_SCROLL_DEFAULTS,
       onProgress: options.onProgress,
+      onIncomplete: options.onIncomplete,
     },
   );
   return [...acc.values()];
@@ -837,6 +866,44 @@ function endOfListGate(): (container: HTMLElement) => boolean {
 }
 
 /**
+ * A stateful "is another page still owed?" test, built on the one regularity live measurement
+ * found in `#history`: the server appends a **fixed number of rows per page** — 28 across 36
+ * consecutive pages on a 1042-conversation account (2026-07-29) — with only the final page
+ * short. So a full-size last increment means the list was cut on a page boundary and another
+ * page may follow, while a short one can only be the end.
+ *
+ * The count MUST be of raw conversation rows (`sidebarConversationRow`), not the `/c/` ids the
+ * loader collects. The same measurement found each page's 28 rows split between top-level and
+ * project/GPT-scoped conversations in a ratio that varies per page, so the `/c/` increment
+ * alone came out anywhere from 15 to 27 — which is exactly why this oracle looked impossible
+ * from the numbers the loader already had.
+ *
+ * Read the evidence for what it is: **asymmetric**. A short increment proves the end; a
+ * full-size one does not prove more is coming (a list whose length is an exact multiple of the
+ * page size ends on a full-size page). Callers must therefore bound how long they act on it —
+ * see `SIDEBAR_PENDING_EXTRA_ROUNDS`. The page size is derived from the largest increment
+ * actually observed rather than hardcoded to 28: that number is one account's reading of a
+ * server-side constant on one day, and a stale hardcode would silently stop the gate firing.
+ * Stays `false` until a page has been seen at all, so a history shorter than one page — where
+ * no increment is ever observed — never claims a page is owed.
+ */
+function pageParityGate(rowCount: () => number): () => boolean {
+  let previousRows = -1;
+  let pageSize = 0;
+  let pending = false;
+  return () => {
+    const rows = rowCount();
+    if (previousRows >= 0 && rows > previousRows) {
+      const increment = rows - previousRows;
+      if (increment > pageSize) pageSize = increment;
+      pending = increment === pageSize;
+    }
+    previousRows = rows;
+    return pending;
+  };
+}
+
+/**
  * Advance a virtualized scroll container downward by ~one viewport, clamped at the
  * bottom. Deliberately a step, not a jump to `scrollHeight`: a jump renders only the
  * final window, so a spacer-height recycling virtualizer (full height known up front,
@@ -880,14 +947,27 @@ async function scrollUntilStable(
   {
     timeoutMessage,
     settled = () => true,
+    pending = () => false,
+    pendingExtraRounds = 0,
     defaults = {},
     onProgress,
+    onIncomplete,
   }: {
     timeoutMessage: string;
     settled?: (container: HTMLElement) => boolean;
+    /**
+     * Structural evidence that the list is not finished even though nothing is arriving —
+     * `pageParityGate`. Defaults to "no evidence", leaving the message-viewport walk (which
+     * has no page structure to read) on the stall counter alone.
+     */
+    pending?: () => boolean;
+    /** Extra stall rounds allowed while `pending()` holds. */
+    pendingExtraRounds?: number;
     defaults?: AutoScrollOptions;
     /** Fired with `count()`'s value, but only on a round that actually grew it. */
     onProgress?: (count: number) => void;
+    /** Fired once if the loop gave up while `pending()` still held. */
+    onIncomplete?: () => void;
   },
 ): Promise<void> {
   const {
@@ -904,12 +984,20 @@ async function scrollUntilStable(
     // (`endOfListGate` compares against the position it saw last round), so skipping the
     // call on a round where the count grew would leave it reading a stale position.
     const stillScrolling = !settled(container);
+    // Likewise stateful (it diffs against the row count it saw last round), so it is consulted
+    // every round rather than only on the rounds where its answer is used.
+    const morePagesOwed = pending();
     if (current > lastCount || stillScrolling) {
       if (current > lastCount) onProgress?.(current); // Report only genuine new-row rounds.
       stalls = 0; // Progress, or not yet at the end of the list — keep going.
     } else {
       stalls++;
-      if (stalls >= stableRounds) return; // Settled and static for a while → fully loaded.
+      // Settled and static for a while → fully loaded, unless parity says a page is still
+      // owed, which buys a longer (but still bounded) wait before giving up.
+      if (stalls >= stableRounds + (morePagesOwed ? pendingExtraRounds : 0)) {
+        if (morePagesOwed) onIncomplete?.();
+        return;
+      }
     }
     lastCount = current;
     pin(container);

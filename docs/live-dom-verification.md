@@ -25,6 +25,7 @@ above should re-check the ones adapter code depends on:
 | Number | Where it is relied on | What drift does |
 |--------|----------------------|-----------------|
 | Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
+| ChatGPT `#history` raw page size (**28 rows**, 36/36 pages, 2026-07-29) | `pageParityGate` in `src/adapters/chatgpt/index.ts`, via `sidebarConversationRow` | The gate derives the size from the largest increment it observes rather than hardcoding 28, so a changed page size self-corrects. What drift breaks is the *ratio*: if a page ever arrives split across two render events, the derived size is too small and the gate stops holding the walk open — silently. Re-measure the increment, not just the total. |
 | ChatGPT `#history` page latency (**757–6123 ms**, median 2433 — re-measured 2026-07-29, up from 1418–2830 ms on 2026-07-24) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical, and no longer rare** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run; 2026-07-29 measured 2 of 37 page boundaries exceeding the 5 s dwell in one healthy walk (both recorded below). |
 
 ## Tooling reality (read before promising anything)
@@ -463,9 +464,9 @@ captured and this is **not** verified: do not build on it without a session that
 (AGENTS.md #5).
 
 Scope limits: one account, one day, one track (`#history`; the project-home list was not walked).
-28 is one account's observation of a server-side constant, so a fix should derive the page size from
-the first observed increment rather than hardcoding it, and must not treat a page-size change as
-corruption. Add the page size to the re-measure table above once adapter code depends on it.
+28 is one account's observation of a server-side constant, so the fix derives the page size from the
+largest increment it observes rather than hardcoding it, and does not treat a page-size change as
+corruption. Both numbers are now in the re-measure table above.
 
 ### 2026-07-24 — project home scroll port is taller than the list it contains
 

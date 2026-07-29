@@ -60,6 +60,15 @@ export function bulkLoadMoreProgressMessage(loaded: number): string {
   return m('bulkLoadMoreProgressMessage', [String(loaded)]);
 }
 
+/**
+ * Shown in place of the progress line when "Load more" stopped while the adapter's page-size
+ * parity check still expected another page — the list may be short, so the panel says so
+ * instead of silently presenting it as complete (AGENTS.md #4).
+ */
+export function bulkLoadMoreIncompleteMessage(loaded: number): string {
+  return m('bulkLoadMoreIncompleteMessage', [String(loaded)]);
+}
+
 // Shown when the history sidebar lists no conversations to choose from (fail-loud:
 // the panel opens but makes clear there is nothing to export rather than showing an
 // empty, actionless list).

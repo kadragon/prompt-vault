@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- [done] Closed the bulk panel's silent "Load more" truncation (v1.7.4, 2026-07-29). A live session
+  settled both things the item was blocked on: the losing exit is **dwell expiry** (not
+  `endOfListGate`), and `#history` pages in at a **fixed 28 rows** — 36 consecutive full pages then a
+  partial of 6, closing exactly on `28 + 36×28 + 6 = 1042`. Page fetches ran 757–6123 ms against a
+  5 s dwell, and because the loader is also blind to a 3-row anchorless render event before each
+  page, 2 of 37 boundaries exceeded the dwell in one *healthy* walk — the mechanism behind the
+  measured 725-of-852 loss. Three layers: the dwell rises to 10 s (the repo's existing ratchet test
+  forced this once the measured constant was updated — it now pins against the loader-visible blind
+  window, not the fetch); `pageParityGate` reads the raw row count, where the page size is actually
+  visible, and holds the walk open for a bounded 20 s more when the last page came in full-size; and
+  if that budget still runs out the panel says the list may be incomplete and keeps the button live
+  instead of latching "All conversations loaded". Parity is asymmetric on purpose — a full-size final
+  page cannot be told from one page short, so failing loud would have broken every account whose
+  count is an exact multiple of 28. The size is derived from the largest observed increment, never
+  hardcoded. → `docs/live-dom-verification.md`
+
 - [done] Closed the privacy gate's `<iframe srcdoc>` residual — the last known subresource vector the
   static scan could not see (2026-07-26). The tag scan resumes after each tag's own `>` on purpose,
   so a tag-shaped attribute VALUE (`<div data-html="<img src='https://…'>">`) is not re-matched as a

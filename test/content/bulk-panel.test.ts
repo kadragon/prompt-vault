@@ -4,7 +4,7 @@ import type { SidebarConversation } from '../../src/core/sidebar';
 import type { ExportFormat } from '../../src/content/save-conversation';
 import type { BulkExportSummary } from '../../src/content/bulk-export';
 import { openBulkPanel, BULK_PANEL_ID, type BulkPanelDeps } from '../../src/content/bulk-panel';
-import { bulkLoadMoreProgressMessage } from '../../src/strings';
+import { bulkLoadMoreIncompleteMessage, bulkLoadMoreProgressMessage } from '../../src/strings';
 
 function freshDoc(): Document {
   const window = new Window();
@@ -225,6 +225,29 @@ describe('openBulkPanel', () => {
 
     const done = buttonByText(panel, 'All conversations loaded');
     expect(done.disabled).toBe(true);
+  });
+
+  it('warns instead of latching done when Load more reports the list may be incomplete', async () => {
+    const doc = freshDoc();
+    const d: BulkPanelDeps = {
+      ...deps({ total: 0, succeeded: 0, failed: [] }),
+      loadMore: (_onProgress, onIncomplete) => {
+        onIncomplete?.();
+        return Promise.resolve(CONVS); // nothing new surfaced
+      },
+    };
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+
+    buttonByText(panel, 'Load more').click();
+    await flush();
+
+    // Revealing nothing new is exactly what latches the disabled "All conversations loaded"
+    // state (see the test above). An incompleteness report has to override that — latching it
+    // here is the silent truncation measured live on 2026-07-25 (AGENTS.md #4).
+    expect(panel.textContent).toContain(bulkLoadMoreIncompleteMessage(CONVS.length));
+    expect(panel.textContent).not.toContain('All conversations loaded');
+    expect(buttonByText(panel, 'Load more').disabled).toBe(false);
   });
 
   it('surfaces a rejected Load more in the status line and re-enables the button', async () => {

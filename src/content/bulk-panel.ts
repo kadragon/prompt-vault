@@ -21,6 +21,7 @@ import {
   BULK_PANEL_SELECT_ALL,
   BULK_PANEL_TITLE,
   bulkExportButtonLabel,
+  bulkLoadMoreIncompleteMessage,
   bulkLoadMoreProgressMessage,
   bulkProgressMessage,
   bulkSummaryMessage,
@@ -58,9 +59,14 @@ export interface BulkPanelDeps {
    * newly-revealed conversations to the checklist, preserving existing selections.
    * Omit when the source is not virtualized — the button is then not shown. Accepts an
    * optional `onProgress(loaded)` reporting the running count surfaced so far, so the
-   * panel can stream a status line during the (potentially multi-minute) scroll.
+   * panel can stream a status line during the (potentially multi-minute) scroll, and an
+   * optional `onIncomplete()` fired when the walk gave up with items still owed — the
+   * panel then warns instead of reporting the list as fully loaded.
    */
-  loadMore?: (onProgress?: (loaded: number) => void) => Promise<SidebarConversation[]>;
+  loadMore?: (
+    onProgress?: (loaded: number) => void,
+    onIncomplete?: () => void,
+  ) => Promise<SidebarConversation[]>;
 }
 
 /**
@@ -417,17 +423,32 @@ async function loadMore(args: LoadMoreArgs): Promise<void> {
   loadMoreBtn.disabled = true;
   loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_BUSY;
   const before = shown.length;
+  let mayBeIncomplete = false;
   try {
-    const updated = await deps.loadMore((loaded) => {
-      if (isBatchStarted() || loaded <= 0) return;
-      status.textContent = bulkLoadMoreProgressMessage(loaded);
-    });
+    const updated = await deps.loadMore(
+      (loaded) => {
+        if (isBatchStarted() || loaded <= 0) return;
+        status.textContent = bulkLoadMoreProgressMessage(loaded);
+      },
+      () => {
+        mayBeIncomplete = true;
+      },
+    );
     if (isBatchStarted()) return; // A batch took over while loading — leave the modal to it.
     status.textContent = ''; // Loading… line is stale now the scroll settled either way.
     for (const conversation of updated) appendRow(conversation);
     if (shown.length > before) {
       syncSelectAll();
       refreshExport();
+    }
+    if (mayBeIncomplete) {
+      // The walk gave up while the adapter still expected another page. Say so and keep the
+      // button live: latching "All conversations loaded" here is exactly the silent
+      // truncation this path exists to prevent (AGENTS.md #4).
+      status.textContent = bulkLoadMoreIncompleteMessage(shown.length);
+      loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
+      loadMoreBtn.disabled = false;
+    } else if (shown.length > before) {
       loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
       loadMoreBtn.disabled = false;
     } else {
