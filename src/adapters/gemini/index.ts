@@ -588,7 +588,9 @@ function readAssistantContent(response: Element): string | null {
   const clone = markdown.cloneNode(true) as Element;
   normalizeCodeBlocks(clone);
   const content = htmlToMarkdown(clone);
-  return content || (response.querySelector(selectors.generatedImage) ? '[Image]' : '');
+  const hasGeneratedImage = Boolean(response.querySelector(selectors.generatedImage));
+  if (content && hasGeneratedImage) return `${content}\n\n[Image]`;
+  return content || (hasGeneratedImage ? '[Image]' : '');
 }
 
 /**

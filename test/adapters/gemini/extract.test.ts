@@ -280,6 +280,20 @@ describe('geminiAdapter.extract', () => {
     expect(convo.messages[1]).toEqual({ role: 'assistant', content: '[Image]' });
   });
 
+  it('keeps a generated-image marker alongside a prose summary', async () => {
+    const html = exchange(
+      userQuery('make an image') +
+        '<model-response><div class="markdown" aria-busy="false"><p>Here it is.</p></div>' +
+        '<generated-image><single-image><img alt=", AI로 생성"></single-image></generated-image>' +
+        '</model-response>',
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[1]).toEqual({
+      role: 'assistant',
+      content: 'Here it is.\n\n[Image]'
+    });
+  });
+
   it('tells the user to report a response that renders no text area at all', async () => {
     // Distinct from the empty case: a `model-response` with no `.markdown` anywhere is a shape
     // this adapter does not know, so "wait for it to finish and try again" would be advice that
