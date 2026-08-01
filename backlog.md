@@ -25,31 +25,9 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > session recorded no markup for the first and explicitly did not measure the case the second
 > turns on. Both need their own live-DOM session before they can be started at all.
 
-- [ ] [VERIFY] Claude: count `button > img[alt]` and `[data-testid="file-thumbnail"] h3` on user
-      rows that carry **no attachment at all**. v1.8.0 widened the row-level tile scan from "rows
-      the turn query could not claim" to every user row, and every user row in the 2026-07-29
-      probe conversation had an attachment — so what these queries return on a plain text turn is
-      unmeasured. If some ordinary control matches (an action-bar icon rendered as `<img>` rather
-      than `<svg>`, say), the export prepends a fabricated `[File: …]` to that turn, silently
-      (AGENTS.md #5). Expected 0; record the number either way and cite it in the row-scan comment
-      in `src/adapters/claude/index.ts` beside the existing `imgsInsideUserMessage` figure. If it
-      is NOT 0, anchor both tile queries on their thumbnail containers instead.
-- [ ] [FIX] Gemini: a **generated-image** response leaves `.markdown` present but EMPTY, so
-      `readExchange` throws `unreadableExchangeError` and tells the user to wait and retry — advice
-      that can never clear, which is precisely what `unreadableResponseError` exists to avoid.
-      Give the assistant half an escape marker instead of a throw when `model-response` holds a
-      `generated-image`. Do not model it on the user half's `[Image]` without checking that one
-      first: `readUserContent` narrows to `.query-text`, which was measured to hold no `<img>`, so
-      its own fallback is only reachable when no `.query-text` renders — unproven for an image-only
-      prompt. Canvas/immersive is NOT affected — it exports fine.
 - [ ] *(blocked by: the artifact card's markup was never measured — the 2026-07-29 session recorded only its rendered text, so there is no selector to emit a marker from without fabricating one (AGENTS.md #5). Needs a live-DOM session.)*
       [FEAT] Claude: an **artifact** is omitted from the export — its card sits outside
       `.standard-markdown`. Emit a marker from the card (title + kind, e.g. `HTML`).
-- [ ] [FEAT] Gemini: markers for prompt attachments, from
-      `user-query-file-carousel > user-query-file-preview`. `[File: <name>.<ext>]` for
-      `uploaded-file` by joining `filename-label` with a lowercased `extension-label`; a generic
-      `[Image]` for `uploaded-img`, which exposes no name (its `alt` is a localized string and must
-      not be read as one).
 - [ ] *(blocked by: how `data-is-streaming` reads on a row the virtualizer has already recycled — named unmeasured in the item itself and in docs/live-dom-verification.md. Needs a live-DOM session.)*
       [FEAT] Give the Claude walk a real termination condition — one that can tell "the newest turn
       stopped growing" from "the newest turn is off-screen". PR #36 established that

@@ -155,6 +155,42 @@ describe('geminiAdapter.extract', () => {
     expect(convo.messages[0]).toEqual({ role: 'user', content: '[Image]' });
   });
 
+  it('describes prompt file and image attachments without using the image alt as a filename', async () => {
+    const html = exchange(
+      '<user-query>' +
+        '<user-query-file-carousel>' +
+        '<user-query-file-preview>' +
+        '<div data-test-id="uploaded-file"><filename-label>notes</filename-label>' +
+        '<extension-label>TXT</extension-label></div>' +
+        '</user-query-file-preview>' +
+        '<user-query-file-preview>' +
+        '<div data-test-id="uploaded-img"><img alt="업로드된 이미지 미리보기"></div>' +
+        '</user-query-file-preview>' +
+        '</user-query-file-carousel>' +
+        '<div class="query-text"><span class="cdk-visually-hidden">말씀하신 내용</span>' +
+        '<p class="query-text-line">question with attachments</p></div>' +
+        '</user-query>' +
+        modelResponse('<p>reply</p>'),
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[0]).toEqual({
+      role: 'user',
+      content: '[File: notes.txt]\n\n[Image]\n\nquestion with attachments',
+    });
+  });
+
+  it('fails loud when a prompt attachment preview has an unknown shape', async () => {
+    const html = exchange(
+      '<user-query><user-query-file-carousel><user-query-file-preview>' +
+        '<div data-test-id="unknown-preview"></div>' +
+        '</user-query-file-preview></user-query-file-carousel>' +
+        '<div class="query-text"><span class="cdk-visually-hidden">말씀하신 내용</span>' +
+        '<p class="query-text-line">question</p></div></user-query>' +
+        modelResponse('<p>reply</p>'),
+    );
+    await expect(geminiAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
   it('serializes assistant prose to Markdown, including lists and a language-tagged fence', async () => {
     const convo = await geminiAdapter.extract(loadFixture('short.html'));
     expect(convo.messages[1].content).toBe(
@@ -233,10 +269,35 @@ describe('geminiAdapter.extract', () => {
     await expect(geminiAdapter.extract(docFrom(html))).rejects.toThrow(/still be loading/);
   });
 
+  it('describes a generated-image response instead of asking the user to retry forever', async () => {
+    const html = exchange(
+      userQuery('make an image') +
+        '<model-response><div class="markdown" aria-busy="false"></div>' +
+        '<generated-image><single-image><img alt=", AI로 생성"></single-image></generated-image>' +
+        '</model-response>',
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[1]).toEqual({ role: 'assistant', content: '[Image]' });
+  });
+
+  it('keeps a generated-image marker alongside a prose summary', async () => {
+    const html = exchange(
+      userQuery('make an image') +
+        '<model-response><div class="markdown" aria-busy="false"><p>Here it is.</p></div>' +
+        '<generated-image><single-image><img alt=", AI로 생성"></single-image></generated-image>' +
+        '</model-response>',
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[1]).toEqual({
+      role: 'assistant',
+      content: 'Here it is.\n\n[Image]'
+    });
+  });
+
   it('tells the user to report a response that renders no text area at all', async () => {
     // Distinct from the empty case: a `model-response` with no `.markdown` anywhere is a shape
-    // this adapter does not know (a generated image or canvas panel are the unmeasured
-    // candidates), so "wait for it to finish and try again" would be advice that never clears.
+    // this adapter does not know, so "wait for it to finish and try again" would be advice that
+    // never clears. Generated images are handled separately because they render an empty `.markdown`.
     const html = exchange(
       userQuery('a question') + '<model-response><div class="something-else">?</div></model-response>',
     );

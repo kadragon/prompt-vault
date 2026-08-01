@@ -409,11 +409,10 @@ function assertNotStreaming(root: ParentNode): void {
  * - a container with neither half — markup this adapter does not understand.
  *
  * **The split above is measurably wrong for one shape (2026-07-29).** A generated-image response
- * renders its prose container PRESENT but EMPTY and stays that way, so it takes the second branch
- * and is handed the retry advice — a dead end, the exact outcome this split exists to prevent.
- * Present-but-empty is therefore not always a half-rendered page. Correcting the routing is a
- * behaviour change, queued in backlog.md; see `unreadableResponseError` below and
- * docs/live-dom-verification.md → Gemini → 2026-07-29.
+ * renders its prose container PRESENT but EMPTY and stays that way, so it used to take the second
+ * branch and receive retry advice — a dead end, the exact outcome this split exists to prevent.
+ * Present-but-empty is therefore not always a half-rendered page. The generated-image branch now
+ * emits an honest `[Image]` marker; other empty prose still receives retry advice.
  *
  * A container holding a prompt and NO `model-response` is not a failure: that is an exchange
  * whose answer was stopped or never started, and exporting the prompt alone drops nothing.
@@ -485,6 +484,8 @@ function unreadableResponseError(): ExtractionError {
  */
 function readUserContent(query: Element): string {
   const scope = query.querySelector(selectors.userQueryText) ?? query;
+  const attachments = readAttachmentMarkers(query);
+  if (attachments === null) throw unreadableExchangeError();
 
   const lines = Array.from(scope.querySelectorAll(selectors.userQueryLine));
   if (lines.length > 0) {
@@ -492,11 +493,13 @@ function readUserContent(query: Element): string {
       .map((line) => (line.textContent ?? '').trim())
       .join('\n')
       .trim();
-    if (text) return text;
+    if (text) return joinUserContent(attachments, text);
   }
 
   const fallback = textWithoutScreenReaderLabel(scope);
-  if (fallback) return fallback;
+  if (fallback) return joinUserContent(attachments, fallback);
+
+  if (attachments) return attachments;
 
   // A prompt holding only a pasted image has no readable text node. Describe it rather than
   // yielding empty — an empty turn fails the WHOLE export, so one image-only message would
@@ -526,6 +529,39 @@ function readUserContent(query: Element): string {
   return '';
 }
 
+/**
+ * Attachment previews sit outside `.query-text`, so read them from the user-query root.
+ * Images have no stable filename; files expose a basename and an uppercase extension in
+ * separate labels. Unknown or incomplete previews stay unclaimed and fail loud rather than
+ * producing a fabricated marker (AGENTS.md #5).
+ */
+function readAttachmentMarkers(query: Element): string | null {
+  const previews = Array.from(
+    query.querySelectorAll(`${selectors.userFileCarousel} > ${selectors.userFilePreview}`),
+  );
+  if (previews.length === 0) return '';
+
+  const markers = previews.map((preview) => {
+      const image = preview.matches(selectors.uploadedImage)
+        ? preview
+        : preview.querySelector(selectors.uploadedImage);
+      if (image) return '[Image]';
+
+      const file = preview.matches(selectors.uploadedFile)
+        ? preview
+        : preview.querySelector(selectors.uploadedFile);
+      if (!file) return '';
+      const name = file.querySelector(selectors.filenameLabel)?.textContent?.trim();
+      const extension = file.querySelector(selectors.extensionLabel)?.textContent?.trim().toLowerCase();
+      return name && extension ? `[File: ${name}.${extension}]` : '';
+  });
+  return markers.every(Boolean) ? markers.join('\n\n') : null;
+}
+
+function joinUserContent(attachments: string, text: string): string {
+  return attachments ? `${attachments}\n\n${text}` : text;
+}
+
 /** The element's text with the screen-reader-only label removed, trimmed. */
 function textWithoutScreenReaderLabel(scope: Element): string {
   const clone = scope.cloneNode(true) as Element;
@@ -541,7 +577,8 @@ function textWithoutScreenReaderLabel(scope: Element): string {
  * needs no filtering — with the one exception normalized below.
  *
  * Returns **null** when the response has no prose container at all, which is a different failure
- * from an empty one and gets a different error: see `readExchange`.
+ * from an empty one and gets a different error: see `readExchange`. A measured generated-image
+ * response is the one exception to empty-prose failure: its image is represented as `[Image]`.
  */
 function readAssistantContent(response: Element): string | null {
   const markdown = response.querySelector(selectors.assistantMarkdown);
@@ -550,7 +587,10 @@ function readAssistantContent(response: Element): string | null {
   // user's, not ours to rewrite.
   const clone = markdown.cloneNode(true) as Element;
   normalizeCodeBlocks(clone);
-  return htmlToMarkdown(clone);
+  const content = htmlToMarkdown(clone);
+  const hasGeneratedImage = Boolean(response.querySelector(selectors.generatedImage));
+  if (content && hasGeneratedImage) return `${content}\n\n[Image]`;
+  return content || (hasGeneratedImage ? '[Image]' : '');
 }
 
 /**

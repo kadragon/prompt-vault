@@ -94,6 +94,30 @@ export const selectors = {
   assistantMarkdown: '.markdown',
 
   /**
+   * A generated-image response keeps an empty `.markdown` beside this element rather than
+   * rendering prose. Verified against the live page (2026-07-29): the image is nested as
+   * `generated-image > single-image > img`; the image alt is localized and carries no name.
+   */
+  generatedImage: 'generated-image',
+
+  /**
+   * Prompt attachment previews. Verified against the live page (2026-07-29): previews are
+   * direct children of this carousel and sit outside `.query-text`, so attachment markup does
+   * not pollute the prompt text read.
+   */
+  userFileCarousel: 'user-query-file-carousel',
+  userFilePreview: 'user-query-file-preview',
+
+  /**
+   * The two measured prompt attachment shapes. `uploaded-img` exposes no usable filename;
+   * `uploaded-file` carries a basename and uppercase extension in child labels.
+   */
+  uploadedImage: '[data-test-id="uploaded-img"]',
+  uploadedFile: '[data-test-id="uploaded-file"]',
+  filenameLabel: 'filename-label',
+  extensionLabel: 'extension-label',
+
+  /**
    * Attribute on `assistantMarkdown` that is `"true"` while the response is generating and
    * `"false"` once it is finished — the stream-completion signal neither the ChatGPT nor the
    * Claude adapter has.
