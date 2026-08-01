@@ -864,6 +864,23 @@ Position of a shape-B tile relative to the text body (row 0): neither contains t
 ancestor 4 levels below the row (tile at depth 8, `user-message` at depth 9), tile **first** in
 document order.
 
+### 2026-08-01 — attachment selectors stay quiet on plain user rows
+
+Measured on one settled conversation with a full scroll-up walk. The script collected 28 user rows;
+27 had neither measured attachment shape (`div[data-testid] > button > img[alt]` whose `data-testid`
+matched the image `alt`, nor `[data-testid="file-thumbnail"] h3`). On those 27 rows:
+
+| Selector | Matches |
+|---|---:|
+| `button > img[alt]` | **0** |
+| `[data-testid="file-thumbnail"] h3` | **0** |
+
+`rowsWithMatches` was empty, `reachedTop` was `true`, and the original `scrollTop` was restored to
+`0`. The broad image selector therefore produced no fabricated attachment marker on the measured
+plain rows, so no selector narrowing was justified.
+
+Scope limit: one account and one settled conversation; 27 no-attachment user rows measured.
+
 ### 2026-07-29 — `data-is-streaming` is a real stream-completion signal
 
 On a **settled** conversation — one reloaded, or one whose last turn has finished — there is exactly

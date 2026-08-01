@@ -1,6 +1,6 @@
 {
   "name": "prompt-vault",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "private": true,
   "type": "module",
   "description": "Back up AI chat conversations to local Markdown/PDF files. ChatGPT first.",

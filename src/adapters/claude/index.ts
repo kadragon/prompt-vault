@@ -143,10 +143,9 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
  * This path is not fixtures-only: `collectVirtualizedTurns` falls back to it live whenever
  * there is no scroll container or it has zero height (a background tab), which is why it has to
  * meet the same measured row shapes the walk does — and why the row scan carries the same
- * unmeasured scope limit `record()` documents: what the tile queries return on a user row with
- * NO attachment was never measured, so a plain row matching one would be given a `[File: …]` it
- * does not have. Tracked in backlog.md for a live session; narrowing the selectors on a guess
- * is the same failure in the other direction (AGENTS.md #5).
+ * measured scope limit `record()` documents: on 2026-08-01, a full walk of one settled
+ * conversation rendered 28 user rows, 27 with no measured attachment shape, and neither tile
+ * query matched any of those 27 rows. See docs/live-dom-verification.md → Claude → 2026-08-01.
  */
 function readSnapshot(root: ParentNode): Message[] {
   // Rows and turns in ONE query, so the DOM's own document order interleaves them and no
@@ -363,13 +362,11 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     // the row, never inside `user-message`.
     //
     // What that evidence does NOT cover, stated plainly because the numbers above are easy to
-    // over-read: every user row in the probe conversation carried an attachment, so what these
-    // two tile queries return on a user row with NO attachment is unmeasured. If some ordinary
-    // control in a plain user row matched `button > img[alt]`, this scan would now prepend a
-    // fabricated `[File: …]` to that turn — and it reaches every user row, where before the
-    // widening it only ran on rows the turn query could not claim. Tracked in backlog.md for a
-    // live session; not narrowed on a guess here, since inventing a tighter anchor without
-    // measuring one is the same failure in the other direction (AGENTS.md #5).
+    // over-read: the 2026-07-29 probe had no plain user row. A full walk on 2026-08-01 measured
+    // 27 user rows with no measured attachment shape; neither `button > img[alt]` nor
+    // `[data-testid="file-thumbnail"] h3` matched any of them. The broad image selector is
+    // therefore retained, with the result recorded in docs/live-dom-verification.md rather than
+    // narrowed on an unmeasured guess.
     //
     // Markers go FIRST for the same reason: the tile precedes the text body in document order
     // (measured on row 0 — neither contains the other, tile first).
