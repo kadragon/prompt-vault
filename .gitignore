@@ -21,6 +21,7 @@ prompt-vault-v*/
 
 # Harness scratch (delegation evidence, session tmp)
 .claude/tmp/
+.worktrees/
 
 # Harness maintenance stamp (transient date marker, not project state)
 .agents/.maintenance-stamp
