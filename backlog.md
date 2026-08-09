@@ -18,14 +18,13 @@ continuation line is invisible to it and the blocked item is offered as actionab
 ## Extraction completeness
 
 > Opened by the 2026-07-29 live session. Each item names the function or file the fix lands in,
-> with the evidence in `docs/live-dom-verification.md` → 2026-07-29. The three Claude items that
-> session fully measured — both attachment tile shapes, mixed-turn attachments, and expanded
-> extended thinking — landed in v1.8.0. What is left splits in two: the Gemini items are
-> actionable now, while the artifact-card and termination-condition items are parked because the
-> session recorded no markup for the first and explicitly did not measure the case the second
-> turns on. Both need their own live-DOM session before they can be started at all.
+> with the evidence in `docs/live-dom-verification.md` → 2026-07-29 or 2026-08-09. The three
+> Claude items that session fully measured — both attachment tile shapes, mixed-turn attachments,
+> and expanded extended thinking — landed in v1.8.0. The artifact-card item is now actionable;
+> the termination-condition item remains parked because its recycled-row case still needs a
+> live-DOM session.
 
-- [ ] *(blocked by: the artifact card's markup was never measured — the 2026-07-29 session recorded only its rendered text, so there is no selector to emit a marker from without fabricating one (AGENTS.md #5). Needs a live-DOM session.)*
+- [ ]
       [FEAT] Claude: an **artifact** is omitted from the export — its card sits outside
       `.standard-markdown`. Emit a marker from the card (title + kind, e.g. `HTML`).
 - [ ] *(blocked by: how `data-is-streaming` reads on a row the virtualizer has already recycled — named unmeasured in the item itself and in docs/live-dom-verification.md. Needs a live-DOM session.)*

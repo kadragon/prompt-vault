@@ -950,6 +950,24 @@ Scope limit: two purpose-built conversations on one account. Every attachment an
 created in-session, so these are the shapes *this* account produces today — not proof that no other
 shape exists.
 
+### 2026-08-09 — artifact card markup measured
+
+Re-measured the purpose-built artifact conversation on the live logged-in page with Playwright,
+returning structure only. The page contained **8 indexed rows** and exactly **1 artifact card**;
+the card was outside `.standard-markdown` in row `data-index="1"`, which also contained one
+`.standard-markdown` node.
+
+- The card root is a `div` carrying the class token `group/artifact-block`; its content wrapper is
+  `artifact-block-cell`.
+- The content wrapper contains one title node with `leading-tight text-sm line-clamp-1` and one
+  kind node with `text-xs line-clamp-1`; both are separate descendants of the same content column.
+- The card had no `h3` and no `data-testid`/`data-test-id` descendant. It used a full-card view
+  button plus a separate action button, so neither button label is the title/kind source.
+
+This establishes the missing selector evidence for the artifact marker. Scope limit: one account,
+one settled conversation, and one rendered artifact shape; the class tokens and child relationship
+must be rechecked if implementation starts after another Claude UI change.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
