@@ -45,6 +45,7 @@ function bareDoc(): Document {
 }
 
 const CLAUDE_CONV_URL = 'https://claude.ai/chat/abc-123';
+const CLAUDE_PROJECT_URL = 'https://claude.ai/project/abc-123';
 const CLAUDE_ACTIONS_ID = 'wiggle-controls-actions';
 
 // Claude's header action bar, whose only child is its native Share button.
@@ -54,6 +55,16 @@ function docWithClaudeHeader(): Document {
     `<body><header><div data-testid="${CLAUDE_ACTIONS_ID}">` +
       `<button data-testid="${CLAUDE_ACTIONS_ID}-share"></button>` +
       '</div></header></body>',
+  );
+  return window.document as unknown as Document;
+}
+
+function docWithClaudeProjectTable(): Document {
+  const window = new Window();
+  window.document.write(
+    '<body><main><table><tbody><tr class="group/cdsrow"><td>' +
+      '<a href="/chat/project-chat" aria-label="Project chat">Project chat</a>' +
+      '</td></tr></tbody></table></main></body>',
   );
   return window.document as unknown as Document;
 }
@@ -72,22 +83,19 @@ describe('syncButtons', () => {
     expect(container?.querySelector('button')?.className).toContain('rounded-lg');
   });
 
-  // Regression: registering an adapter that implements no bulk track used to still render
-  // the bulk icon (it was gated on the user setting alone), so every Claude chat advertised
-  // a button whose only response to a click was "not supported".
-  it('omits the bulk icon on a provider whose adapter has no bulk track', () => {
+  it('renders the bulk icon once the provider implements its measured bulk track', () => {
     const doc = docWithClaudeHeader();
     syncButtons(doc, CLAUDE_CONV_URL);
 
     const container = doc.getElementById(CONTAINER_ID);
     expect(container).not.toBeNull();
     expect(container?.parentElement?.getAttribute('data-testid')).toBe(CLAUDE_ACTIONS_ID);
-    // Four format downloads and nothing else.
-    expect(container?.querySelectorAll('button').length).toBe(4);
+    // Four format downloads plus the Claude sidebar bulk action.
+    expect(container?.querySelectorAll('button').length).toBe(5);
     const labels = Array.from(container?.querySelectorAll('button') ?? []).map((b) =>
       b.getAttribute('aria-label'),
     );
-    expect(labels).not.toContain('Export multiple conversations');
+    expect(labels).toContain('Export multiple conversations');
   });
 
   it('still renders the bulk icon on a provider whose adapter implements the bulk track', () => {
@@ -303,6 +311,26 @@ describe('syncButtons on a Project home page', () => {
     expect(container?.parentElement?.tagName).toBe('SECTION');
     expect(container?.style.position).toBe('');
     expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
+  });
+});
+
+describe('syncButtons on a Claude Project home page', () => {
+  it('mounts the existing project bulk trigger on the measured table parent', () => {
+    const doc = docWithClaudeProjectTable();
+    syncButtons(doc, CLAUDE_PROJECT_URL);
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container?.parentElement?.tagName).toBe('MAIN');
+    expect(container?.querySelectorAll('button').length).toBe(1);
+    expect(container?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Download all conversations in this project',
+    );
+  });
+
+  it('recognizes the alternate measured cowork project route', () => {
+    const doc = docWithClaudeProjectTable();
+    syncButtons(doc, 'https://claude.ai/cowork/project/abc-123');
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
   });
 });
 

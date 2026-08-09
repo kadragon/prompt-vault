@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { collectVirtualizedTurns } from '../../../src/adapters/claude';
 import { ExtractionError } from '../../../src/core/errors';
+import { selectors } from '../../../src/adapters/claude/selectors';
 
 // Model Claude's *recycling* virtualization, the shape live measurement found on
 // 2026-07-25 (docs/live-dom-verification.md → Claude): the container reports its full
@@ -87,6 +88,12 @@ interface Turn {
    * too, on its first draft.
    */
   thinkingUntilRound?: number;
+  /** Omit the measured stream wrapper from the assistant row. */
+  streamMissing?: boolean;
+  /** Keep the measured stream wrapper true forever to exercise the bounded wait. */
+  streamNeverSettles?: boolean;
+  /** A measured assistant artifact card outside `.standard-markdown`. */
+  artifact?: { title: string; kind: string };
 }
 
 /**
@@ -166,6 +173,15 @@ function makeWindowedDoc({
   const declaredTotal = (): number | null =>
     typeof setSize === 'function' ? setSize(rounds) : setSize;
 
+  const streamValue = (t: Turn): 'true' | 'false' => {
+    if (t.streamNeverSettles) return 'true';
+    const generating =
+      (t.partial && rounds <= STREAMING_ROUNDS) ||
+      t.thinkingOnly === true ||
+      (t.thinkingUntilRound !== undefined && rounds <= t.thinkingUntilRound);
+    return generating ? 'true' : 'false';
+  };
+
   // One row OBJECT per position, shared by every node in it. Identity matters: the real
   // `closest('[data-index]')` returns the same element from every node in a row, and code that
   // groups nodes by row (the thinking-block filter) compares those references. Handing out a
@@ -197,20 +213,45 @@ function makeWindowedDoc({
                 name === 'aria-setsize' ? String(total) : null,
             };
       }
-      return sel === '[data-testid="action-bar-edit"]' && hasTiles(t) && !t.noEditBar ? {} : null;
+      if (sel === '[data-testid="action-bar-edit"]') return hasTiles(t) && !t.noEditBar ? {} : null;
+      if (sel === selectors.assistantMarkdown) return t.role === 'assistant' ? {} : null;
+      if (sel === selectors.streamMarker && t.role === 'assistant' && !t.streamMissing) {
+        return {
+          getAttribute: (name: string): string | null =>
+            name === selectors.streamStateAttr ? streamValue(t) : null,
+          querySelector: (nested: string): unknown => (nested === selectors.assistantMarkdown ? {} : null),
+        };
+      }
+      return null;
     },
     // Both tile shapes come back from ONE query, in the order they were declared — so an
     // adapter that grouped by shape instead of preserving document order is visible here.
-    querySelectorAll: (sel: string): unknown[] =>
-      sel === ATTACHMENT_TILES
-        ? tilesOf(t).map((tile) => ({
-            matches: (s: string): boolean => s === 'button > img[alt]' && tile.shape === 'tile',
-            getAttribute: (name: string): string | null =>
-              name === 'alt' && tile.shape === 'tile' ? tile.name : null,
-            // The card carries its name as the `h3`'s text, not an attribute.
-            textContent: tile.shape === 'card' ? tile.name : '',
-          }))
-        : [],
+    querySelectorAll: (sel: string): unknown[] => {
+      if (sel === ATTACHMENT_TILES) {
+        return tilesOf(t).map((tile) => ({
+          matches: (s: string): boolean => s === 'button > img[alt]' && tile.shape === 'tile',
+          getAttribute: (name: string): string | null =>
+            name === 'alt' && tile.shape === 'tile' ? tile.name : null,
+          // The card carries its name as the `h3`'s text, not an attribute.
+          textContent: tile.shape === 'card' ? tile.name : '',
+        }));
+      }
+      if (sel === selectors.artifactCard && t.artifact) {
+        const cell = {
+          querySelectorAll: (nested: string): unknown[] => {
+            if (nested === selectors.artifactTitle) return [{ textContent: t.artifact?.title ?? '' }];
+            if (nested === selectors.artifactKind) return [{ textContent: t.artifact?.kind ?? '' }];
+            return [];
+          },
+        };
+        return [
+          {
+            querySelector: (nested: string): unknown => (nested === selectors.artifactCell ? cell : null),
+          },
+        ];
+      }
+      return [];
+    },
   });
 
   const makeNode = (t: Turn, i: number, override?: string, thinking = false) => {
@@ -356,6 +397,32 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
     expect(messages).toHaveLength(12);
     expect(messages[11].content).toBe('content 11');
+  });
+
+  it('keeps an artifact marker on its assistant row while recycling the message list', async () => {
+    const turns = alternating(12);
+    turns[11] = { ...turns[11], artifact: { title: 'Pv probe artifact', kind: 'HTML' } };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages[11]).toEqual({
+      role: 'assistant',
+      content: '[Artifact: Pv probe artifact (HTML)]\n\ncontent 11',
+    });
+  });
+
+  it('does not treat a missing stream marker as completion and fails within the supplied bound', async () => {
+    const turns = alternating(12);
+    turns[11] = { ...turns[11], streamMissing: true };
+    await expect(
+      collectVirtualizedTurns(makeWindowedDoc({ turns }), { stepDelayMs: 0, maxSteps: 20 }),
+    ).rejects.toThrow(/streaming state/);
+  });
+
+  it('fails loud when the stream marker never reaches false', async () => {
+    const turns = alternating(12);
+    turns[11] = { ...turns[11], streamNeverSettles: true };
+    await expect(
+      collectVirtualizedTurns(makeWindowedDoc({ turns }), { stepDelayMs: 0, maxSteps: 20 }),
+    ).rejects.toThrow(/streaming state/);
   });
 
   it('fails loud when a turn never yields content (never silently drops it)', async () => {

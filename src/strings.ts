@@ -74,6 +74,11 @@ export function bulkLoadMoreIncompleteMessage(loaded: number): string {
 // empty, actionless list).
 export const BULK_EMPTY_MESSAGE = m('bulkEmptyMessage');
 
+/** Visible fail-loud message when the provider cannot enumerate the list for the panel. */
+export function bulkListErrorMessage(error: string): string {
+  return m('bulkListErrorMessage', [error]);
+}
+
 // Shown (fail-loud) when the current page's adapter does not support bulk export.
 export const BULK_UNSUPPORTED_MESSAGE = m('bulkUnsupportedMessage');
 
