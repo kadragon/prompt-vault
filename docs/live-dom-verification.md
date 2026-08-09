@@ -973,26 +973,29 @@ must be rechecked if implementation starts after another Claude UI change.
 Measured the logged-in Claude navigation surfaces with structural-only Playwright probes. No
 conversation, project, artifact, or memory text was returned by the probes.
 
-- The sidebar is `aside[aria-label="사이드바"]`. Its chat-navigation scroll port has
-  `overflow-y: auto`, `clientHeight=564`, `scrollHeight=693`, and **19** `/chat/:id` links. The
-  sidebar itself measured `clientWidth=288` and `clientHeight=953`. Its `View all` control opens
+- The sidebar is `aside[aria-label="사이드바"]`. Baseline measurement found **19** `/chat/:id`
+  links; after adding 3 synthetic standalone chats, the recent-chat scroll port contained **20**
+  links with `overflow-y=auto`, `clientHeight=564`, and `scrollHeight=760`. Scrolling it to the
+  bottom (`scrollTop=196`) and waiting 2.5 s left the count unchanged. Its `View all` control opens
   `/chats`.
-- `/chats` renders a table with **19** chat rows and **19** chat links. Its main scroll port has
-  `overflow-y: auto`, `clientHeight=905`, and `scrollHeight=1026`; after scrolling to the bottom
-  (`scrollTop=121`) and waiting 2.5 s, row/link/time counts stayed unchanged. No load-more control
-  or additional page was observed in this account state. This does not prove that a larger account
-  cannot page from the server.
-- The Projects index exposed **2** `/cowork/project/:id` project routes. Both measured
-  `/cowork/project/:id` homes and their corresponding `/project/:id` surfaces had one
-  `main table > tbody > tr`, one chat link, and one per-row menu button. The chat anchor is an
-  absolute overlay inside the row's single `td`; the row carries the `group/cdsrow` class token.
-  The heading counts on the workspace homes were `h1=1`, `h2=1`, `h3=4`.
-- Neither project exposed `ul`/`ol`/`role=list` markup or a main-content scroll port. The document
-  scroll root was `scrollHeight=953`, `clientHeight=953`, `scrollTop=0`; scrolling to the bottom
-  and waiting 2.5 s left the single row and single chat link unchanged. No pagination attribute or
-  load-more control was observed. This establishes the current project-member list contract for
-  the two measured projects; a larger project/account should be rechecked if implementation later
-  encounters more than one row.
+- `/chats` initially rendered 19 rows. After the 3 standalone probes and 3 synthetic project
+  chats, it rendered a table with **25** rows, **25** chat links, and **25** time nodes. Its main
+  scroll port has `overflow-y=auto`, `clientHeight=905`, and `scrollHeight=1320`; after scrolling
+  to the bottom (`scrollTop=415`) and waiting 2.5 s, row/link/time counts stayed unchanged. No
+  load-more control or additional page was observed at 25 rows. This still does not prove that a
+  larger account cannot page from the server.
+- The Projects index exposed **2** `/cowork/project/:id` project routes. Before synthetic growth,
+  both measured `/cowork/project/:id` homes and corresponding `/project/:id` surfaces had one
+  `main table > tbody > tr`. After adding 3 synthetic chats to one project, that project's two
+  route surfaces had **4** table rows, **4** chat links, and **4** per-row menu buttons; every row
+  still has one cell and one chat link. The chat anchor is an absolute overlay inside the row's
+  single `td`; the row carries the `group/cdsrow` class token. Workspace-home heading counts remain
+  `h1=1`, `h2=1`, `h3=4`.
+- The expanded project still exposed no `ul`/`ol`/`role=list` markup or main-content scroll port.
+  Its document scroll root remained `scrollHeight=953`, `clientHeight=953`, `scrollTop=0`; scrolling
+  to the bottom and waiting 2.5 s left all 4 rows and links unchanged. No pagination attribute or
+  load-more control was observed. This strengthens the current project-member list contract while
+  retaining the larger-project/account scope limit.
 - `/artifacts` is a separate management surface: the measured page exposed **2** artifact list
   items and tab controls. It was not treated as another assistant-row artifact-card shape.
 

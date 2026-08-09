@@ -21,9 +21,9 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > with the evidence in `docs/live-dom-verification.md` → 2026-07-29 or 2026-08-09. The three
 > Claude items that session fully measured — both attachment tile shapes, mixed-turn attachments,
 > and expanded extended thinking — landed in v1.8.0. The artifact-card, sidebar, and project items
-> are now actionable; the termination-condition item remains parked because the 2026-08-09
-> long-response session observed streaming and ordinary row recycling but not the
-> active-recycled-row case.
+> are now actionable; synthetic growth rechecked the latter two surfaces on 2026-08-09. The
+> termination-condition item remains parked because the long-response sessions observed streaming
+> and ordinary row recycling but not the active-recycled-row case.
 
 - [ ]
       [FEAT] Claude: an **artifact** is omitted from the export — its card sits outside
