@@ -968,6 +968,44 @@ This establishes the missing selector evidence for the artifact marker. Scope li
 one settled conversation, and one rendered artifact shape; the class tokens and child relationship
 must be rechecked if implementation starts after another Claude UI change.
 
+### 2026-08-09 — Claude navigation surfaces and long-response streaming
+
+Measured the logged-in Claude navigation surfaces with structural-only Playwright probes. No
+conversation, project, artifact, or memory text was returned by the probes.
+
+- The sidebar is `aside[aria-label="사이드바"]`. Its chat-navigation scroll port has
+  `overflow-y: auto`, `clientHeight=564`, `scrollHeight=693`, and **19** `/chat/:id` links. The
+  sidebar itself measured `clientWidth=288` and `clientHeight=953`. Its `View all` control opens
+  `/chats`.
+- `/chats` renders a table with **19** chat rows and **19** chat links. Its main scroll port has
+  `overflow-y: auto`, `clientHeight=905`, and `scrollHeight=1026`; after scrolling to the bottom
+  (`scrollTop=121`) and waiting 2.5 s, row/link/time counts stayed unchanged. No load-more control
+  or additional page was observed in this account state. This does not prove that a larger account
+  cannot page from the server.
+- The Projects index exposed **2** `/cowork/project/:id` project routes. Both measured project-home
+  routes had one recent-chat table, one recent-chat row, and one chat link; the heading counts were
+  `h1=1`, `h2=1`, `h3=4`. A separate project-member list or its pagination contract was not
+  established, so the project bulk item remains blocked.
+- `/artifacts` is a separate management surface: the measured page exposed **2** artifact list
+  items and tab controls. It was not treated as another assistant-row artifact-card shape.
+
+For the stream/recycling check, a synthetic prompt requested 160 numbered plain-text sections in
+the purpose-built artifact conversation. A 35.1 s in-page recorder sampled every ~180 ms (**190
+samples**) while alternating the actual `[data-autoscroll-container]` between top and bottom. The
+conversation declared **14** rows; the scroll port measured `clientHeight=905`, `scrollTop` ranged
+from `0` to `33004.5`, and `scrollHeight` reached `33922`.
+
+- `[data-is-streaming="true"]` was observed in **106/190** samples, always as a nested node under
+  row `data-index="13"`; the row itself did not carry the attribute.
+- Older indexed rows were recycled while scrolling: the rendered index set varied and omitted
+  indices `6`, `7`, `8`, and `10` in the observed windows. The active streaming row `13` stayed
+  rendered at both scroll extremes; **0** samples showed a true streaming node whose indexed row
+  was absent.
+- The response reached the settled state during the recording (`data-is-streaming="false"` on the
+  final sample). This confirms the live signal and ordinary row recycling, but the specific
+  “active streaming row already recycled” case remains unmeasured; do not infer that it cannot
+  occur outside this account/state/scroll pattern.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
