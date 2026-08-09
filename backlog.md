@@ -20,9 +20,10 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > Opened by the 2026-07-29 live session. Each item names the function or file the fix lands in,
 > with the evidence in `docs/live-dom-verification.md` → 2026-07-29 or 2026-08-09. The three
 > Claude items that session fully measured — both attachment tile shapes, mixed-turn attachments,
-> and expanded extended thinking — landed in v1.8.0. The artifact-card item is now actionable;
-> the termination-condition item remains parked because the 2026-08-09 long-response session
-> observed streaming and ordinary row recycling but not the active-recycled-row case.
+> and expanded extended thinking — landed in v1.8.0. The artifact-card, sidebar, and project items
+> are now actionable; the termination-condition item remains parked because the 2026-08-09
+> long-response session observed streaming and ordinary row recycling but not the
+> active-recycled-row case.
 
 - [ ]
       [FEAT] Claude: an **artifact** is omitted from the export — its card sits outside
@@ -55,7 +56,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
 - [ ]
       Claude adapter: bulk/sidebar export (`listConversations` / `openConversation` /
       `loadMoreConversations`)
-- [ ] *(blocked by: the measured project homes exposed only a recent-chat table; project-member bulk markup and its pagination contract remain unmeasured)*
+- [ ]
       Claude adapter: Projects track (`matchesProject` + the project bulk members)
 - [ ] *(blocked by: needs its own live-DOM session — only the conversation view was measured on 2026-07-25; the sidebar was seen in passing (33 `[data-test-id="conversation"]` anchors in their own `infinite-scroller`) but its paging shape, scroll port, and whether it loads from the server were never measured)*
       Gemini adapter: bulk/sidebar export (`listConversations` / `openConversation` /

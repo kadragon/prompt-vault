@@ -982,10 +982,17 @@ conversation, project, artifact, or memory text was returned by the probes.
   (`scrollTop=121`) and waiting 2.5 s, row/link/time counts stayed unchanged. No load-more control
   or additional page was observed in this account state. This does not prove that a larger account
   cannot page from the server.
-- The Projects index exposed **2** `/cowork/project/:id` project routes. Both measured project-home
-  routes had one recent-chat table, one recent-chat row, and one chat link; the heading counts were
-  `h1=1`, `h2=1`, `h3=4`. A separate project-member list or its pagination contract was not
-  established, so the project bulk item remains blocked.
+- The Projects index exposed **2** `/cowork/project/:id` project routes. Both measured
+  `/cowork/project/:id` homes and their corresponding `/project/:id` surfaces had one
+  `main table > tbody > tr`, one chat link, and one per-row menu button. The chat anchor is an
+  absolute overlay inside the row's single `td`; the row carries the `group/cdsrow` class token.
+  The heading counts on the workspace homes were `h1=1`, `h2=1`, `h3=4`.
+- Neither project exposed `ul`/`ol`/`role=list` markup or a main-content scroll port. The document
+  scroll root was `scrollHeight=953`, `clientHeight=953`, `scrollTop=0`; scrolling to the bottom
+  and waiting 2.5 s left the single row and single chat link unchanged. No pagination attribute or
+  load-more control was observed. This establishes the current project-member list contract for
+  the two measured projects; a larger project/account should be rechecked if implementation later
+  encounters more than one row.
 - `/artifacts` is a separate management surface: the measured page exposed **2** artifact list
   items and tab controls. It was not treated as another assistant-row artifact-card shape.
 
