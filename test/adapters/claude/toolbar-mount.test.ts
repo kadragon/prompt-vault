@@ -94,16 +94,21 @@ describe('claudeAdapter.toolbarButtonClass', () => {
 });
 
 describe('claudeAdapter shape', () => {
-  it('implements only the verified single-conversation members', () => {
-    // The bulk and project tracks each need their own live-DOM verification, so their
-    // members stay absent. The content layer reads that absence to hide the corresponding
-    // controls (see the bulk-icon gate in `src/content/mount.ts`, covered by
-    // `test/content/mount.test.ts`). Asserting the member set whole catches a member added
-    // later without the live verification — and without the UI gate — that must come with it.
+  it('implements the measured conversation, sidebar, and project members', () => {
+    // The whole member set catches a navigation method added without the live verification
+    // and keeps the optional generic UI gates coupled to the provider contract.
     expect(claudeAdapter.provider).toBe('claude');
     expect(Object.keys(claudeAdapter).sort()).toEqual([
       'extract',
+      'listConversations',
+      'listProjectConversations',
+      'loadMoreConversations',
       'matches',
+      'matchesProject',
+      'openConversation',
+      'openProjectConversation',
+      'openProjectHome',
+      'projectToolbarMount',
       'provider',
       'toolbarAnchor',
       'toolbarButtonClass',

@@ -125,6 +125,39 @@ describe('claudeAdapter.extract', () => {
     expect(convo.messages[1].content).toBe('still reasoning');
   });
 
+  it('retains a measured artifact card in the corresponding assistant message', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '<div class="text-xs line-clamp-1">HTML</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div>' +
+      '</body>';
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages).toEqual([
+      { role: 'user', content: 'a question' },
+      { role: 'assistant', content: '[Artifact: Pv probe artifact (HTML)]\n\nthe answer' },
+    ]);
+  });
+
+  it('fails loud when a measured artifact card has no readable kind', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
   it('does not double-count: a user bubble and an assistant container never overlap', async () => {
     // Live-verified (2026-07-25): zero `.standard-markdown` nested inside a user turn, so
     // the union selector yields each turn exactly once.

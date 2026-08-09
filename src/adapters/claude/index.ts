@@ -1,8 +1,9 @@
 import type { Conversation, Message, Role } from '../../core/conversation';
+import type { SidebarConversation } from '../../core/sidebar';
 import { ExtractionError } from '../../core/errors';
 import { blockToMarkdown, htmlToMarkdown } from '../../core/html-to-markdown';
-import type { ConversationAdapter } from '../types';
-import { matches } from './matches';
+import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
+import { matches, matchesProject } from './matches';
 import { selectors, TITLE_SUFFIX } from './selectors';
 
 const PROVIDER = 'claude';
@@ -25,6 +26,26 @@ const END_SETTLE_ROUNDS = 2;
 // Hard anti-runaway ceiling, far above any real conversation's step count (the primary
 // bound is derived from the live scroll height each iteration).
 const WALK_ABSOLUTE_MAX_STEPS = 2000;
+// A live response can remain at the bottom while it streams for tens of seconds. The
+// measured stream marker is the completion signal, so the bottom dwell needs a bound larger
+// than the geometry-derived scroll-step count while still refusing an unending stream.
+const STREAM_SETTLE_MAX_STEPS = 400;
+
+// Navigation-list tuning. Claude's measured sidebar/project surfaces are client-rendered;
+// there is no verified server-paging contract to wait for. The loader therefore walks the
+// nearest measured scroll ancestor in viewport-sized steps and stops only after the position
+// clamps and the accumulated id set stays unchanged for a few rounds.
+const NAV_SCROLL_STEP_FRACTION = 0.9;
+const NAV_STABLE_ROUNDS = 3;
+const NAV_ABSOLUTE_MAX_STEPS = 400;
+const OPEN_POLL_MS = 150;
+const OPEN_TIMEOUT_MS = 15000;
+
+// Set when the project bulk panel first enumerates its measured home table. A project run
+// opens several members sequentially; after the first click the table may be replaced by the
+// chat route, so the next opener returns through the browser's existing SPA history entry
+// before clicking the next verified table anchor.
+let activeProjectHomeUrl: string | null = null;
 
 // Claude's own icon-button classes, taken verbatim from its native header Share button
 // (verified live 2026-07-25). Only two tokens are dropped, and only because they are wrong
@@ -50,16 +71,10 @@ const TOOLBAR_BUTTON_CLASS =
   'transition-shadow duration-fast focus-visible:shadow-focus text-primary';
 
 /**
- * Claude adapter — single-conversation export only. Every other `ConversationAdapter`
- * member is optional and deliberately unimplemented: the sidebar bulk track and the
- * project track would each need their own live-DOM verification, and an unverified
- * implementation is worse than an absent one.
- *
- * Absence alone is not enough to hide a feature, though — the content layer has to *read*
- * it. `syncConversationButtons` gates the bulk icon on `listConversations` +
- * `openConversation` being present, and `pickProjectAdapter` gates the project trigger on
- * `matchesProject`; without the former, registering this adapter rendered a bulk button on
- * every Claude chat that answered a click with "not supported".
+ * Claude adapter. Optional navigation members are limited to the measured sidebar and
+ * Project-home DOM surfaces. The content layer gates each shared control on the paired
+ * members being present, so an unmeasured track stays absent rather than advertising a
+ * button it cannot service.
  */
 export const claudeAdapter: ConversationAdapter = {
   provider: PROVIDER,
@@ -68,6 +83,14 @@ export const claudeAdapter: ConversationAdapter = {
   toolbarMount,
   toolbarButtonClass: TOOLBAR_BUTTON_CLASS,
   toolbarAnchor,
+  listConversations,
+  openConversation,
+  loadMoreConversations,
+  matchesProject,
+  listProjectConversations,
+  openProjectConversation,
+  openProjectHome,
+  projectToolbarMount,
 };
 
 /**
@@ -88,6 +111,333 @@ function toolbarMount(root: ParentNode = document): Element | null {
  */
 function toolbarAnchor(root: ParentNode = document): Element | null {
   return root.querySelector(selectors.shareButton);
+}
+
+/**
+ * Enumerate the measured recent-chat links in Claude's persistent sidebar. The map is keyed
+ * by the stable `/chat/<id>` path so duplicate anchors (for example an active row rendered
+ * twice during a transition) never create duplicate checklist entries.
+ */
+function listConversations(root: ParentNode = document): SidebarConversation[] {
+  const sidebar = root.querySelector(selectors.sidebar);
+  if (!sidebar) return [];
+  return collectNavigationConversations(
+    sidebar.querySelectorAll(selectors.sidebarConversationLink),
+    documentOrigin(root),
+    'sidebar',
+  );
+}
+
+/**
+ * Enumerate the measured Project-home table. Every observed row had one chat anchor in its
+ * only cell; a row without one is a visible structural failure rather than a silently
+ * shortened project list. No load-more member is supplied for this track because paging was
+ * not observed live.
+ */
+function listProjectConversations(root: ParentNode = document): SidebarConversation[] {
+  const pageUrl = ownerDocument(root)?.defaultView?.location?.href ?? '';
+  if (pageUrl && matchesProject(pageUrl)) activeProjectHomeUrl = pageUrl;
+  const table = root.querySelector(selectors.projectTable);
+  if (!table) return [];
+
+  const rows = Array.from(table.querySelectorAll(selectors.projectRow));
+  const links: Element[] = [];
+  for (const row of rows) {
+    const rowLinks = Array.from(row.querySelectorAll(selectors.projectConversationLink));
+    if (rowLinks.length !== 1) {
+      throw new ExtractionError(
+        'Could not read the Claude project conversation list: a table row did not contain exactly one ' +
+          'conversation link. Claude’s markup may have changed — please report this.',
+      );
+    }
+    links.push(rowLinks[0]);
+  }
+  return collectNavigationConversations(links, documentOrigin(root), 'project');
+}
+
+/**
+ * Mount the project trigger beside the measured table. Returning its parent keeps the
+ * generic content layer from inserting a non-table `<div>` into `<tbody>`.
+ */
+function projectToolbarMount(root: ParentNode = document): Element | null {
+  return root.querySelector(selectors.projectTable)?.parentElement ?? null;
+}
+
+/** The human label carried by a measured navigation anchor. */
+function navigationTitle(anchor: Element): string {
+  return (anchor.getAttribute('aria-label') ?? anchor.textContent ?? '').trim();
+}
+
+/**
+ * Fold measured navigation anchors into an ordered id map. Invalid hrefs or nameless links
+ * reject the operation so the bulk panel cannot present a plausible but incomplete list.
+ */
+function collectNavigationConversations(
+  links: Iterable<Element>,
+  origin: string,
+  surface: 'sidebar' | 'project',
+): SidebarConversation[] {
+  const acc = new Map<string, SidebarConversation>();
+  for (const anchor of links) {
+    const href = anchor.getAttribute('href');
+    const resolved = href ? resolveConversationHref(href, origin) : null;
+    const title = navigationTitle(anchor);
+    if (!resolved || !title) {
+      throw new ExtractionError(
+        `Could not read a Claude ${surface} conversation link: its URL or title is missing. ` +
+          'Claude’s markup may have changed — please report this.',
+      );
+    }
+    if (!acc.has(resolved.id)) acc.set(resolved.id, { id: resolved.id, title, url: resolved.url });
+  }
+  return [...acc.values()];
+}
+
+/** Split a measured Claude conversation href into its stable id and canonical absolute URL. */
+function resolveConversationHref(href: string, origin: string): { id: string; url: string } | null {
+  try {
+    const parsed = new URL(href, origin);
+    const match = parsed.pathname.match(/^\/chat\/([^/]+)\/?$/);
+    if (!match) return null;
+    const id = match[1];
+    return { id, url: `${origin}/chat/${id}` };
+  } catch {
+    return null;
+  }
+}
+
+function documentOrigin(root: ParentNode): string {
+  const origin = ownerDocument(root)?.defaultView?.location?.origin;
+  return origin && origin !== 'null' ? origin : 'https://claude.ai';
+}
+
+/**
+ * Open a selected sidebar conversation in place and wait for both the target route and a
+ * changed rendered turn signature. Clicking the verified anchor keeps the shared bulk panel
+ * alive across Claude's SPA navigation; assigning `location` would reload it away.
+ */
+async function openConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const target = resolveConversationHref(url, location.origin);
+  if (!target) {
+    throw new ExtractionError('Could not open a selected Claude conversation: its URL is malformed. It was skipped.');
+  }
+
+  if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
+
+  const anchor = findSidebarAnchor(target.id);
+  if (!anchor) {
+    throw new ExtractionError(
+      'Could not open a selected Claude conversation: its sidebar link was not found. ' +
+        'The recent-chat list may need scrolling into view. It was skipped.',
+    );
+  }
+
+  const beforeSignature = messageSignature();
+  anchor.click();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (location.pathname === `/chat/${target.id}` && hasRenderedMessages() && messageSignature() !== beforeSignature) {
+      return;
+    }
+  }
+  throw new ExtractionError(
+    'Timed out opening a selected Claude conversation. It may be loading slowly; it was skipped.',
+  );
+}
+
+function findSidebarAnchor(id: string): HTMLAnchorElement | null {
+  const sidebar = document.querySelector(selectors.sidebar);
+  if (!sidebar) return null;
+  for (const anchor of sidebar.querySelectorAll<HTMLAnchorElement>(selectors.sidebarConversationLink)) {
+    const href = anchor.getAttribute('href');
+    const resolved = href ? resolveConversationHref(href, location.origin) : null;
+    if (resolved?.id === id) return anchor;
+  }
+  return null;
+}
+
+/** Open a Project member through the same measured `/chat/<id>` route and wait for its render. */
+async function openProjectConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const target = resolveConversationHref(url, location.origin);
+  if (!target) {
+    throw new ExtractionError('Could not open a selected Claude project conversation: its URL is malformed. It was skipped.');
+  }
+
+  if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
+
+  if (!document.querySelector(selectors.projectTable)) {
+    await returnToProjectHome(activeProjectHomeUrl, pollMs, timeoutMs);
+  }
+
+  const anchor = findProjectConversationAnchor(target.id);
+  if (!anchor) {
+    throw new ExtractionError(
+      'Could not open a selected Claude project conversation: its table link was not found. ' +
+        'The project list may need to render first. It was skipped.',
+    );
+  }
+
+  const beforeSignature = messageSignature();
+  anchor.click();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (location.pathname === `/chat/${target.id}` && hasRenderedMessages() && messageSignature() !== beforeSignature) {
+      return;
+    }
+  }
+  throw new ExtractionError(
+    'Timed out opening a selected Claude project conversation. It may be loading slowly; it was skipped.',
+  );
+}
+
+function findProjectConversationAnchor(id: string): HTMLAnchorElement | null {
+  const table = document.querySelector(selectors.projectTable);
+  if (!table) return null;
+  for (const anchor of table.querySelectorAll<HTMLAnchorElement>(selectors.projectConversationLink)) {
+    const href = anchor.getAttribute('href');
+    const resolved = href ? resolveConversationHref(href, location.origin) : null;
+    if (resolved?.id === id) return anchor;
+  }
+  return null;
+}
+
+/** Return to the cached measured project home before opening another project member. */
+async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeoutMs: number): Promise<void> {
+  if (!homeUrl) {
+    throw new ExtractionError(
+      'Could not return to the Claude project home: no measured project-home URL is available. It was skipped.',
+    );
+  }
+  const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
+  if (!historyObject?.back) {
+    throw new ExtractionError('Could not return to the Claude project home: browser history is unavailable. It was skipped.');
+  }
+  historyObject.back();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (currentPageUrlPath() === new URL(homeUrl, location.origin).pathname && document.querySelector(selectors.projectTable)) {
+      return;
+    }
+  }
+  throw new ExtractionError('Timed out returning to the Claude project home. It may be loading slowly; it was skipped.');
+}
+
+/** Optional project-track return hook used by the generic bulk driver after the batch. */
+async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const targetPath = new URL(homeUrl, location.origin).pathname;
+  if (location.pathname === targetPath && document.querySelector(selectors.projectTable)) return;
+  await returnToProjectHome(homeUrl, pollMs, timeoutMs);
+  if (location.pathname !== targetPath) {
+    throw new ExtractionError('Returned to a different Claude project home than the bulk run started from.');
+  }
+}
+
+function currentPageUrlPath(): string {
+  return location.pathname;
+}
+
+function hasRenderedMessages(): boolean {
+  return document.querySelector(selectors.turn) !== null;
+}
+
+/** A compact internal fingerprint used only to distinguish outgoing and incoming SPA content. */
+function messageSignature(): string {
+  const rows = Array.from(document.querySelectorAll(selectors.turnRow))
+    .map((row) => row.getAttribute(selectors.turnIndexAttr) ?? '')
+    .join(',');
+  const turns = Array.from(document.querySelectorAll(selectors.turn));
+  const first = turns[0]?.textContent?.trim() ?? '';
+  const last = turns.at(-1)?.textContent?.trim() ?? '';
+  return `${rows}:${turns.length}:${first.length}:${last.length}`;
+}
+
+/**
+ * Load all currently-rendered sidebar rows by stepping the measured recent-chat scroll port.
+ * Claude's 2026-08-09 measurement showed no server paging or load-more control, so this
+ * loader never claims an unmeasured page-size contract and simply returns the accumulated
+ * anchors once the port clamps.
+ */
+async function loadMoreConversations(
+  root: ParentNode = document,
+  options: LoadMoreOptions = {},
+): Promise<SidebarConversation[]> {
+  const sidebar = root.querySelector(selectors.sidebar);
+  if (!sidebar) return [];
+
+  // The measured aside is a 953px layout shell; its nested recent-chat port is the actual
+  // 564px scroll container. Start from a verified conversation anchor so the nearest scrolling
+  // ancestor is selected instead of treating the non-scrolling aside as the whole list.
+  const firstLink = sidebar.querySelectorAll(selectors.sidebarConversationLink)[0] ?? null;
+  const linkContainer = firstLink ? findScrollableAncestor(firstLink) : null;
+  const container =
+    linkContainer && hasScrollMetrics(linkContainer) && linkContainer.scrollHeight > linkContainer.clientHeight
+      ? linkContainer
+      : findScrollableAncestor(sidebar);
+  if (container.scrollHeight <= container.clientHeight) return listConversations(root);
+
+  const acc = new Map<string, SidebarConversation>();
+  let previousTop = -1;
+  let lastCount = -1;
+  let stable = 0;
+  const stepDelayMs = options.stepDelayMs ?? 150;
+  const stableRounds = options.stableRounds ?? NAV_STABLE_ROUNDS;
+  const maxSteps = options.maxSteps ?? NAV_ABSOLUTE_MAX_STEPS;
+
+  for (let step = 0; step < maxSteps; step++) {
+    const current = collectNavigationConversations(
+      sidebar.querySelectorAll(selectors.sidebarConversationLink),
+      documentOrigin(root),
+      'sidebar',
+    );
+    for (const conversation of current) {
+      if (!acc.has(conversation.id)) acc.set(conversation.id, conversation);
+    }
+    if (acc.size > lastCount) {
+      options.onProgress?.(acc.size);
+      stable = 0;
+    } else if (container.scrollTop <= previousTop) {
+      stable++;
+      if (stable >= stableRounds) return [...acc.values()];
+    } else {
+      stable = 0;
+    }
+    previousTop = container.scrollTop;
+    lastCount = acc.size;
+    const advance = Math.max(1, Math.floor(container.clientHeight * NAV_SCROLL_STEP_FRACTION));
+    container.scrollTop = Math.min(container.scrollTop + advance, container.scrollHeight);
+    await delay(stepDelayMs);
+  }
+
+  options.onIncomplete?.();
+  throw new ExtractionError(
+    'Timed out loading Claude’s conversation list while scrolling. The sidebar may be unusually long; try again, or report if this persists.',
+  );
+}
+
+/** Nearest vertically-scrollable ancestor of a measured navigation surface. */
+function findScrollableAncestor(el: Element): HTMLElement {
+  const view = ownerDocument(el)?.defaultView ?? null;
+  let current: Element | null = el;
+  while (current) {
+    const node = current as HTMLElement;
+    if (node.scrollHeight > node.clientHeight) {
+      const overflowY = view?.getComputedStyle?.(node)?.overflowY;
+      if (!overflowY || overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
+    }
+    current = current.parentElement;
+  }
+  return el as HTMLElement;
+}
+
+function hasScrollMetrics(el: Element): el is HTMLElement {
+  const node = el as HTMLElement;
+  return Number.isFinite(node.scrollHeight) && Number.isFinite(node.clientHeight);
 }
 
 /** Overridable knobs so the walk can be unit-tested without real timers. */
@@ -147,6 +497,14 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
  * conversation rendered 28 user rows, 27 with no measured attachment shape, and neither tile
  * query matched any of those 27 rows. See docs/live-dom-verification.md → Claude → 2026-08-01.
  */
+interface SnapshotEntry {
+  role: Role;
+  parts: string[];
+  claimed: boolean;
+  /** Artifact metadata must be attached to a corresponding assistant turn. */
+  requiresTurn?: boolean;
+}
+
 function readSnapshot(root: ParentNode): Message[] {
   // Rows and turns in ONE query, so the DOM's own document order interleaves them and no
   // position comparison is needed to place an attachment-only row among the turns. A row is
@@ -159,7 +517,7 @@ function readSnapshot(root: ParentNode): Message[] {
   // expanded.
   const kept = new Set(dropThinkingBlocks(all.filter((el) => !rows.has(el))));
 
-  const entries: { role: Role; parts: string[]; claimed: boolean }[] = [];
+  const entries: SnapshotEntry[] = [];
   const byRow = new Map<Element, (typeof entries)[number]>();
   // Rows that carried no markers. Whether one is a failure is only knowable after the whole
   // scan: a row is visited BEFORE the turn nodes inside it, so an ordinary prose row looks
@@ -189,13 +547,18 @@ function readSnapshot(root: ParentNode): Message[] {
       continue;
     }
     if (!rows.has(el)) continue;
-    // Attachments live OUTSIDE the turn node, so they are read off the row. `attachmentMarkers`
-    // claims a row only if it carries named tiles AND the user-exclusive edit control; a row
-    // failing either test is left unclaimed and falls to the unreadable count below rather than
-    // being guessed at.
+    // Attachments and artifact cards live OUTSIDE the turn node, so they are read off the row.
+    // Artifact cards are assistant-owned in the measured shape and must have a corresponding
+    // `.standard-markdown` turn; a malformed card is rejected rather than given invented text.
+    const artifact = artifactMarkers(el);
     const files = attachmentMarkers(el);
-    if (files) {
-      const entry = { role: 'user' as Role, parts: [files], claimed: false };
+    if (artifact || files) {
+      const entry: SnapshotEntry = {
+        role: artifact ? 'assistant' : 'user',
+        parts: [artifact, files].filter(Boolean),
+        claimed: false,
+        requiresTurn: Boolean(artifact),
+      };
       entries.push(entry);
       byRow.set(el, entry);
     } else if (el.querySelector(selectors.messageArticle)) {
@@ -227,6 +590,7 @@ function readSnapshot(root: ParentNode): Message[] {
       .join('\n\n');
     if (content) messages.push({ role: entry.role, content });
     else dropped++;
+    if (entry.requiresTurn && !entry.claimed) dropped++;
   }
 
   if (messages.length > 0 && dropped > 0) {
@@ -386,15 +750,19 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     const markedIndices = new Set<number>();
     for (const row of Array.from(doc.querySelectorAll(selectors.turnRow))) {
       const index = rowIndex(row);
-      if (!Number.isInteger(index) || markedIndices.has(index)) continue;
+      if (!Number.isInteger(index)) continue;
+      // Validate every matched card before the duplicate-index guard. A second recycled row
+      // with malformed metadata is still a visible selector failure, never a reason to skip
+      // validation because an earlier row shared its index.
+      const artifact = artifactMarkers(row);
       const files = attachmentMarkers(row);
-      // Recorded only when the row actually yielded markers, so a marker-less row sharing the
-      // index cannot block a later one that has them.
-      if (!files) continue;
+      if (!artifact && !files) continue;
+      if (markedIndices.has(index)) continue;
       markedIndices.add(index);
       const claimed = round.get(index);
-      if (claimed) claimed.parts.unshift(files);
-      else round.set(index, { role: 'user', parts: [files], thinkingOnly: false });
+      const markers = [artifact, files].filter(Boolean);
+      if (claimed) claimed.parts.unshift(...markers);
+      else round.set(index, { role: artifact ? 'assistant' : 'user', parts: markers, thinkingOnly: false });
     }
 
     for (const [index, { role, parts, thinkingOnly }] of round) {
@@ -454,16 +822,20 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
 
     // Pass 2 — back down to the last turn.
     const reachedBottom = await walk(container, stepDelayMs, options.maxSteps, record, {
-      atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1,
+      // Scroll position alone cannot distinguish a settled newest response from a response
+      // that is still growing at the bottom. The measured marker is authoritative when the
+      // newest assistant row is present; absent marker remains non-terminal while it mounts.
+      atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1 && streamState(doc) === 'settled',
       step: (c) => {
         c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
       },
       stepPx,
+      requiresStreamCompletion: true,
     });
     if (!reachedBottom) {
       throw new ExtractionError(
-        'Timed out loading the full conversation while scrolling. The conversation may be ' +
-          'unusually long; try again, or report if this persists.',
+        'Timed out waiting for Claude’s streaming state to settle while loading the full conversation. ' +
+          'The conversation may still be generating or its markup may have changed — try again, or report if this persists.',
       );
     }
 
@@ -482,15 +854,22 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
  * still terminates.
  *
  * Deliberately NOT ended early on the declared row total, even though `collectVirtualizedTurns`
- * now reads one — "every position is filled" is not "every turn is finished". See
- * docs/live-dom-verification.md → "a declared total is an oracle, not a termination condition".
+ * now reads one — "every position is filled" is not "every turn is finished". The bottom pass
+ * may additionally require the measured `data-is-streaming="false"` marker; a missing marker
+ * is pending, never completion. See docs/live-dom-verification.md → "a declared total is an
+ * oracle, not a termination condition".
  */
 async function walk(
   container: HTMLElement,
   stepDelayMs: number,
   maxSteps: number | undefined,
   record: () => void,
-  motion: { atEnd: (c: HTMLElement) => boolean; step: (c: HTMLElement) => void; stepPx: number },
+  motion: {
+    atEnd: (c: HTMLElement) => boolean;
+    step: (c: HTMLElement) => void;
+    stepPx: number;
+    requiresStreamCompletion?: boolean;
+  },
 ): Promise<boolean> {
   let atEndHits = 0;
   for (let step = 0; ; step++) {
@@ -500,11 +879,50 @@ async function walk(
     } else {
       atEndHits = 0;
     }
-    const cap = maxSteps ?? Math.ceil(container.scrollHeight / motion.stepPx) + END_SETTLE_ROUNDS + 5;
+    const geometryCap = Math.ceil(container.scrollHeight / motion.stepPx) + END_SETTLE_ROUNDS + 5;
+    const cap = maxSteps ?? Math.max(geometryCap, motion.requiresStreamCompletion ? STREAM_SETTLE_MAX_STEPS : geometryCap);
     if (step >= cap || step >= WALK_ABSOLUTE_MAX_STEPS) return false;
     motion.step(container);
     await delay(stepDelayMs);
   }
+}
+
+type StreamState = 'settled' | 'streaming' | 'pending' | 'invalid';
+
+/**
+ * Read the measured stream state from the newest rendered assistant row. The marker is a
+ * wrapper around `.standard-markdown`, not an attribute on the row itself. A missing marker
+ * means the assistant row is still mounting, so it remains pending; it never proves that the
+ * response finished. Any rendered `true` marker keeps the walk open, even if an older row also
+ * reports `false`.
+ */
+function streamState(doc: Document): StreamState {
+  const allRows = Array.from(doc.querySelectorAll(selectors.turnRow));
+  const assistantRows = allRows
+    .filter((row) => row.querySelector(selectors.assistantMarkdown) !== null)
+    .sort((a, b) => rowIndex(a) - rowIndex(b));
+  // The signal belongs only to assistant rows. A bottom window containing user rows alone is
+  // a completed prompt boundary, not evidence of a still-generating assistant; an empty
+  // message window remains pending so the walk cannot finish before the first row renders.
+  if (assistantRows.length === 0) return allRows.length > 0 ? 'settled' : 'pending';
+
+  let newest: StreamState = 'pending';
+  for (const row of assistantRows) {
+    const marker = row.querySelector(selectors.streamMarker);
+    if (!marker) {
+      if (row === assistantRows[assistantRows.length - 1]) newest = 'pending';
+      continue;
+    }
+    if (!marker.querySelector(selectors.assistantMarkdown)) return 'invalid';
+    const value = marker.getAttribute(selectors.streamStateAttr);
+    if (value === 'true') return 'streaming';
+    if (value === 'false') {
+      if (row === assistantRows[assistantRows.length - 1]) newest = 'settled';
+      continue;
+    }
+    if (row === assistantRows[assistantRows.length - 1]) newest = 'invalid';
+  }
+  return newest;
 }
 
 /** The `data-index` of a virtualizer row as a number, or NaN when it has none. */
@@ -695,6 +1113,48 @@ function readUserContent(el: Element): string {
   // image inside the turn body — an empty turn would otherwise fail the WHOLE export.
   if (el.querySelector('img')) return '[Image]';
   return '';
+}
+
+/**
+ * `[Artifact: title (kind)]` for each measured assistant artifact card in a row. The card is
+ * outside `.standard-markdown`, so leaving it to `htmlToMarkdown` silently drops it. Only the
+ * exact measured card/cell/title/kind structure is accepted; a matched card with missing or
+ * duplicate metadata fails loud instead of inventing a label (AGENTS.md #4/#5).
+ */
+function artifactMarkers(row: Element): string {
+  const cards = Array.from(row.querySelectorAll(selectors.artifactCard));
+  const cells = Array.from(row.querySelectorAll(selectors.artifactCell));
+  if (cards.length === 0) {
+    // The cell is the only measured descendant marker that can survive a root-token rename.
+    // Treating it as a card would invent the missing root relationship, so reject the row.
+    if (cells.length > 0) {
+      throw new ExtractionError(
+        'Claude rendered an artifact card with an unrecognized root. Its metadata could not be read — please report this.',
+      );
+    }
+    return '';
+  }
+  if (!row.querySelector(selectors.assistantMarkdown)) {
+    throw new ExtractionError(
+      'Claude rendered an artifact card without its corresponding assistant message. The markup may have changed — please report this.',
+    );
+  }
+
+  const markers: string[] = [];
+  for (const card of cards) {
+    const cell = card.querySelector(selectors.artifactCell);
+    const titles = cell ? Array.from(cell.querySelectorAll(selectors.artifactTitle)) : [];
+    const kinds = cell ? Array.from(cell.querySelectorAll(selectors.artifactKind)) : [];
+    const title = titles.length === 1 ? (titles[0].textContent ?? '').trim() : '';
+    const kind = kinds.length === 1 ? (kinds[0].textContent ?? '').trim() : '';
+    if (!cell || titles.length !== 1 || kinds.length !== 1 || !title || !kind) {
+      throw new ExtractionError(
+        'Claude rendered an artifact card whose title or kind could not be read. The markup may have changed — please report this.',
+      );
+    }
+    markers.push(`[Artifact: ${title} (${kind})]`);
+  }
+  return markers.join('\n\n');
 }
 
 /**

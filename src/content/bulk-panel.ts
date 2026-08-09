@@ -12,6 +12,7 @@ import type { ExportFormat } from './save-conversation';
 import type { BulkExportSummary } from './bulk-export';
 import {
   BULK_EMPTY_MESSAGE,
+  bulkListErrorMessage,
   BULK_PANEL_CANCEL,
   BULK_PANEL_CLOSE,
   BULK_PANEL_FORMAT_LABEL,
@@ -77,10 +78,21 @@ export interface BulkPanelDeps {
 export function openBulkPanel(doc: Document, deps: BulkPanelDeps): void {
   if (doc.getElementById(BULK_PANEL_ID)) return;
 
-  const conversations = deps.listConversations();
+  let conversations: SidebarConversation[] = [];
+  let listError: unknown = null;
+  try {
+    conversations = deps.listConversations();
+  } catch (error) {
+    // The provider owns list validation and may fail loud on selector drift. Build the modal
+    // first so that failure is visible in the same surface instead of escaping the toolbar
+    // click as an uncaught synchronous exception.
+    listError = error;
+  }
   const { backdrop, dialog, close, setRunning } = buildShell(doc);
 
-  if (conversations.length === 0) {
+  if (listError !== null) {
+    renderListError(doc, backdrop, close, messageOf(listError));
+  } else if (conversations.length === 0) {
     renderEmptyState(doc, backdrop, close);
   } else {
     renderSelection(doc, backdrop, close, setRunning, conversations, deps);
@@ -196,6 +208,26 @@ function renderEmptyState(doc: Document, backdrop: HTMLElement, close: () => voi
   Object.assign(body.style, { padding: '20px' });
   const msg = doc.createElement('p');
   msg.textContent = BULK_EMPTY_MESSAGE;
+  Object.assign(msg.style, { margin: '0', fontSize: '14px' });
+  body.appendChild(msg);
+  dialog.appendChild(body);
+
+  const footer = makeFooter(doc);
+  const closeBtn = styledButton(doc, BULK_PANEL_CLOSE, 'secondary');
+  closeBtn.addEventListener('click', close);
+  footer.appendChild(closeBtn);
+  dialog.appendChild(footer);
+}
+
+function renderListError(doc: Document, backdrop: HTMLElement, close: () => void, error: string): void {
+  const dialog = backdrop.firstElementChild as HTMLElement;
+  dialog.appendChild(makeHeader(doc));
+
+  const body = doc.createElement('div');
+  Object.assign(body.style, { padding: '20px' });
+  const msg = doc.createElement('p');
+  msg.setAttribute('role', 'alert');
+  msg.textContent = bulkListErrorMessage(error || 'The provider returned an unknown list error.');
   Object.assign(msg.style, { margin: '0', fontSize: '14px' });
   body.appendChild(msg);
   dialog.appendChild(body);
@@ -539,4 +571,8 @@ function renderSummary(doc: Document, status: HTMLElement, summary: BulkExportSu
     }
     status.appendChild(failList);
   }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
