@@ -20,15 +20,14 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > Opened by the 2026-07-29 live session. Each item names the function or file the fix lands in,
 > with the evidence in `docs/live-dom-verification.md` → 2026-07-29 or 2026-08-09. The three
 > Claude items that session fully measured — both attachment tile shapes, mixed-turn attachments,
-> and expanded extended thinking — landed in v1.8.0. The artifact-card, sidebar, and project items
-> are now actionable; synthetic growth rechecked the latter two surfaces on 2026-08-09. The
-> termination-condition item remains parked because the long-response sessions observed streaming
-> and ordinary row recycling but not the active-recycled-row case.
+> and expanded extended thinking — landed in v1.8.0. The artifact-card, sidebar, project, and
+> termination-condition items are now actionable; synthetic growth and append/retry flow probes
+> rechecked the latter three surfaces on 2026-08-09.
 
 - [ ]
       [FEAT] Claude: an **artifact** is omitted from the export — its card sits outside
       `.standard-markdown`. Emit a marker from the card (title + kind, e.g. `HTML`).
-- [ ] *(blocked by: two long-response live-DOM sessions, including a 32-row conversation, kept the active `data-is-streaming="true"` row rendered at both scroll extremes; the already-recycled-active-row state remains unobserved and must not be inferred from this negative result.)*
+- [ ]
       [FEAT] Give the Claude walk a real termination condition — one that can tell "the newest turn
       stopped growing" from "the newest turn is off-screen". PR #36 established that
       `aria-setsize` cannot do this on its own: the walk collects the bottom turn as a fragment,
@@ -45,11 +44,12 @@ continuation line is invisible to it and the blocked item is offered as actionab
       2026-07-29). Two constraints the implementation must respect: it flips `false` in the same
       200 ms sample as the final text chunk, so it marks the end but grants no quiet-period
       margin; and the row appears ~1.2 s *before* its stream node exists, so "no node yet" must
-      not read as "finished". Still unmeasured, and the case this item actually turns on: how the
-      attribute reads on a row the virtualizer has already recycled — settle that before relying
-      on it to end the walk. Note the same signal would also improve on today's behavior at the
-      bottom, where the walk stops on scroll-settle regardless of whether the last turn is still
-      growing.
+      not read as "finished". The 2026-08-09 append/retry probes found no live flow that leaves an
+      active streaming row in the middle of a still-present tail: append keeps the newest row
+      rendered, while retry removes the later rows before streaming. Treat that as the current
+      UI invariant and remeasure if Claude adds a branching flow that preserves the tail. Note the
+      same signal would also improve on today's behavior at the bottom, where the walk stops on
+      scroll-settle regardless of whether the last turn is still growing.
 
 ## Next (roadmap — not v1)
 

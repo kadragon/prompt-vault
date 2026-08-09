@@ -1032,6 +1032,19 @@ pair. The new prompt requested 220 numbered sections. A 45 s recorder sampled ev
   termination-condition blocker remains until that state is observed or the implementation
   contract is deliberately changed.
 
+A final flow probe tested an older generated turn rather than appending a new one. With the
+synthetic conversation at **34** rows, the measured assistant row `data-index="1"` had a real
+`button[aria-label="재시도"]`. Clicking it regenerated that turn but immediately reduced
+`aria-setsize` to **2** and removed the tail; only rows `0` and `1` remained, with
+`data-is-streaming="true"` on row `1`. The response later settled with the same two rows and
+`data-is-streaming="false"` on row `1`.
+
+Together, the two live flows establish the current UI invariant: appending a response creates the
+newest row and keeps it rendered while streaming, while retrying an older row removes all later
+rows before streaming. No measured live flow leaves an active streaming row in the middle of a
+still-present virtualized tail. This does not prove a future Claude branch cannot change the
+behavior; remeasure after such a UI change.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
