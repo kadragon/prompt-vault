@@ -1013,6 +1013,22 @@ from `0` to `33004.5`, and `scrollHeight` reached `33922`.
   “active streaming row already recycled” case remains unmeasured; do not infer that it cannot
   occur outside this account/state/scroll pattern.
 
+A follow-up used the same purpose-built conversation after adding **8** synthetic short exchanges,
+bringing `aria-setsize` to **30** before the long response and **32** after its new user/assistant
+pair. The new prompt requested 220 numbered sections. A 45 s recorder sampled every ~120 ms
+(**368 samples**) while alternating the real scroll port between top and bottom:
+
+- `[data-is-streaming="true"]` was present in **368/368** samples, always under row
+  `data-index="31"`; top and bottom each contributed **184** samples.
+- The rendered index union was `[0,1,2,3,4,5,13,24,25,26,27,28,29,30,31]`, demonstrating further
+  recycling while the response grew. The active row `31` was present in every true sample; the
+  count of true-marker samples whose indexed row was absent was **0**.
+- A later structural poll observed the marker flip to `false` after approximately **37.0 s**.
+  After settling, row `31` still appeared at both scroll extremes. This is a stronger negative
+  measurement, not a direct observation of the already-recycled-active-row state, so the
+  termination-condition blocker remains until that state is observed or the implementation
+  contract is deliberately changed.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time

@@ -28,7 +28,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
 - [ ]
       [FEAT] Claude: an **artifact** is omitted from the export — its card sits outside
       `.standard-markdown`. Emit a marker from the card (title + kind, e.g. `HTML`).
-- [ ] *(blocked by: how `data-is-streaming` reads on a row the virtualizer has already recycled — named unmeasured in the item itself and in docs/live-dom-verification.md. Needs a live-DOM session.)*
+- [ ] *(blocked by: two long-response live-DOM sessions, including a 32-row conversation, kept the active `data-is-streaming="true"` row rendered at both scroll extremes; the already-recycled-active-row state remains unobserved and must not be inferred from this negative result.)*
       [FEAT] Give the Claude walk a real termination condition — one that can tell "the newest turn
       stopped growing" from "the newest turn is off-screen". PR #36 established that
       `aria-setsize` cannot do this on its own: the walk collects the bottom turn as a fragment,
