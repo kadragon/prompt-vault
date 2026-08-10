@@ -15,14 +15,11 @@ updates:
           - version-update:semver-major
           - version-update:semver-minor
     groups:
-      # Collapse routine minor/patch bumps into one PR to keep review noise low;
-      # major bumps stay separate so breaking changes are reviewed individually.
-      dev-minor-patch:
+      # Collapse every dependency bump, major included, into one PR per
+      # ecosystem to keep review noise low.
+      dev-dependencies:
         patterns:
           - '*'
-        update-types:
-          - minor
-          - patch
     commit-message:
       prefix: '[HARNESS]'
 
@@ -35,8 +32,5 @@ updates:
       actions:
         patterns:
           - '*'
-        update-types:
-          - minor
-          - patch
     commit-message:
       prefix: '[HARNESS]'
