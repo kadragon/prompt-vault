@@ -185,6 +185,29 @@ export const selectors = {
    * separate descendants with the measured class-token combinations. The selector is kept
    * token-based because `/` is part of the captured class token and not a CSS descendant
    * separator. Verified against the live page (2026-08-09).
+   *
+   * **These four stay class-token based because nothing else exists — measured, not assumed
+   * (2026-08-10).** The card was surveyed across four artifact kinds (HTML, PY, MD, JSX; three
+   * of them created in-session so the shape is attributable to a known artifact), and the only
+   * `data-*` attribute anywhere inside a card is a single `data-cds="Button"` on the download
+   * control. There is no attribute on the card, the title or the kind. So the "anchor these on
+   * measured attributes" fix this file once carried as a follow-up is **not achievable**, and
+   * that is the finding rather than an omission.
+   *
+   * The hazard that follow-up was filed against was also measured and did not appear:
+   * `artifactKind`'s token pair matched **exactly once per card in all four kinds** — no
+   * timestamp or version badge competes for it. Should one ever appear, `artifactMarkers` in
+   * `src/adapters/claude/index.ts` requires exactly one non-empty match and throws otherwise,
+   * so the failure is loud (AGENTS.md #4), not a silently mislabelled artifact.
+   *
+   * What IS structurally stable, recorded in case these tokens do churn: the text column inside
+   * `artifactCell` held exactly two children in all four cards — title first, kind second. A
+   * positional rewrite was considered and rejected: it trades one fragile handle (utility
+   * classes) for another (a child-index chain), with no measured advantage.
+   *
+   * Note for whoever touches the exported string: the kind is **localized** — `문서 · MD` and
+   * `코드 · JSX` were measured on this ko-KR account — and it reaches Markdown/JSON verbatim
+   * inside `[Artifact: <title> (<kind>)]`. Tracked in `backlog.md`.
    */
   artifactCard: 'div[class~="group/artifact-block"]',
   artifactCell: '[class~="artifact-block-cell"]',
@@ -192,14 +215,32 @@ export const selectors = {
   artifactKind: '[class~="text-xs"][class~="line-clamp-1"]',
 
   /**
-   * Claude's persistent navigation surfaces measured on 2026-08-09.
+   * Claude's persistent navigation surfaces, measured 2026-08-09 and re-measured 2026-08-10.
    *
    * The sidebar is matched on the ELEMENT measured (`aside`), never on its accessible name:
-   * the 2026-08-09 measurement was taken on a Korean-locale account, where the label reads
-   * `사이드바`, and Claude localizes it. Pinning the label would make the whole navigation
-   * track dead on every other UI language. `resolveSidebar` narrows a page's asides to the
-   * one carrying `sidebarConversationLink` anchors, which is the same measured fact
-   * (19 `/chat/:id` links inside that aside) minus the locale dependency.
+   * the measurements were taken on a Korean-locale account, where the label reads `사이드바`,
+   * and Claude localizes it. Pinning the label would make the whole navigation track dead on
+   * every other UI language.
+   *
+   * **The uniqueness this rests on is now measured directly (2026-08-10), where PR #58 could
+   * only derive it.** On both `/new` and a `/chat/<id>` page: exactly ONE `aside` in the
+   * document, it is the one carrying the sidebar links (20 on each route), and **zero**
+   * `a[href^="/chat/"]` exist anywhere outside it. So `resolveSidebar`'s narrowing is not
+   * merely a locale-independent restatement of a label — it selects the same element the
+   * label would have, and nothing else on the page competes for it.
+   *
+   * Two alternatives were measured and rejected rather than left unexamined:
+   * - **There is no nav landmark.** `nav` and `[role="navigation"]` both resolve to zero
+   *   elements on both routes, so the landmark this was once expected to hang on does not exist.
+   * - The aside does carry locale-independent attributes — `data-variant="web"` and
+   *   `data-density="comfortable"` — but both are *configuration* values (platform, and the
+   *   user's density preference), so pinning either value would break under a different
+   *   setting, and matching on presence alone is no more discriminating than the containment
+   *   test already shipped.
+   *
+   * Sidebar rows additionally carry `data-row-key="chat:<uuid>"` (20/20 on both routes), which
+   * is conversation identity without an `href` parse. Nothing reads it today; it is recorded
+   * here because it is the stable per-row handle if one is ever needed.
    */
   sidebar: 'aside',
   sidebarConversationLink: 'a[href^="/chat/"]',
@@ -208,6 +249,38 @@ export const selectors = {
    * home — an assistant markdown table renders inside `<main>` on a `/chat/<id>` page too —
    * so every consumer goes through `resolveProjectTable`, which keeps only a table that
    * actually carries `projectConversationLink` anchors.
+   *
+   * **A design-system attribute exists and is deliberately NOT pinned here. Measured
+   * 2026-08-10:**
+   *
+   * | Page | `data-cds` on the table | inside `[data-cds="DataTable"]` | chat links |
+   * |---|---|---|---|
+   * | project home (2 projects, 1 and 4 members) | `Table` | yes (ancestor depth 2) | 1 / 4 |
+   * | `/recents` | `Table` | yes | 25 |
+   * | `/chat/<id>` assistant markdown table | **none** | no | 0 |
+   *
+   * Narrowing to `main table[data-cds="Table"]` was tried on that evidence and reverted,
+   * because it makes the failure mode WORSE rather than better — the trade only became visible
+   * once the reachable paths were traced:
+   *
+   * - **It buys almost nothing reachable.** The markdown table only exists on `/chat/<id>`, and
+   *   every project consumer is route-gated before it can run: `projectToolbarMount` is reached
+   *   only via `syncButtons` → `isProjectPage` → `matchesProject` (`src/content/mount.ts`), and
+   *   `openProjectBulkExport` gates on `pickProjectAdapter(location.href)`. So the markdown
+   *   table is never handed to a consumer today.
+   * - **It costs a silent failure.** If Claude renames that one unversioned attribute, the
+   *   selector matches nothing on a real project home, and a list that resolves to no table is
+   *   an *empty* list rather than a loud one — the bulk panel's "no conversations" state,
+   *   indistinguishable from a genuinely empty project (AGENTS.md #4). Under the plain tag
+   *   selector the same drift changes nothing at all.
+   * - **It was measured on one route family.** `PROJECT_PATHS` in `./matches.ts` matches both
+   *   `/cowork/project/<id>` and `/project/<id>`; only the former was measured on 2026-08-10,
+   *   so pinning would rest on an unmeasured assumption for the other (AGENTS.md #5).
+   *
+   * What the session did change is the missing-table case below it: `listProjectConversations`
+   * now fails loud when it is ON a project route and resolves no table at all, instead of
+   * reporting an empty project. That guard is what makes any future attribute pinning safe, and
+   * it is worth having on its own.
    */
   projectTable: 'main table',
   projectRow: 'tbody > tr',

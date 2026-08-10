@@ -6,7 +6,6 @@ description: |
   and NEVER the same agent instance that implemented.
   Grades against criteria and real behavior, not impressions.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 ---
 
 ## Objective

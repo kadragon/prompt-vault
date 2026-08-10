@@ -9,10 +9,20 @@ function docFrom(html: string): Document {
   return window.document as unknown as Document;
 }
 
+/**
+ * Same, but served from a real URL so `matchesProject` can see the route. The missing-table
+ * case means different things on and off a project home, so the route is part of the fixture.
+ */
+function docAt(url: string, html: string): Document {
+  const window = new Window({ url });
+  window.document.write(html);
+  return window.document as unknown as Document;
+}
+
 const PROJECT = `
   <body>
     <main>
-      <table>
+      <table data-cds="Table">
         <tbody>
           <tr class="group/cdsrow"><td><a href="/chat/aaa" aria-label="First project chat">First project chat</a></td></tr>
           <tr class="group/cdsrow"><td><a href="/chat/bbb">Second project chat</a></td></tr>
@@ -41,7 +51,9 @@ describe('claudeAdapter.listProjectConversations', () => {
   });
 
   it('fails loud when a measured project row has no chat anchor', () => {
-    const doc = docFrom('<body><main><table><tbody><tr class="group/cdsrow"><td>broken</td></tr></tbody></table></main></body>');
+    const doc = docFrom(
+      '<body><main><table data-cds="Table"><tbody><tr class="group/cdsrow"><td>broken</td></tr></tbody></table></main></body>',
+    );
     expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
   });
 
@@ -50,8 +62,8 @@ describe('claudeAdapter.listProjectConversations', () => {
     // first would otherwise be walked and fail every row's exactly-one-anchor check.
     const doc = docFrom(
       '<body><main>' +
-        '<table><tbody><tr><td>project-notes.pdf</td></tr></tbody></table>' +
-        '<table><tbody><tr class="group/cdsrow"><td><a href="/chat/aaa" aria-label="First">First</a></td></tr></tbody></table>' +
+        '<table data-cds="Table"><tbody><tr><td>project-notes.pdf</td></tr></tbody></table>' +
+        '<table data-cds="Table"><tbody><tr class="group/cdsrow"><td><a href="/chat/aaa" aria-label="First">First</a></td></tr></tbody></table>' +
         '</main></body>',
     );
     expect(claudeAdapter.listProjectConversations?.(doc)).toEqual([
@@ -60,7 +72,28 @@ describe('claudeAdapter.listProjectConversations', () => {
   });
 
   it('fails loud when a project chat anchor has no title', () => {
-    const doc = docFrom('<body><main><table><tbody><tr><td><a href="/chat/aaa"></a></td></tr></tbody></table></main></body>');
+    const doc = docFrom(
+      '<body><main><table data-cds="Table"><tbody><tr><td><a href="/chat/aaa"></a></td></tr></tbody></table></main></body>',
+    );
     expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
+  });
+
+  it('fails loud when a project route renders no table at all', () => {
+    // The silent-failure case this guard exists for: downstream, `[]` is rendered as the bulk
+    // panel's "no conversations" state, which is indistinguishable from a genuinely empty
+    // project. On a project ROUTE a missing table is markup drift, so it must be loud
+    // (AGENTS.md #4) rather than reporting a full project as empty.
+    const doc = docAt(
+      'https://claude.ai/cowork/project/019fa713-98b7-7050-8802-bc412d1c4800',
+      '<body><main>still hydrating</main></body>',
+    );
+    expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
+  });
+
+  it('still returns an empty list when the same markup is not on a project route', () => {
+    // The route is what distinguishes drift from absence — off a project home there is no
+    // claim being made about a project, so an empty list stays the honest answer.
+    const doc = docAt('https://claude.ai/chat/aaa', '<body><main>not ready</main></body>');
+    expect(claudeAdapter.listProjectConversations?.(doc)).toEqual([]);
   });
 });

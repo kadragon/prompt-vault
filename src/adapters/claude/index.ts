@@ -236,9 +236,23 @@ function resolveProjectTable(root: ParentNode = document): Element | null {
  */
 function listProjectConversations(root: ParentNode = document): SidebarConversation[] {
   const pageUrl = ownerDocument(root)?.defaultView?.location?.href ?? '';
-  if (pageUrl && matchesProject(pageUrl)) activeProjectHomeUrl = pageUrl;
+  const onProjectRoute = Boolean(pageUrl) && matchesProject(pageUrl);
+  if (onProjectRoute) activeProjectHomeUrl = pageUrl;
   const table = resolveProjectTable(root);
-  if (!table) return [];
+  if (!table) {
+    // On a project route a missing table is markup drift, not an empty project: the two are
+    // indistinguishable downstream, because the bulk panel renders `[]` as its "no
+    // conversations" state. Reporting a full project as empty is exactly the silent failure
+    // AGENTS.md #4 forbids, so the route decides which of the two this is. Off a project
+    // route (a caller probing an arbitrary document) an empty list stays the honest answer.
+    if (onProjectRoute) {
+      throw new ExtractionError(
+        'Could not find the Claude project conversation list on a project page. ' +
+          'Claude’s markup may have changed — please report this.',
+      );
+    }
+    return [];
+  }
 
   const rows = Array.from(table.querySelectorAll(selectors.projectRow));
   const links: Element[] = [];

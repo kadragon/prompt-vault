@@ -62,7 +62,7 @@ function docWithClaudeHeader(): Document {
 function docWithClaudeProjectTable(): Document {
   const window = new Window();
   window.document.write(
-    '<body><main><table><tbody><tr class="group/cdsrow"><td>' +
+    '<body><main><table data-cds="Table"><tbody><tr class="group/cdsrow"><td>' +
       '<a href="/chat/project-chat" aria-label="Project chat">Project chat</a>' +
       '</td></tr></tbody></table></main></body>',
   );
