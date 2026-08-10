@@ -1120,14 +1120,18 @@ Scope limits: one account, 25 conversations, `ko-KR`, one window size. That the 
 is measured at this scale only, and whether `/recents` itself pages at a larger scale is **not**
 established — 25 rows fit without paging, so no page boundary was ever crossed.
 
-### 2026-08-10 — the project table is attribute-addressable; the artifact card is not
+### 2026-08-10 — the project table is attribute-addressable but pinning it is a net loss; the artifact card has no attribute at all
 
 Settled the `[FIX]` asking to "anchor `projectTable` / `artifactTitle` / `artifactKind` on measured
-attributes". **It splits: the first half lands, the second half is a negative result.** Same
+attributes". **Both halves come back negative, for different reasons** — the project table *has* a
+measured attribute that it is not worth pinning to, and the artifact card has none at all. Same
 session, method and account as the entry above.
 
-Project routes are `/cowork/project/<uuid>` — already covered by `PROJECT_PATHS` in
-`src/adapters/claude/matches.ts`, so no route change was needed.
+The project route reached from `/projects` on this account is `/cowork/project/<uuid>`, which
+`PROJECT_PATHS` in `src/adapters/claude/matches.ts` already covers, so no route change was needed.
+Be precise about the scope: `PROJECT_PATHS` matches **two** families, `/cowork/project/<id>` and
+`/project/<id>`, and only the first was exercised on 2026-08-10. Nothing below is evidence about
+`/project/<id>` (`[unknown — not measured 2026-08-10]`).
 
 **Hydration: absent → complete, with no partial state.** Sampled every 100 ms across an SPA
 navigation from `/projects` into a project home (only the rounds where the shape changed are shown;
@@ -1158,15 +1162,32 @@ The markdown table was observed **6 times across a scroll walk** of one conversa
 virtualized out at load and had to be scrolled into view), every time inside `.standard-markdown`,
 every time without the attribute, and always with zero conversation links.
 
-**Why this was worth changing rather than leaving to containment.** `resolveProjectTable` falls back
-to the *first* table when none carries a chat anchor — deliberately, so a project list whose rows
-lost their links stays a visible failure instead of an empty one. On a `/chat/<id>` page that
-fallback selects the markdown table and hands it to every consumer, `projectToolbarMount` included,
-which mounts the bulk trigger on the returned table's parent. `selectors.projectTable` is therefore
-now `main table[data-cds="Table"]`, which excludes the markdown table before containment is
-consulted. The anchor narrowing stays as the second line of defence, because a project home may
-render knowledge/file tables of its own and **those are design-system tables too** — the attribute
-does not identify the conversation list among them.
+**The obvious use of this — pinning `selectors.projectTable` to
+`main table[data-cds="Table"]` — was tried on this evidence and REVERTED.** Recorded here because
+the reasoning is the useful part, and because the first draft of this entry got it wrong in a way
+three reviewers caught.
+
+The draft claimed the markdown-table ambiguity "was real rather than theoretical": that
+`resolveProjectTable`'s anchor-less fallback to the *first* table would, on a `/chat/<id>` page,
+hand the markdown table to every consumer including `projectToolbarMount`. **That failure is not
+reachable.** Every project consumer is route-gated before it runs — `projectToolbarMount` only via
+`syncButtons` → `isProjectPage` → `matchesProject` (`src/content/mount.ts`), `openProjectBulkExport`
+via `pickProjectAdapter(location.href)`, and `openProjectConversation` returns to the project home
+first. On a conversation page none of them execute, so nothing was being handed anything. The
+attribute would have been defence-in-depth against a route gate that already holds, not a fix
+(AGENTS.md #5).
+
+Against that near-zero reachable gain, pinning costs a **silent** failure. `resolveProjectTable`
+returning null makes `listProjectConversations` yield `[]`, and the bulk panel renders `[]` as its
+"no conversations" empty state — indistinguishable from a genuinely empty project. So a rename of
+that one unversioned design-system attribute would tell a user with a full project that it holds
+nothing, with no error, where the plain tag selector would have kept working. It would also rest on
+an unmeasured assumption for the `/project/<id>` route family noted above.
+
+**What the session changed instead is the missing-table case**, which is the real AGENTS.md #4 hole
+and is independent of which selector is used: `listProjectConversations` now throws when it is on a
+project route and resolves no table, rather than reporting an empty project. That guard is also the
+precondition for pinning the attribute later — with it in place, attribute drift would be loud.
 
 **The artifact card carries no attribute to anchor on. That is the result, not a gap in the
 session.** Four kinds were surveyed — one pre-existing HTML artifact plus a Python, a Markdown and a

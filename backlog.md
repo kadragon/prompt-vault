@@ -30,6 +30,18 @@ continuation line is invisible to it and the blocked item is offered as actionab
       control. Needs a route decision (move the bulk track to `/recents`), not a selector, plus
       its own measurement of whether `/recents` pages at larger scale — 25 rows fit without
       crossing a page boundary. See docs/live-dom-verification.md → Claude → 2026-08-10.
+- [ ] *(blocked by: needs a live-DOM session on an account holding a project reachable at the bare `/project/<id>` route — the 2026-08-10 session only exercised `/cowork/project/<id>`)*
+      [FIX] Measure the `/project/<id>` project-home family. `PROJECT_PATHS`
+      (`src/adapters/claude/matches.ts`) advertises it as supported, but nothing has been
+      measured there — including whether its list is the same `data-cds` table. Until it is,
+      any attribute pinning of `selectors.projectTable` would rest on an unmeasured assumption
+      for half the supported routes (AGENTS.md #5).
+- [ ] [FIX] An empty Claude project shows a markup-drift error instead of an empty state.
+      With zero conversations no table carries a chat anchor, so `resolveProjectTable` falls
+      back to `tables[0]` — a knowledge/file table — and `listProjectConversations` throws
+      "a table row did not contain exactly one conversation link" on its first row. Pre-existing;
+      surfaced by the 2026-08-10 review panel. Prefer a table whose rows carry anchors, and
+      return `[]` rather than throwing when the resolved table has no anchor-bearing rows at all.
 - [ ] [FIX] The exported Claude artifact kind is localized, so the same artifact exports
       differently per UI language. Measured 2026-08-10 on a ko-KR account: `문서 · MD`,
       `코드 · JSX`. `artifactMarkers` (`src/adapters/claude/index.ts`) builds

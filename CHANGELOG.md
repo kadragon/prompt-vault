@@ -2,20 +2,22 @@
 
 ## Unreleased
 
-- [done] Anchor the Claude project table on its measured `data-cds` attribute (v1.9.2) (2026-08-10)
+- [done] Fail loud when a Claude project route renders no conversation table (v1.9.2) (2026-08-10)
   → docs/live-dom-verification.md. Recorded the 2026-08-10 live-DOM session, which closed three
-  blocked items — two of them by **disproof**. Claude's sidebar needs no new handle: it is measured
-  unique on both routes (one `aside`, zero chat links outside it) and there is no nav landmark at
-  all, so the containment narrowing PR #58 could only derive is now attested. Claude's sidebar does
-  not page or recycle either — the Recents list is UI-capped at 20 with the full list at `/recents`
-  — so the PR #61 early-exit had no hazard to guard; the real one it exposed is that bulk export
-  cannot reach past those 20 rows, now filed. The artifact card carries **no** `data-*` to anchor
-  on, and the feared duplicate-`text-xs` collision appeared in none of four kinds, so those
-  selectors stay class-token based on measured grounds. What did change is `projectTable`, which
-  gains `[data-cds="Table"]`: an assistant markdown table carries no such attribute, and without it
-  `resolveProjectTable`'s anchor-less fallback claimed that table on a `/chat/<id>` page. Gemini's
-  sidebar was measured too (page size 20, append-only, 1:1 anchor identity), unblocking its bulk
-  track, while `/gem/<id>` proved to be a composer rather than a project home.
+  blocked items **entirely by disproof — no selector needed changing**. Claude's sidebar needs no
+  new handle: it is measured unique on both routes (one `aside`, zero chat links outside it) with
+  no nav landmark at all, so the containment narrowing PR #58 could only derive is now attested. It
+  does not page or recycle either — the Recents list is UI-capped at 20, the full list living at
+  `/recents` — so the PR #61 early-exit had no hazard to guard; the real one it exposed is that
+  bulk export cannot reach past those 20 rows, now filed. The artifact card carries **no** `data-*`
+  at all and the feared duplicate-`text-xs` collision appeared in none of four kinds. The project
+  table *does* carry a `data-cds` attribute, but pinning it was tried and reverted: the markdown
+  table it would exclude is unreachable behind the existing route gates, while an attribute rename
+  would have turned a working project list into a silent "no conversations" state. The shipped
+  change is the hole that finding exposed — `listProjectConversations` now throws when it is on a
+  project route and resolves no table, instead of reporting a full project as empty (AGENTS.md #4).
+  Gemini's sidebar was measured too (page size 20, append-only, 1:1 anchor identity), unblocking
+  its bulk track, while `/gem/<id>` proved to be a composer rather than a project home.
 - [done] Claude adapter: degrade on odd sidebar anchors, reveal targets before opening, bound the stream-marker wait (v1.9.1) (2026-08-10)
 - [done] Claude actionable adapter support (v1.9.0) (2026-08-09) → artifact markers, streaming completion,
   sidebar/project bulk export, and visible list-extraction failures

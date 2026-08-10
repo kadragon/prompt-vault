@@ -245,17 +245,13 @@ export const selectors = {
   sidebar: 'aside',
   sidebarConversationLink: 'a[href^="/chat/"]',
   /**
-   * The project home's conversation table, pinned to the design-system attribute measured on
-   * 2026-08-10 rather than to the tag alone.
+   * The project home's conversation table. `main table` alone is not proof of the project
+   * home — an assistant markdown table renders inside `<main>` on a `/chat/<id>` page too —
+   * so every consumer goes through `resolveProjectTable`, which keeps only a table that
+   * actually carries `projectConversationLink` anchors.
    *
-   * `main table` alone is not proof of the project home — an assistant markdown table renders
-   * inside `<main>` on a `/chat/<id>` page too — and that ambiguity was real rather than
-   * theoretical: `resolveProjectTable` falls back to the FIRST table when none carries a chat
-   * anchor, so on a conversation page it would hand the markdown table to every consumer,
-   * including `projectToolbarMount`, which mounts the bulk trigger on the returned table's
-   * parent.
-   *
-   * Measured 2026-08-10, three page kinds:
+   * **A design-system attribute exists and is deliberately NOT pinned here. Measured
+   * 2026-08-10:**
    *
    * | Page | `data-cds` on the table | inside `[data-cds="DataTable"]` | chat links |
    * |---|---|---|---|
@@ -263,15 +259,30 @@ export const selectors = {
    * | `/recents` | `Table` | yes | 25 |
    * | `/chat/<id>` assistant markdown table | **none** | no | 0 |
    *
-   * The markdown table was seen 6 times across a scroll walk of one conversation, every time
-   * inside `.standard-markdown` and never carrying the attribute. The attribute therefore
-   * excludes it before containment is consulted at all.
+   * Narrowing to `main table[data-cds="Table"]` was tried on that evidence and reverted,
+   * because it makes the failure mode WORSE rather than better — the trade only became visible
+   * once the reachable paths were traced:
    *
-   * `resolveProjectTable`'s chat-anchor narrowing stays as the second line of defence: a
-   * project home can render knowledge/file tables of its own, and those ARE design-system
-   * tables, so the attribute alone does not identify the conversation list among them.
+   * - **It buys almost nothing reachable.** The markdown table only exists on `/chat/<id>`, and
+   *   every project consumer is route-gated before it can run: `projectToolbarMount` is reached
+   *   only via `syncButtons` → `isProjectPage` → `matchesProject` (`src/content/mount.ts`), and
+   *   `openProjectBulkExport` gates on `pickProjectAdapter(location.href)`. So the markdown
+   *   table is never handed to a consumer today.
+   * - **It costs a silent failure.** If Claude renames that one unversioned attribute, the
+   *   selector matches nothing on a real project home, and a list that resolves to no table is
+   *   an *empty* list rather than a loud one — the bulk panel's "no conversations" state,
+   *   indistinguishable from a genuinely empty project (AGENTS.md #4). Under the plain tag
+   *   selector the same drift changes nothing at all.
+   * - **It was measured on one route family.** `PROJECT_PATHS` in `./matches.ts` matches both
+   *   `/cowork/project/<id>` and `/project/<id>`; only the former was measured on 2026-08-10,
+   *   so pinning would rest on an unmeasured assumption for the other (AGENTS.md #5).
+   *
+   * What the session did change is the missing-table case below it: `listProjectConversations`
+   * now fails loud when it is ON a project route and resolves no table at all, instead of
+   * reporting an empty project. That guard is what makes any future attribute pinning safe, and
+   * it is worth having on its own.
    */
-  projectTable: 'main table[data-cds="Table"]',
+  projectTable: 'main table',
   projectRow: 'tbody > tr',
   projectConversationLink: 'a[href^="/chat/"]',
 
