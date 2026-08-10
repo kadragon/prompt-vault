@@ -121,6 +121,15 @@
     "message": "No conversations were found to export.",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
   },
+  "bulkListErrorMessage": {
+    "message": "Could not read the conversation list: $error$",
+    "description": "Shown when a provider's conversation-list extraction fails before the bulk panel can render its selection list.",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
   "bulkUnsupportedMessage": {
     "message": "Bulk export is not available on this page.",
     "description": "Shown when the current page's adapter does not support bulk export."

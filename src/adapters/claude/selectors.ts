@@ -87,6 +87,18 @@ export const selectors = {
   setSizeAttr: 'aria-setsize',
 
   /**
+   * Claude's assistant response wrapper exposes the generation state for the newest
+   * assistant row. The marker wraps `.standard-markdown`; its value is `"true"` while
+   * generating and `"false"` after the final text chunk. A missing marker is deliberately
+   * not treated as completion because the row can render before the wrapper mounts.
+   * Verified against the live page (2026-07-29; rechecked 2026-08-09).
+   */
+  streamMarker: '[data-is-streaming]',
+
+  /** Attribute carrying the `true`/`false` stream state. */
+  streamStateAttr: 'data-is-streaming',
+
+  /**
    * Scroll viewport that virtualizes the message list. Claude *recycles* turn nodes —
    * scrolling to the top dropped the rendered count from 16 to 8 while surfacing
    * different turns — so extraction must scroll this element and accumulate, and a
@@ -166,6 +178,40 @@ export const selectors = {
    * user without guessing.
    */
   userActionBar: '[data-testid="action-bar-edit"]',
+
+  /**
+   * Claude's assistant artifact card. The root carries the literal `group/artifact-block`
+   * class token and the content column carries `artifact-block-cell`; title and kind are
+   * separate descendants with the measured class-token combinations. The selector is kept
+   * token-based because `/` is part of the captured class token and not a CSS descendant
+   * separator. Verified against the live page (2026-08-09).
+   */
+  artifactCard: 'div[class~="group/artifact-block"]',
+  artifactCell: '[class~="artifact-block-cell"]',
+  artifactTitle: '[class~="leading-tight"][class~="text-sm"][class~="line-clamp-1"]',
+  artifactKind: '[class~="text-xs"][class~="line-clamp-1"]',
+
+  /**
+   * Claude's persistent navigation surfaces measured on 2026-08-09.
+   *
+   * The sidebar is matched on the ELEMENT measured (`aside`), never on its accessible name:
+   * the 2026-08-09 measurement was taken on a Korean-locale account, where the label reads
+   * `사이드바`, and Claude localizes it. Pinning the label would make the whole navigation
+   * track dead on every other UI language. `resolveSidebar` narrows a page's asides to the
+   * one carrying `sidebarConversationLink` anchors, which is the same measured fact
+   * (19 `/chat/:id` links inside that aside) minus the locale dependency.
+   */
+  sidebar: 'aside',
+  sidebarConversationLink: 'a[href^="/chat/"]',
+  /**
+   * The project home's conversation table. `main table` alone is not proof of the project
+   * home — an assistant markdown table renders inside `<main>` on a `/chat/<id>` page too —
+   * so every consumer goes through `resolveProjectTable`, which keeps only a table that
+   * actually carries `projectConversationLink` anchors.
+   */
+  projectTable: 'main table',
+  projectRow: 'tbody > tr',
+  projectConversationLink: 'a[href^="/chat/"]',
 
   /**
    * The header action bar holding Claude's native controls (Share, chat options). The

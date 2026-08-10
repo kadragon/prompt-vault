@@ -30,8 +30,19 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 - One directory per provider under `src/adapters/{provider}/`. Export a single `ConversationAdapter`.
 - All DOM selectors live in a `selectors` object at the top of the adapter — never inline in logic.
   A selector string appears exactly once so a site change is a one-line fix.
+- **Never pin a selector to a value the site localizes** — an `aria-label`, a button caption, any
+  visible text. A measurement session runs in ONE UI language, so a localized value looks as solid
+  as a structural one and silently kills the feature in every other language (Claude's sidebar was
+  matched on `aside[aria-label="사이드바"]` for exactly that reason). Match the element and a
+  structural fact about it instead, and record which half of the measurement is locale-independent.
+  Fixtures inherit this: a test that hardcodes the localized string entrenches the bug rather than
+  catching it, so at least one fixture must use a different locale's label.
 - `extract()` returns the normalized `Conversation`. It must not throw on a partially-rendered page
   without a clear message; if it cannot find messages, throw a typed extraction error the UI shows.
+- **Which route you are on is a question for the URL, never for a DOM query.** `main table` proved
+  "still on the project home" until an assistant answer rendered a markdown table — after that the
+  adapter skipped its return-to-home and failed every remaining item in the batch. Gate navigation
+  on `matches`/`matchesProject`; use the DOM only to decide whether the page has RENDERED yet.
 - Scraping a **virtualized list** (history sidebar, project list): STEP through it one viewport per
   round and accumulate rows across rounds into an id-keyed map — never jump to `scrollHeight` then do
   one final scan. A spacer-height recycling virtualizer keeps only a window of rows in the DOM, so a

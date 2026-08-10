@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- [done] Claude actionable adapter support (v1.9.0) (2026-08-09) → artifact markers, streaming completion,
+  sidebar/project bulk export, and visible list-extraction failures
 - [done] Extraction completeness (v1.8.2) (2026-08-01) → docs/live-dom-verification.md
 - [done] Claude adapter: report attachments on the one-shot path, and mark a duplicated row index once (v1.8.1) (2026-07-29)
 - [done] Claude adapter: read both attachment tile shapes, report files on mixed turns, and drop expanded thinking blocks (v1.8.0) (2026-07-29)

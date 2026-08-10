@@ -105,6 +105,21 @@ describe('openBulkPanel', () => {
     expect(checkboxes(panel)).toHaveLength(0);
   });
 
+  it('shows a visible error state when list enumeration fails before rendering rows', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, {
+      listConversations: () => {
+        throw new Error('Claude selector drift');
+      },
+      run: vi.fn(),
+    });
+    const panel = panelOf(doc);
+    expect(panel.textContent).toContain('Could not read the conversation list: Claude selector drift');
+    expect(panel.querySelector('[role="alert"]')).not.toBeNull();
+    expect(checkboxes(panel)).toHaveLength(0);
+    expect(buttonByText(panel, 'Close')).toBeTruthy();
+  });
+
   it('disables Export until at least one conversation is selected', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));

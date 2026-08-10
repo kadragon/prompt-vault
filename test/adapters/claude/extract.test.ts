@@ -125,6 +125,55 @@ describe('claudeAdapter.extract', () => {
     expect(convo.messages[1].content).toBe('still reasoning');
   });
 
+  it('retains a measured artifact card in the corresponding assistant message', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '<div class="text-xs line-clamp-1">HTML</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div>' +
+      '</body>';
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages).toEqual([
+      { role: 'user', content: 'a question' },
+      { role: 'assistant', content: '[Artifact: Pv probe artifact (HTML)]\n\nthe answer' },
+    ]);
+  });
+
+  it('fails loud when a measured artifact card has no readable kind', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      // `role="article"` marks this as a conversation row — the marker that lets a malformed
+      // card FAIL the export. Measured on every indexed message row (112/112).
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
+  it('ignores an artifact-shaped node outside the message list instead of failing the export', async () => {
+    // `data-index` is a generic virtualizer attribute, so a malformed card in some other
+    // indexed widget (an artifact side panel, a menu) must not abort a conversation that
+    // reads perfectly well.
+    const html =
+      '<body>' +
+      '<div data-index="0"><div role="article" aria-setsize="1">' +
+      '<div data-testid="user-message"><p>a question</p></div></div></div>' +
+      '<div data-index="9"><div class="artifact-block-cell">stray panel</div></div>' +
+      '</body>';
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages).toEqual([{ role: 'user', content: 'a question' }]);
+  });
+
   it('does not double-count: a user bubble and an assistant container never overlap', async () => {
     // Live-verified (2026-07-25): zero `.standard-markdown` nested inside a user turn, so
     // the union selector yields each turn exactly once.

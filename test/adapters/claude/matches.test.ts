@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matches } from '../../../src/adapters/claude/matches';
+import { matches, matchesProject } from '../../../src/adapters/claude/matches';
 
 describe('claude matches', () => {
   it('accepts a conversation page, with or without a trailing slash', () => {
@@ -19,7 +19,7 @@ describe('claude matches', () => {
     expect(matches('https://claude.ai/chat')).toBe(false);
     expect(matches('https://claude.ai/new')).toBe(false);
     expect(matches('https://claude.ai/recents')).toBe(false);
-    // Projects are out of scope for v1 — the project track is unimplemented.
+    // Project homes are handled by the separate project gate, not the conversation gate.
     expect(matches('https://claude.ai/project/abc-123')).toBe(false);
     // Deeper paths are not conversation pages.
     expect(matches('https://claude.ai/chat/abc/extra')).toBe(false);
@@ -36,5 +36,25 @@ describe('claude matches', () => {
   it('returns false for unparseable input instead of throwing', () => {
     expect(matches('not a url')).toBe(false);
     expect(matches('')).toBe(false);
+  });
+});
+
+describe('claude matchesProject', () => {
+  it('accepts both measured Claude Project home route families', () => {
+    expect(matchesProject('https://claude.ai/cowork/project/abc-123')).toBe(true);
+    expect(matchesProject('https://claude.ai/project/abc-123')).toBe(true);
+    expect(matchesProject('https://claude.ai/project/abc-123/')).toBe(true);
+  });
+
+  it('rejects conversation routes and unmeasured project paths', () => {
+    expect(matchesProject('https://claude.ai/chat/abc-123')).toBe(false);
+    expect(matchesProject('https://claude.ai/cowork/projects/abc-123')).toBe(false);
+    expect(matchesProject('https://claude.ai/projects/abc-123')).toBe(false);
+  });
+
+  it('rejects other hosts and malformed input', () => {
+    expect(matchesProject('https://example.com/project/abc-123')).toBe(false);
+    expect(matchesProject('https://claude.ai.attacker.example/project/abc-123')).toBe(false);
+    expect(matchesProject('not a url')).toBe(false);
   });
 });

@@ -950,6 +950,101 @@ Scope limit: two purpose-built conversations on one account. Every attachment an
 created in-session, so these are the shapes *this* account produces today — not proof that no other
 shape exists.
 
+### 2026-08-09 — artifact card markup measured
+
+Re-measured the purpose-built artifact conversation on the live logged-in page with Playwright,
+returning structure only. The page contained **8 indexed rows** and exactly **1 artifact card**;
+the card was outside `.standard-markdown` in row `data-index="1"`, which also contained one
+`.standard-markdown` node.
+
+- The card root is a `div` carrying the class token `group/artifact-block`; its content wrapper is
+  `artifact-block-cell`.
+- The content wrapper contains one title node with `leading-tight text-sm line-clamp-1` and one
+  kind node with `text-xs line-clamp-1`; both are separate descendants of the same content column.
+- The card had no `h3` and no `data-testid`/`data-test-id` descendant. It used a full-card view
+  button plus a separate action button, so neither button label is the title/kind source.
+
+This establishes the missing selector evidence for the artifact marker. Scope limit: one account,
+one settled conversation, and one rendered artifact shape; the class tokens and child relationship
+must be rechecked if implementation starts after another Claude UI change.
+
+### 2026-08-09 — Claude navigation surfaces and long-response streaming
+
+Measured the logged-in Claude navigation surfaces with structural-only Playwright probes. No
+conversation, project, artifact, or memory text was returned by the probes.
+
+- The sidebar is `aside[aria-label="사이드바"]`. Baseline measurement found **19** `/chat/:id`
+  links; after adding 3 synthetic standalone chats, the recent-chat scroll port contained **20**
+  links with `overflow-y=auto`, `clientHeight=564`, and `scrollHeight=760`. Scrolling it to the
+  bottom (`scrollTop=196`) and waiting 2.5 s left the count unchanged. Its `View all` control opens
+  `/chats`.
+- `/chats` initially rendered 19 rows. After the 3 standalone probes and 3 synthetic project
+  chats, it rendered a table with **25** rows, **25** chat links, and **25** time nodes. Its main
+  scroll port has `overflow-y=auto`, `clientHeight=905`, and `scrollHeight=1320`; after scrolling
+  to the bottom (`scrollTop=415`) and waiting 2.5 s, row/link/time counts stayed unchanged. No
+  load-more control or additional page was observed at 25 rows. This still does not prove that a
+  larger account cannot page from the server.
+- The Projects index exposed **2** `/cowork/project/:id` project routes. Before synthetic growth,
+  both measured `/cowork/project/:id` homes and corresponding `/project/:id` surfaces had one
+  `main table > tbody > tr`. After adding 3 synthetic chats to one project, that project's two
+  route surfaces had **4** table rows, **4** chat links, and **4** per-row menu buttons; every row
+  still has one cell and one chat link. The chat anchor is an absolute overlay inside the row's
+  single `td`; the row carries the `group/cdsrow` class token. Workspace-home heading counts remain
+  `h1=1`, `h2=1`, `h3=4`.
+- The expanded project still exposed no `ul`/`ol`/`role=list` markup or main-content scroll port.
+  Its document scroll root remained `scrollHeight=953`, `clientHeight=953`, `scrollTop=0`; scrolling
+  to the bottom and waiting 2.5 s left all 4 rows and links unchanged. No pagination attribute or
+  load-more control was observed. This strengthens the current project-member list contract while
+  retaining the larger-project/account scope limit.
+- `/artifacts` is a separate management surface: the measured page exposed **2** artifact list
+  items and tab controls. It was not treated as another assistant-row artifact-card shape.
+
+For the stream/recycling check, a synthetic prompt requested 160 numbered plain-text sections in
+the purpose-built artifact conversation. A 35.1 s in-page recorder sampled every ~180 ms (**190
+samples**) while alternating the actual `[data-autoscroll-container]` between top and bottom. The
+conversation declared **14** rows; the scroll port measured `clientHeight=905`, `scrollTop` ranged
+from `0` to `33004.5`, and `scrollHeight` reached `33922`.
+
+- `[data-is-streaming="true"]` was observed in **106/190** samples, always as a nested node under
+  row `data-index="13"`; the row itself did not carry the attribute.
+- Older indexed rows were recycled while scrolling: the rendered index set varied and omitted
+  indices `6`, `7`, `8`, and `10` in the observed windows. The active streaming row `13` stayed
+  rendered at both scroll extremes; **0** samples showed a true streaming node whose indexed row
+  was absent.
+- The response reached the settled state during the recording (`data-is-streaming="false"` on the
+  final sample). This confirms the live signal and ordinary row recycling, but the specific
+  “active streaming row already recycled” case remains unmeasured; do not infer that it cannot
+  occur outside this account/state/scroll pattern.
+
+A follow-up used the same purpose-built conversation after adding **8** synthetic short exchanges,
+bringing `aria-setsize` to **30** before the long response and **32** after its new user/assistant
+pair. The new prompt requested 220 numbered sections. A 45 s recorder sampled every ~120 ms
+(**368 samples**) while alternating the real scroll port between top and bottom:
+
+- `[data-is-streaming="true"]` was present in **368/368** samples, always under row
+  `data-index="31"`; top and bottom each contributed **184** samples.
+- The rendered index union was `[0,1,2,3,4,5,13,24,25,26,27,28,29,30,31]`, demonstrating further
+  recycling while the response grew. The active row `31` was present in every true sample; the
+  count of true-marker samples whose indexed row was absent was **0**.
+- A later structural poll observed the marker flip to `false` after approximately **37.0 s**.
+  After settling, row `31` still appeared at both scroll extremes. This is a stronger negative
+  measurement, not a direct observation of the already-recycled-active-row state, so the
+  termination-condition blocker remains until that state is observed or the implementation
+  contract is deliberately changed.
+
+A final flow probe tested an older generated turn rather than appending a new one. With the
+synthetic conversation at **34** rows, the measured assistant row `data-index="1"` had a real
+`button[aria-label="재시도"]`. Clicking it regenerated that turn but immediately reduced
+`aria-setsize` to **2** and removed the tail; only rows `0` and `1` remained, with
+`data-is-streaming="true"` on row `1`. The response later settled with the same two rows and
+`data-is-streaming="false"` on row `1`.
+
+Together, the two live flows establish the current UI invariant: appending a response creates the
+newest row and keeps it rendered while streaming, while retrying an older row removes all later
+rows before streaming. No measured live flow leaves an active streaming row in the middle of a
+still-present virtualized tail. This does not prove a future Claude branch cannot change the
+behavior; remeasure after such a UI change.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time

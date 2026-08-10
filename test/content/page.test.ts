@@ -50,10 +50,9 @@ describe('isProjectPage', () => {
     expect(isProjectPage('https://chatgpt.com/g/g-p-abc123/project')).toBe(true);
   });
 
-  it('never matches Claude, whose project track is unimplemented', () => {
-    // The Claude adapter omits `matchesProject`, so the project trigger cannot mount
-    // there — that absence is what keeps an unverified feature switched off.
-    expect(isProjectPage('https://claude.ai/project/abc-123')).toBe(false);
+  it('accepts both measured Claude project-home route families', () => {
+    expect(isProjectPage('https://claude.ai/cowork/project/abc-123')).toBe(true);
+    expect(isProjectPage('https://claude.ai/project/abc-123')).toBe(true);
     expect(isProjectPage('https://claude.ai/chat/abc-123')).toBe(false);
   });
 
