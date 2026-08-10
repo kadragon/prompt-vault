@@ -35,6 +35,10 @@ const STREAM_SETTLE_MAX_STEPS = 400;
 // there is no verified server-paging contract to wait for. The loader therefore walks the
 // nearest measured scroll ancestor in viewport-sized steps and stops only after the position
 // clamps and the accumulated id set stays unchanged for a few rounds.
+// Consecutive polls an opened conversation's fingerprint must stay unchanged before the route
+// counts as settled. Only reached when the fingerprint never differed from the outgoing one —
+// i.e. two similarly shaped conversations collided — so it costs nothing in the common case.
+const OPEN_SETTLE_ROUNDS = 2;
 const NAV_SCROLL_STEP_FRACTION = 0.9;
 const NAV_STABLE_ROUNDS = 3;
 const NAV_ABSOLUTE_MAX_STEPS = 400;
@@ -119,13 +123,58 @@ function toolbarAnchor(root: ParentNode = document): Element | null {
  * twice during a transition) never create duplicate checklist entries.
  */
 function listConversations(root: ParentNode = document): SidebarConversation[] {
-  const sidebar = root.querySelector(selectors.sidebar);
+  const sidebar = resolveSidebar(root);
   if (!sidebar) return [];
   return collectNavigationConversations(
     sidebar.querySelectorAll(selectors.sidebarConversationLink),
     documentOrigin(root),
     'sidebar',
   );
+}
+
+/**
+ * Read a row's out-of-turn markers, letting only a CONVERSATION row fail the export.
+ *
+ * Both marker readers throw on malformed markup, and both scan surfaces where `root` is the
+ * whole live document — `data-index` is a generic virtualizer attribute, not a message-list
+ * marker. Ungated, an artifact-shaped node outside the message list (Claude's artifact side
+ * panel, any other indexed widget) would abort an otherwise working export, which is exactly
+ * what the `messageArticle` gate below the marker scan was written to prevent. Gating the
+ * FAILURE rather than the scan keeps that protection without narrowing what is read:
+ * `messageArticle` was measured on every indexed message row (112/112 across four
+ * conversations, including the attachment-only row).
+ */
+function readRowMarkers(el: Element): { artifact: string; files: string } | null {
+  try {
+    return { artifact: artifactMarkers(el), files: attachmentMarkers(el) };
+  } catch (error) {
+    if (el.querySelector(selectors.messageArticle)) throw error;
+    return null;
+  }
+}
+
+/**
+ * The aside that actually holds the recent-chat links. Claude localizes the aside's
+ * `aria-label`, so the label is never matched; the anchors it contains are the
+ * locale-independent half of the same 2026-08-09 measurement. An aside without any chat
+ * link is a legitimately empty list, so the last aside is returned as the surface to walk
+ * only when no aside carries links — the caller then simply enumerates nothing.
+ */
+function resolveSidebar(root: ParentNode = document): Element | null {
+  const asides = Array.from(root.querySelectorAll(selectors.sidebar));
+  return asides.find((aside) => aside.querySelector(selectors.sidebarConversationLink)) ?? asides.at(-1) ?? null;
+}
+
+/**
+ * The `<main>` table that holds project conversations. A `/chat/<id>` page can render an
+ * assistant markdown table inside `<main>`, and a project home may render knowledge/file
+ * tables of its own, so the chat anchors — not document order — decide which table is the
+ * conversation list. The first table is still returned when none carries an anchor, so a
+ * project list whose rows lost their links stays a visible failure instead of an empty list.
+ */
+function resolveProjectTable(root: ParentNode = document): Element | null {
+  const tables = Array.from(root.querySelectorAll(selectors.projectTable));
+  return tables.find((table) => table.querySelector(selectors.projectConversationLink)) ?? tables[0] ?? null;
 }
 
 /**
@@ -137,7 +186,7 @@ function listConversations(root: ParentNode = document): SidebarConversation[] {
 function listProjectConversations(root: ParentNode = document): SidebarConversation[] {
   const pageUrl = ownerDocument(root)?.defaultView?.location?.href ?? '';
   if (pageUrl && matchesProject(pageUrl)) activeProjectHomeUrl = pageUrl;
-  const table = root.querySelector(selectors.projectTable);
+  const table = resolveProjectTable(root);
   if (!table) return [];
 
   const rows = Array.from(table.querySelectorAll(selectors.projectRow));
@@ -160,7 +209,7 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
  * generic content layer from inserting a non-table `<div>` into `<tbody>`.
  */
 function projectToolbarMount(root: ParentNode = document): Element | null {
-  return root.querySelector(selectors.projectTable)?.parentElement ?? null;
+  return resolveProjectTable(root)?.parentElement ?? null;
 }
 
 /** The human label carried by a measured navigation anchor. */
@@ -235,20 +284,50 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
 
   const beforeSignature = messageSignature();
   anchor.click();
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await delay(pollMs);
-    if (location.pathname === `/chat/${target.id}` && hasRenderedMessages() && messageSignature() !== beforeSignature) {
-      return;
-    }
-  }
+  if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
   throw new ExtractionError(
     'Timed out opening a selected Claude conversation. It may be loading slowly; it was skipped.',
   );
 }
 
+/**
+ * Wait for the clicked route to render its own turns.
+ *
+ * A changed `messageSignature()` is the primary proof that the outgoing conversation was
+ * replaced, but the signature carries no per-conversation identity — only the row indices,
+ * the turn count and two text LENGTHS — so two similarly shaped chats produce the same
+ * string and the change can never be observed. Settling on a signature that stayed IDENTICAL
+ * across consecutive polls covers that collision: the route already matches and the rendered
+ * list has stopped moving, which is as much as this fingerprint can attest. Without it a
+ * correctly loaded conversation is reported as a timeout and skipped from the batch.
+ */
+async function waitForOpenedConversation(
+  id: string,
+  beforeSignature: string,
+  pollMs: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  let previous: string | null = null;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (location.pathname !== `/chat/${id}` || !hasRenderedMessages()) {
+      previous = null;
+      stable = 0;
+      continue;
+    }
+    const signature = messageSignature();
+    if (signature !== beforeSignature) return true;
+    stable = signature === previous ? stable + 1 : 0;
+    previous = signature;
+    if (stable >= OPEN_SETTLE_ROUNDS) return true;
+  }
+  return false;
+}
+
 function findSidebarAnchor(id: string): HTMLAnchorElement | null {
-  const sidebar = document.querySelector(selectors.sidebar);
+  const sidebar = resolveSidebar(document);
   if (!sidebar) return null;
   for (const anchor of sidebar.querySelectorAll<HTMLAnchorElement>(selectors.sidebarConversationLink)) {
     const href = anchor.getAttribute('href');
@@ -268,7 +347,10 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
 
   if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
 
-  if (!document.querySelector(selectors.projectTable)) {
+  // The ROUTE decides whether the project home still has to be restored. A rendered table is
+  // not proof of it: an assistant markdown table also matches `main table` from a `/chat/<id>`
+  // page, which would skip the return and fail every remaining member of the batch.
+  if (!matchesProject(currentPageUrl())) {
     await returnToProjectHome(activeProjectHomeUrl, pollMs, timeoutMs);
   }
 
@@ -282,20 +364,14 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
 
   const beforeSignature = messageSignature();
   anchor.click();
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await delay(pollMs);
-    if (location.pathname === `/chat/${target.id}` && hasRenderedMessages() && messageSignature() !== beforeSignature) {
-      return;
-    }
-  }
+  if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
   throw new ExtractionError(
     'Timed out opening a selected Claude project conversation. It may be loading slowly; it was skipped.',
   );
 }
 
 function findProjectConversationAnchor(id: string): HTMLAnchorElement | null {
-  const table = document.querySelector(selectors.projectTable);
+  const table = resolveProjectTable(document);
   if (!table) return null;
   for (const anchor of table.querySelectorAll<HTMLAnchorElement>(selectors.projectConversationLink)) {
     const href = anchor.getAttribute('href');
@@ -312,15 +388,22 @@ async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeo
       'Could not return to the Claude project home: no measured project-home URL is available. It was skipped.',
     );
   }
-  const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
-  if (!historyObject?.back) {
-    throw new ExtractionError('Could not return to the Claude project home: browser history is unavailable. It was skipped.');
+  const homePath = new URL(homeUrl, location.origin).pathname;
+  // Only navigate when the page actually left the project home. Firing `back()` while already
+  // there pops to the PREVIOUS entry — a `/chat/<id>` route — and the wait below would then
+  // poll for a home the call itself just abandoned. A home whose table is still hydrating only
+  // needs waiting out.
+  if (currentPageUrlPath() !== homePath) {
+    const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
+    if (!historyObject?.back) {
+      throw new ExtractionError('Could not return to the Claude project home: browser history is unavailable. It was skipped.');
+    }
+    historyObject.back();
   }
-  historyObject.back();
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await delay(pollMs);
-    if (currentPageUrlPath() === new URL(homeUrl, location.origin).pathname && document.querySelector(selectors.projectTable)) {
+    if (currentPageUrlPath() === homePath && resolveProjectTable(document)) {
       return;
     }
   }
@@ -331,7 +414,7 @@ async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeo
 async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = {}): Promise<void> {
   const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
   const targetPath = new URL(homeUrl, location.origin).pathname;
-  if (location.pathname === targetPath && document.querySelector(selectors.projectTable)) return;
+  if (location.pathname === targetPath && resolveProjectTable(document)) return;
   await returnToProjectHome(homeUrl, pollMs, timeoutMs);
   if (location.pathname !== targetPath) {
     throw new ExtractionError('Returned to a different Claude project home than the bulk run started from.');
@@ -340,6 +423,11 @@ async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = 
 
 function currentPageUrlPath(): string {
   return location.pathname;
+}
+
+/** The current route as an absolute URL, so the route gates share `matchesProject`'s parser. */
+function currentPageUrl(): string {
+  return `${location.origin}${currentPageUrlPath()}`;
 }
 
 function hasRenderedMessages(): boolean {
@@ -367,7 +455,7 @@ async function loadMoreConversations(
   root: ParentNode = document,
   options: LoadMoreOptions = {},
 ): Promise<SidebarConversation[]> {
-  const sidebar = root.querySelector(selectors.sidebar);
+  const sidebar = resolveSidebar(root);
   if (!sidebar) return [];
 
   // The measured aside is a 953px layout shell; its nested recent-chat port is the actual
@@ -414,10 +502,12 @@ async function loadMoreConversations(
     await delay(stepDelayMs);
   }
 
+  // `onIncomplete` is the shared contract for a resolved-but-short list (src/adapters/types.ts),
+  // and the bulk panel only reads its flag after the promise RESOLVES. Throwing here would
+  // discard every conversation the walk did find and replace the partial list with a bare
+  // error, so the accumulated set is returned alongside the signal instead.
   options.onIncomplete?.();
-  throw new ExtractionError(
-    'Timed out loading Claude’s conversation list while scrolling. The sidebar may be unusually long; try again, or report if this persists.',
-  );
+  return [...acc.values()];
 }
 
 /** Nearest vertically-scrollable ancestor of a measured navigation surface. */
@@ -550,8 +640,9 @@ function readSnapshot(root: ParentNode): Message[] {
     // Attachments and artifact cards live OUTSIDE the turn node, so they are read off the row.
     // Artifact cards are assistant-owned in the measured shape and must have a corresponding
     // `.standard-markdown` turn; a malformed card is rejected rather than given invented text.
-    const artifact = artifactMarkers(el);
-    const files = attachmentMarkers(el);
+    const markers = readRowMarkers(el);
+    const artifact = markers?.artifact ?? '';
+    const files = markers?.files ?? '';
     if (artifact || files) {
       const entry: SnapshotEntry = {
         role: artifact ? 'assistant' : 'user',
@@ -754,8 +845,9 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       // Validate every matched card before the duplicate-index guard. A second recycled row
       // with malformed metadata is still a visible selector failure, never a reason to skip
       // validation because an earlier row shared its index.
-      const artifact = artifactMarkers(row);
-      const files = attachmentMarkers(row);
+      const rowMarkers = readRowMarkers(row);
+      if (!rowMarkers) continue;
+      const { artifact, files } = rowMarkers;
       if (!artifact && !files) continue;
       if (markedIndices.has(index)) continue;
       markedIndices.add(index);

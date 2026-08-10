@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { claudeAdapter } from '../../../src/adapters/claude';
-import { ExtractionError } from '../../../src/core/errors';
 import { Window } from 'happy-dom';
 
 const ROW_HEIGHT = 20;
@@ -24,6 +23,7 @@ function makeSidebar({ total, runaway = false, scrollable = true }: { total: num
     },
     parentElement: null,
     ownerDocument: { defaultView: null },
+    querySelector: (selector: string): Element | null => sidebar.querySelectorAll(selector)[0] ?? null,
     querySelectorAll: (selector: string): Element[] => {
       if (selector !== 'a[href^="/chat/"]') return [];
       const first = Math.min(Math.floor(top / ROW_HEIGHT), Math.max(0, count - 3));
@@ -41,7 +41,7 @@ function makeSidebar({ total, runaway = false, scrollable = true }: { total: num
     },
   };
   const root = {
-    querySelector: (selector: string): unknown => (selector === 'aside[aria-label="사이드바"]' ? sidebar : null),
+    querySelectorAll: (selector: string): unknown[] => (selector === 'aside' ? [sidebar] : []),
   } as unknown as ParentNode;
   return { root };
 }
@@ -96,21 +96,47 @@ describe('claudeAdapter.loadMoreConversations', () => {
   });
 
   it('returns an empty list when the sidebar is absent', async () => {
-    const root = { querySelector: () => null } as unknown as ParentNode;
+    const root = { querySelectorAll: () => [] } as unknown as ParentNode;
     await expect(claudeAdapter.loadMoreConversations?.(root, { stepDelayMs: 0 })).resolves.toEqual([]);
   });
 
-  it('fails loud at the bounded step cap instead of returning a partial runaway list', async () => {
+  it('reports the step cap as incomplete while still returning what it loaded', async () => {
     const incomplete: boolean[] = [];
     const { root } = makeSidebar({ total: 4, runaway: true });
-    await expect(
-      claudeAdapter.loadMoreConversations?.(root, {
-        stepDelayMs: 0,
-        stableRounds: 2,
-        maxSteps: 4,
-        onIncomplete: () => incomplete.push(true),
-      }),
-    ).rejects.toBeInstanceOf(ExtractionError);
+    const list = await claudeAdapter.loadMoreConversations?.(root, {
+      stepDelayMs: 0,
+      stableRounds: 2,
+      maxSteps: 4,
+      onIncomplete: () => incomplete.push(true),
+    });
+    // `onIncomplete` is the shared partial-list signal (src/adapters/types.ts); throwing here
+    // would strand the panel's incomplete branch and discard every id the walk did find.
     expect(incomplete).toEqual([true]);
+    expect(list?.length).toBeGreaterThan(0);
+  });
+
+  it('finds the recent-chat aside without depending on its localized label', async () => {
+    const window = new Window();
+    window.document.write(
+      '<body><aside aria-label="Sidebar"><div id="recent" style="overflow-y:auto">' +
+        '<a href="/chat/aaa" aria-label="First">First</a><a href="/chat/bbb" aria-label="Second">Second</a>' +
+        '</div></aside></body>',
+    );
+    const list = await claudeAdapter.loadMoreConversations?.(window.document as unknown as Document, {
+      stepDelayMs: 0,
+    });
+    expect(list?.map((conversation) => conversation.id)).toEqual(['aaa', 'bbb']);
+  });
+
+  it('skips an aside that carries no chat links when another one does', async () => {
+    const window = new Window();
+    window.document.write(
+      '<body><aside aria-label="Filters"><a href="/settings">Settings</a></aside>' +
+        '<aside aria-label="Barra lateral"><a href="/chat/ccc" aria-label="Third">Third</a></aside></body>',
+    );
+    const list = await claudeAdapter.loadMoreConversations?.(window.document as unknown as Document, {
+      stepDelayMs: 0,
+    });
+    expect(list?.map((conversation) => conversation.id)).toEqual(['ccc']);
   });
 });

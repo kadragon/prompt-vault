@@ -191,9 +191,24 @@ export const selectors = {
   artifactTitle: '[class~="leading-tight"][class~="text-sm"][class~="line-clamp-1"]',
   artifactKind: '[class~="text-xs"][class~="line-clamp-1"]',
 
-  /** Claude's persistent navigation surfaces measured on 2026-08-09. */
-  sidebar: 'aside[aria-label="사이드바"]',
+  /**
+   * Claude's persistent navigation surfaces measured on 2026-08-09.
+   *
+   * The sidebar is matched on the ELEMENT measured (`aside`), never on its accessible name:
+   * the 2026-08-09 measurement was taken on a Korean-locale account, where the label reads
+   * `사이드바`, and Claude localizes it. Pinning the label would make the whole navigation
+   * track dead on every other UI language. `resolveSidebar` narrows a page's asides to the
+   * one carrying `sidebarConversationLink` anchors, which is the same measured fact
+   * (19 `/chat/:id` links inside that aside) minus the locale dependency.
+   */
+  sidebar: 'aside',
   sidebarConversationLink: 'a[href^="/chat/"]',
+  /**
+   * The project home's conversation table. `main table` alone is not proof of the project
+   * home — an assistant markdown table renders inside `<main>` on a `/chat/<id>` page too —
+   * so every consumer goes through `resolveProjectTable`, which keeps only a table that
+   * actually carries `projectConversationLink` anchors.
+   */
   projectTable: 'main table',
   projectRow: 'tbody > tr',
   projectConversationLink: 'a[href^="/chat/"]',

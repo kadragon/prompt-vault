@@ -45,6 +45,20 @@ describe('claudeAdapter.listProjectConversations', () => {
     expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
   });
 
+  it('picks the conversation table rather than a knowledge table that precedes it', () => {
+    // The chat anchors, not document order, identify the list — a non-chat table rendered
+    // first would otherwise be walked and fail every row's exactly-one-anchor check.
+    const doc = docFrom(
+      '<body><main>' +
+        '<table><tbody><tr><td>project-notes.pdf</td></tr></tbody></table>' +
+        '<table><tbody><tr class="group/cdsrow"><td><a href="/chat/aaa" aria-label="First">First</a></td></tr></tbody></table>' +
+        '</main></body>',
+    );
+    expect(claudeAdapter.listProjectConversations?.(doc)).toEqual([
+      { id: 'aaa', title: 'First', url: 'https://claude.ai/chat/aaa' },
+    ]);
+  });
+
   it('fails loud when a project chat anchor has no title', () => {
     const doc = docFrom('<body><main><table><tbody><tr><td><a href="/chat/aaa"></a></td></tr></tbody></table></main></body>');
     expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
