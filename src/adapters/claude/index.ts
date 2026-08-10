@@ -342,7 +342,7 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   // is the same walk the panel's own "Load more" performs, so a target below the fold is
   // materialized rather than reported as missing. One retry, not a loop: the loader already
   // walks to the end of the port itself, so a second pass could only repeat the first.
-  const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, pollMs));
+  const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, pollMs, timeoutMs));
   if (!anchor) {
     throw new ExtractionError(
       'Could not open a selected Claude conversation: its sidebar link was not found, ' +
@@ -401,11 +401,24 @@ async function waitForOpenedConversation(
  * already missing, so the caller's "link was not found" is the accurate report either way, and
  * letting a scroll problem replace it would blame the wrong thing.
  */
-async function revealSidebarAnchor(id: string, stepDelayMs: number): Promise<HTMLAnchorElement | null> {
+async function revealSidebarAnchor(
+  id: string,
+  stepDelayMs: number,
+  timeoutMs: number,
+): Promise<HTMLAnchorElement | null> {
   try {
     // `pollMs` is the caller's own render-frame budget and matches this loader's default, so the
     // reveal walk paces itself exactly as it does today while staying drivable from a test.
-    await loadMoreConversations(document, { stepDelayMs });
+    //
+    // The step budget is derived from the caller's own `timeoutMs` rather than left at the
+    // loader's default. That default (`NAV_ABSOLUTE_MAX_STEPS`) is sized for a user-initiated
+    // "Load more" click, where 400 steps is a deliberate ceiling; here it runs BEFORE
+    // `waitForOpenedConversation` starts its clock, so an unsettled sidebar could spend ~60s
+    // outside the timeout the caller asked for — once per conversation across a bulk export.
+    await loadMoreConversations(document, {
+      stepDelayMs,
+      maxSteps: Math.max(1, Math.floor(timeoutMs / Math.max(1, stepDelayMs))),
+    });
   } catch {
     return null;
   }

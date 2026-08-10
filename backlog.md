@@ -31,6 +31,17 @@ continuation line is invisible to it and the blocked item is offered as actionab
       The artifact labels are Tailwind utility tokens today, so a second `text-xs line-clamp-1`
       node inside a card (a timestamp, a version badge) fails the whole conversation export.
 
+## Review Backlog
+
+### PR #61 (Claude navigation/stream failure modes, 2026-08-10)
+
+- [ ] *(blocked by: needs a live-DOM session — the 2026-08-09 measurement says the sidebar does NOT recycle (20 links survived a scroll to the bottom plus a 2.5 s wait), so whether a much longer sidebar recycles is unmeasured and no early-exit can be designed without it)*
+      [FIX] Keep a revealed Claude sidebar target reachable across a recycling walk.
+      `revealSidebarAnchor` searches only after `loadMoreConversations` returns, so if a long
+      sidebar renders the target mid-walk and drops it again before the port clamps, a valid
+      conversation is reported missing. Measure whether the sidebar recycles at length; if it
+      does, stop the walk as soon as the target resolves instead of walking to the end.
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: needs its own live-DOM session — only the conversation view was measured on 2026-07-25; the sidebar was seen in passing (33 `[data-test-id="conversation"]` anchors in their own `infinite-scroller`) but its paging shape, scroll port, and whether it loads from the server were never measured)*
