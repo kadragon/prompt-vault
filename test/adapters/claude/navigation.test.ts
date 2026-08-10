@@ -73,6 +73,81 @@ describe('Claude navigation openers', () => {
     expect(doc.querySelector('.standard-markdown')?.textContent).toBe('new target');
   });
 
+  it('scrolls the sidebar to reveal a target that is not rendered yet, then opens it', async () => {
+    // `findSidebarAnchor` only ever sees rendered anchors. The 2026-08-09 measurement (20 links,
+    // no recycling) makes that safe for today's sidebar but proves nothing about a longer one,
+    // so a target below the fold must be materialized rather than reported as missing.
+    const { doc, state } = installLivePage(
+      '<body><aside aria-label="사이드바"><div id="recent" style="overflow-y:auto">' +
+        '<a href="/chat/visible" aria-label="Visible">Visible</a></div></aside>' +
+        '<div data-index="0"><div class="standard-markdown">old</div></div></body>',
+      '/chat/old',
+    );
+    const port = doc.getElementById('recent')!;
+    let top = 0;
+    let revealed = false;
+    Object.defineProperties(port, {
+      clientHeight: { configurable: true, value: 20 },
+      scrollHeight: { configurable: true, value: 40 },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          top = Math.min(value, 20);
+          // The virtualized port renders the deeper row only once it is scrolled into view.
+          if (top >= 20 && !revealed) {
+            revealed = true;
+            port.insertAdjacentHTML('beforeend', '<a href="/chat/deep" aria-label="Deep">Deep</a>');
+            port.querySelector('a[href="/chat/deep"]')?.addEventListener('click', () => {
+              setPathname(state, '/chat/deep');
+              doc.body.innerHTML = '<div data-index="0"><div class="standard-markdown">deep target</div></div>';
+            });
+          }
+        },
+      },
+    });
+
+    await claudeAdapter.openConversation?.('https://claude.ai/chat/deep', { pollMs: 0, timeoutMs: 200 });
+    expect(revealed).toBe(true);
+    expect(state.pathname).toBe('/chat/deep');
+    expect(doc.querySelector('.standard-markdown')?.textContent).toBe('deep target');
+  });
+
+  it('bounds the reveal walk by the caller’s timeout instead of the loader’s own step ceiling', async () => {
+    // The reveal runs BEFORE `waitForOpenedConversation` starts its clock, so leaving it on the
+    // loader's user-initiated "Load more" ceiling (400 steps) would let one missing anchor spend
+    // far longer than the caller asked for — once per conversation across a bulk export.
+    const { doc } = installLivePage(
+      '<body><aside aria-label="사이드바"><div id="recent" style="overflow-y:auto">' +
+        '<a href="/chat/visible" aria-label="Visible">Visible</a></div></aside>' +
+        '<div data-index="0"><div class="standard-markdown">current</div></div></body>',
+      '/chat/current',
+    );
+    const port = doc.getElementById('recent')!;
+    let top = 0;
+    let scrollWrites = 0;
+    // A port that keeps growing never clamps, so only the step budget can end the walk.
+    Object.defineProperties(port, {
+      clientHeight: { configurable: true, value: 20 },
+      scrollHeight: { configurable: true, get: () => 40 + scrollWrites * 20 },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          scrollWrites++;
+          top = value;
+        },
+      },
+    });
+
+    await expect(
+      claudeAdapter.openConversation?.('https://claude.ai/chat/missing', { pollMs: 1, timeoutMs: 10 }),
+    ).rejects.toBeInstanceOf(ExtractionError);
+    // timeoutMs / pollMs = 10 steps. Far below the loader's 400-step default, which is the
+    // ceiling this test exists to keep the reveal walk off.
+    expect(scrollWrites).toBeLessThanOrEqual(10);
+  });
+
   it('reports an unreachable sidebar target instead of extracting the current chat', async () => {
     installLivePage(
       '<body><aside aria-label="사이드바"><a href="/chat/other" aria-label="Other">Other</a></aside>' +

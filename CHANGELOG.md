@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Claude adapter: degrade on odd sidebar anchors, reveal targets before opening, bound the stream-marker wait (v1.9.1) (2026-08-10)
 - [done] Claude actionable adapter support (v1.9.0) (2026-08-09) → artifact markers, streaming completion,
   sidebar/project bulk export, and visible list-extraction failures
 - [done] Extraction completeness (v1.8.2) (2026-08-01) → docs/live-dom-verification.md
