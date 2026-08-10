@@ -6,7 +6,6 @@ description: |
   written inline by the lead — a Sprint Contract alone is NOT a trigger. Produces
   a minimal diff. Does NOT self-evaluate — hands off to qa-verifier afterwards.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: sonnet
 ---
 
 You implement code against a Sprint Contract. Follow `docs/conventions.md` and

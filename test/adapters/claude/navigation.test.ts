@@ -28,7 +28,7 @@ function installProjectPage(html: string): {
 } {
   const home = new Window({ url: `https://claude.ai${PROJECT_HOME_PATH}` });
   home.document.write(
-    '<body><main><table><tbody><tr><td><a href="/chat/next" aria-label="Next">Next</a></td></tr></tbody></table></main></body>',
+    '<body><main><table data-cds="Table"><tbody><tr><td><a href="/chat/next" aria-label="Next">Next</a></td></tr></tbody></table></main></body>',
   );
   // Caches the measured project-home URL the openers return to.
   claudeAdapter.listProjectConversations?.(home.document as unknown as Document);
@@ -161,7 +161,7 @@ describe('Claude navigation openers', () => {
 
   it('waits for a project target to render after clicking its measured table anchor', async () => {
     const { doc, state } = installLivePage(
-      '<body><main><table><tbody><tr><td><a href="/chat/project-target">Project target</a></td></tr></tbody></table></main>' +
+      '<body><main><table data-cds="Table"><tbody><tr><td><a href="/chat/project-target">Project target</a></td></tr></tbody></table></main>' +
         '<div data-index="0"><div class="standard-markdown">old</div></div></body>',
       '/project/project-1',
     );
@@ -208,7 +208,7 @@ describe('Claude navigation openers', () => {
     backs.onBack = () => {
       setPathname(state, '/project/project-1');
       doc.body.innerHTML =
-        '<main><table><tbody><tr><td><a href="/chat/next" aria-label="Next">Next</a></td></tr></tbody></table></main>';
+        '<main><table data-cds="Table"><tbody><tr><td><a href="/chat/next" aria-label="Next">Next</a></td></tr></tbody></table></main>';
       doc.querySelector('a')?.addEventListener('click', () => {
         setPathname(state, '/chat/next');
         doc.body.innerHTML = '<div data-index="0"><div class="standard-markdown">next answer</div></div>';
@@ -226,7 +226,7 @@ describe('Claude navigation openers', () => {
     const { doc, state, backs } = installProjectPage('<body><main>still hydrating</main></body>');
     setTimeout(() => {
       doc.body.innerHTML =
-        '<main><table><tbody><tr><td><a href="/chat/aaa" aria-label="First">First</a></td></tr></tbody></table></main>';
+        '<main><table data-cds="Table"><tbody><tr><td><a href="/chat/aaa" aria-label="First">First</a></td></tr></tbody></table></main>';
     }, 5);
 
     await claudeAdapter.openProjectHome?.('https://claude.ai/project/project-1', { pollMs: 1, timeoutMs: 200 });

@@ -160,6 +160,27 @@ describe('claudeAdapter.extract', () => {
     await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
   });
 
+  it('fails loud when a measured artifact card carries two kind nodes', async () => {
+    // The hazard the 2026-08-10 measurement went looking for: a SECOND
+    // `text-xs line-clamp-1` node inside a card (a timestamp, a version badge) would make the
+    // kind ambiguous. It appeared in none of the four artifact kinds measured, so this is the
+    // unobserved branch — but `selectors.ts` states in prose that the failure is loud rather
+    // than a silently mislabelled artifact, and that claim is only worth stating if it is pinned.
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '<div class="text-xs line-clamp-1">HTML</div>' +
+      '<div class="text-xs line-clamp-1">v2</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
   it('ignores an artifact-shaped node outside the message list instead of failing the export', async () => {
     // `data-index` is a generic virtualizer attribute, so a malformed card in some other
     // indexed widget (an artifact side panel, a menu) must not abort a conversation that

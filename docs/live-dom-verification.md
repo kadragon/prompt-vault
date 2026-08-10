@@ -1045,6 +1045,167 @@ rows before streaming. No measured live flow leaves an active streaming row in t
 still-present virtualized tail. This does not prove a future Claude branch cannot change the
 behavior; remeasure after such a UI change.
 
+### 2026-08-10 — the sidebar is unique and has no nav landmark, and the Recents list does not page
+
+Settled the `[FIX]` that asked for "a stable Claude sidebar handle (nav landmark or data attribute)"
+and, in the same walk, the PR #61 `[FIX]` that asked whether a long sidebar recycles. **Both close
+without a selector change** — the first because the shipped narrowing turned out to be measurably
+correct, the second because its premise does not exist.
+
+**Method and environment**, recorded here rather than left as context (the 2026-07-29 lesson).
+Playwright MCP, server invoked as `npx @playwright/mcp@latest` with no `--user-data-dir` and no
+`--extension`; the profile was **already logged in** to claude.ai and gemini.google.com and no login
+step was performed at any point, which is the behaviour the 2026-07-29 correction above predicts.
+Probes were self-contained snippets that copied selector strings rather than importing them, and
+returned counts, attribute *names*, and booleans — never conversation text. The account held **25
+Claude conversations**, UI language `ko-KR`. `.playwright-mcp/` was removed at the end of the
+session rather than left holding accessibility trees of the account's conversations.
+
+**The sidebar is unique, measured on two routes** (`/new` and a `/chat/<id>` page):
+
+| Measurement | `/new` | `/chat/<id>` |
+|---|---|---|
+| `aside` elements in the document | 1 | 1 |
+| asides containing `a[href^="/chat/"]` | 1 | 1 |
+| chat links inside that aside | 20 | 20 |
+| chat links **outside** any aside | 0 | 0 |
+| `nav` / `[role="navigation"]` landmarks | **0** | **0** |
+| `[data-row-key^="chat:"]` rows | 20 | 20 |
+
+This is the fact PR #58 could only derive. It dropped the Korean `aria-label` and narrowed a page's
+asides by chat-link containment, and the open item objected — correctly — that containment was
+inferred from the measurement rather than measured as unique. It now is: one aside, it is the one
+with the links, and nothing outside it competes.
+
+**The two alternatives the item proposed were measured and both rejected.** There is **no nav
+landmark at all** — zero `nav`, zero `[role="navigation"]` — so the landmark half of the request has
+no target. The aside *does* carry locale-independent attributes, `data-variant="web"` and
+`data-density="comfortable"`, and they are the reason to state carefully why they are not used:
+both are **configuration** values (the platform, and the user's density preference), so pinning
+either value would break under a different setting, and matching on presence alone is no more
+discriminating than the containment test already shipped. **No English-locale fixture was captured,
+and none is needed** — the shipped selector never reads the label, so there is nothing for a
+second-locale fixture to falsify.
+
+One handle worth recording even though nothing reads it: sidebar rows carry
+`data-row-key="chat:<uuid>"`, 20 of 20 on both routes — per-conversation identity with no `href`
+parse and no locale.
+
+**The Recents list does not page, and does not recycle.** Twelve rounds at 1200 ms, scrolling the
+sidebar's own scroll port to its bottom each round:
+
+| Round | rendered | cumulative | scrollTop | scrollHeight |
+|---|---|---|---|---|
+| 0 | 20 | 20 | 0 | 760 |
+| 1 | 20 | 20 | 242 | 760 |
+| 2–12 | 20 | 20 | 242 | 760 |
+
+`scrollHeight` never moved off 760 px and the port clamped at 242 after the first step; rendered and
+cumulative stayed equal at 20, so nothing was trimmed either. The sidebar instead exposes a
+**"모두 보기 / View all"** control, and the full list lives at **`/recents`** — a
+`table[data-cds="Table"]` (see the entry below) which rendered all 25 of the account's conversations
+and grew by nothing across 20 further scroll rounds.
+
+**What this does to the PR #61 item: its premise is void.** That item asked to stop the walk early
+*if* a long sidebar recycles, because a target revealed mid-walk could be dropped again. But the
+list is **statically capped at 20 by the UI** — `loadMoreConversations` cannot surface a row that is
+not already rendered, so there is no mid-walk reveal to lose and no early exit that would help.
+
+**A different and larger hazard replaces it, and it is new.** The bulk track walks the sidebar, so
+it can reach **at most those 20 rows regardless of account size** — on this 25-conversation account
+that is already 5 short, silently. Filed in `backlog.md`; it needs a route decision (move the track
+to `/recents`), not a selector.
+
+Scope limits: one account, 25 conversations, `ko-KR`, one window size. That the cap is exactly 20
+is measured at this scale only, and whether `/recents` itself pages at a larger scale is **not**
+established — 25 rows fit without paging, so no page boundary was ever crossed.
+
+### 2026-08-10 — the project table is attribute-addressable; the artifact card is not
+
+Settled the `[FIX]` asking to "anchor `projectTable` / `artifactTitle` / `artifactKind` on measured
+attributes". **It splits: the first half lands, the second half is a negative result.** Same
+session, method and account as the entry above.
+
+Project routes are `/cowork/project/<uuid>` — already covered by `PROJECT_PATHS` in
+`src/adapters/claude/matches.ts`, so no route change was needed.
+
+**Hydration: absent → complete, with no partial state.** Sampled every 100 ms across an SPA
+navigation from `/projects` into a project home (only the rounds where the shape changed are shown;
+31 samples were taken over 3 s):
+
+| t (ms) | route | `main table` | `[data-cds="DataTable"]` | tbody rows | chat links |
+|---|---|---|---|---|---|
+| −1 | `/projects` | 0 | 0 | 0 | 0 |
+| 100–700 | `/cowork/project/<id>` | 0 | 0 | 0 | 0 |
+| 800–3000 | `/cowork/project/<id>` | 1 | 1 | 1 | 1 |
+
+This answers what the item asked — "what a project home renders before its table hydrates" — with
+**nothing**. There is no window in which a table exists carrying zero rows, which is the same shape
+as the message-list hydration measured 2026-07-25 (~600 ms of no `role="article"` at all, then the
+full count). So a consumer that waits for `resolveProjectTable` to return non-null cannot latch onto
+a half-built list; it either sees no table or sees the finished one.
+
+**The table is attribute-addressable, and the attribute is what separates it from a markdown table:**
+
+| Page | table | `data-cds` on it | inside `[data-cds="DataTable"]` | chat links |
+|---|---|---|---|---|
+| project home A | `main table` | `Table` | yes (ancestor depth 2) | 1 |
+| project home B | `main table` | `Table` | yes | 4 |
+| `/recents` | `main table` | `Table` | yes | 25 |
+| `/chat/<id>`, assistant markdown table | `main table` | **none** | no | 0 |
+
+The markdown table was observed **6 times across a scroll walk** of one conversation (it is
+virtualized out at load and had to be scrolled into view), every time inside `.standard-markdown`,
+every time without the attribute, and always with zero conversation links.
+
+**Why this was worth changing rather than leaving to containment.** `resolveProjectTable` falls back
+to the *first* table when none carries a chat anchor — deliberately, so a project list whose rows
+lost their links stays a visible failure instead of an empty one. On a `/chat/<id>` page that
+fallback selects the markdown table and hands it to every consumer, `projectToolbarMount` included,
+which mounts the bulk trigger on the returned table's parent. `selectors.projectTable` is therefore
+now `main table[data-cds="Table"]`, which excludes the markdown table before containment is
+consulted. The anchor narrowing stays as the second line of defence, because a project home may
+render knowledge/file tables of its own and **those are design-system tables too** — the attribute
+does not identify the conversation list among them.
+
+**The artifact card carries no attribute to anchor on. That is the result, not a gap in the
+session.** Four kinds were surveyed — one pre-existing HTML artifact plus a Python, a Markdown and a
+React artifact created in the account for this measurement, so each shape is attributable to a known
+artifact:
+
+| Kind | `artifactTitle` matches | `artifactKind` matches | text-column children | `data-*` on the card |
+|---|---|---|---|---|
+| HTML | 1 | 1 | 2 | none |
+| PY | 1 | 1 | 2 | none |
+| MD (`문서 · MD`) | 1 | 1 | 2 | none |
+| JSX (`코드 · JSX`) | 1 | 1 | 2 | none |
+
+The only `data-*` attribute anywhere inside a card is a single `data-cds="Button"` on the download
+control. There is none on the card, the title, or the kind — so the fix the item requested cannot be
+built, and the selectors stay class-token based.
+
+**The hazard the item was filed against also did not appear.** It predicted that "a second
+`text-xs line-clamp-1` node inside a card (a timestamp, a version badge) fails the whole conversation
+export". Across all four kinds that token pair matched **exactly once**. The prediction about the
+consequence was right — `artifactMarkers` requires exactly one non-empty match and throws otherwise
+— but the condition was not observed, and the failure it produces is loud rather than a mislabelled
+artifact (AGENTS.md #4).
+
+What *is* structurally stable, recorded in case the utility classes churn: the text column inside
+`artifactCell` held **exactly two children in all four cards**, title first and kind second. A
+positional rewrite was considered and rejected — it trades utility-class fragility for a child-index
+chain that is no less fragile, with no measured advantage.
+
+Two incidental findings from the same dump, both filed rather than acted on. The card's download
+button carries `aria-label="<title> 다운로드"` — localized and title-bearing, so not a clean title
+source. And the **kind string is itself localized** (`문서 · MD`, `코드 · JSX`), while it reaches
+Markdown and JSON verbatim inside `[Artifact: <title> (<kind>)]`, so the same artifact exports
+differently per UI language.
+
+Scope limits: one account, `ko-KR`, two projects (1 and 4 members), four artifact kinds. The
+two-children structure and the single-match counts are established across those four kinds, not
+across every kind Claude can render.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
@@ -1364,6 +1525,95 @@ a derivation, not a verbatim attribute read.
 
 Scope limit: one purpose-built conversation on one account; video, music and Deep Research responses
 were not exercised.
+
+### 2026-08-10 — the sidebar pages at 20, append-only, with 1:1 anchor identity
+
+Unblocks the roadmap item "Gemini adapter: bulk/sidebar export", whose blocker was that the sidebar
+"was seen in passing … but its paging shape, scroll port, and whether it loads from the server were
+never measured". All three are measured now. **This entry unblocks that work; it does not implement
+it.** Same session and method as the two Claude entries above; the account held **93 Gemini
+conversations**, UI language `ko-KR`.
+
+**The scroll port must be resolved by containment, like Claude's aside.** The document holds two
+`infinite-scroller` elements: the message list carries `data-test-id="chat-history-container"` (the
+one `selectors.scrollContainer` already pins), and **the sidebar's carries no `data-test-id` at
+all**. It is identifiable only as the scroller containing `[data-test-id="conversation"]` nodes.
+
+**Paging shape**, 25 rounds at 1500 ms with the sidebar expanded, scrolling its port to the bottom
+each round (only rounds where the count or height moved are shown; all 26 samples were retained and
+the aggregates below were reconciled against them):
+
+| Round | rendered | cumulative | scrollHeight |
+|---|---|---|---|
+| 0 | 31 | 31 | 1248 |
+| 1 | 51 | 51 | 1888 |
+| 2 | 71 | 71 | 2528 |
+| 3 | 91 | 91 | 3168 |
+| 4 | 93 | 93 | 3232 |
+| 5–25 | 93 | 93 | 3232 |
+
+- **The page size is 20** — three full pages after the initial 31, then a terminal short page of 2.
+  The arithmetic closes exactly: 31 + 20 × 3 + 2 = **93**. The geometry says the same thing
+  independently: each full page added **640 px = 20 × 32 px**, and the terminal page added
+  **64 px = 2 × 32 px**. Treat the 32 px row height as incidental; it is the ratio holding across
+  both readings that is the evidence. **The claim is about the deltas only** — the absolute
+  heights do not divide out (31 items at 1248 px is 40.3 px each), because the port also carries a
+  fixed ~256 px of non-row chrome. Do not derive a row count from an absolute `scrollHeight`.
+- **Append-only, no recycling.** Rendered equalled cumulative at every round and finished at 93 = 93,
+  so nothing was trimmed off the top. This is the ChatGPT `#history` model, and the **opposite** of
+  Gemini's own message list, which pages older turns in on scroll-*up*. Do not carry either
+  behaviour across from the other.
+- **Every page landed inside a single 1500 ms round** — rounds 1, 2, 3 and 4 each grew, so no page
+  needed a second round. That is a bound at this scale and this cadence, not a latency
+  distribution; four samples say nothing about the tail, and the shipped dwell should not be sized
+  from them.
+- The walk settled and **stayed settled for 21 further rounds**, which is the terminal short page
+  being confirmed rather than a stall being mistaken for an end.
+
+**Identity is clean and 1:1**, which is what a bulk track needs and what the item never had:
+
+| Measurement | Result |
+|---|---|
+| `[data-test-id="conversation"]` items | 93 |
+| items containing an `a[href^="/app/"]` | 93 |
+| distinct ids across those anchors | **93** |
+| ids matching `^[0-9a-f]{16}$` | 93 |
+| max anchors per item | 1 |
+| `a[href^="/app/"]` **outside** a conversation item | **0** |
+
+So a sidebar row is a `gem-nav-list-item[data-test-id="conversation"]` wrapping exactly one anchor
+whose href is `/app/<16-hex>` — the same id shape `CONVERSATION_PATH` in
+`src/adapters/gemini/matches.ts` already matches. One caveat for whoever implements this: with the
+sidebar **collapsed**, a `/app` page still renders 31 conversation items but the earlier probe found
+**0** `a[href^="/app/"]` in the document, so the anchors are not reachable until the sidebar is
+opened. The open/collapsed distinction is load-bearing and is not something the item anticipated.
+
+Scope limit: one account, 93 conversations, `ko-KR`, one window size. The 20-item page size is
+established at this scale, and the terminal short page is the only direct evidence that the walk
+terminates at all.
+
+### 2026-08-10 — a Gem is not a project home; Gemini's project analogue is Notebooks
+
+Settles half of the roadmap item "Gemini adapter: Gems / Projects track (`matchesProject` + the
+project bulk members)", whose blocker was that "Gemini's Gems and project routes and their list
+markup are unmeasured". **The Gems half is resolved as not-applicable.** Same session and account.
+
+- Gems are listed at **`/gems/view`** under `[data-test-id="your-gems-list"]`; the account held one,
+  at **`/gem/<12-hex>`**.
+- **`/gem/<id>` renders no member list.** Measured on the Gem's own page after a 2.5 s settle:
+  `div.conversation-container` **0**, `a[href^="/app/"]` in the content area **0**, with a
+  `chat-history-container` present but empty plus a composer and
+  `[data-test-id="empty-disclaimer"]`. It is a Gem-scoped **new chat** screen, not a home listing
+  that Gem's conversations. There is therefore nothing for `matchesProject` to match and no member
+  list to enumerate — the Gems half of the item is not blocked work, it is work that does not exist.
+- **Gemini's actual project analogue is Notebooks**, which the item did not name:
+  `[data-test-id="notebooks-expandable-section"]` in the sidebar, a `/notebooks/create` entry, and a
+  `project-sidenav-list` custom element. **The account has zero notebooks**, so the section rendered
+  only its create button and no list markup could be measured. That half stays blocked — on a
+  narrower and more accurate blocker than the one it carried.
+
+Conversations belonging to a Gem are not separated in the sidebar in any way this session measured;
+whether they are distinguishable there at all is `[unknown — not measured 2026-08-10]`.
 
 ## Capturing a fixture
 

@@ -21,31 +21,45 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > themselves were fixed there; these are the parts that need a live-DOM session or a separate
 > behaviour decision.
 
-- [ ] *(blocked by: needs a live-DOM session — the 2026-08-09 measurement recorded only the localized `aria-label`, so no locale-independent handle is attested)*
-      [FIX] Measure a stable Claude sidebar handle (nav landmark or data attribute) and pin
-      `selectors.sidebar` to it. PR #58 dropped the Korean `aria-label` and narrows `aside` by
-      chat-link containment, which is derived from the measurement rather than measured as
-      unique. Capture an English-locale fixture in the same session.
-- [ ] *(blocked by: needs a live-DOM session — no measurement says what a Claude project home renders before its conversation table hydrates, or what an artifact card looks like across kinds)*
-      [FIX] Anchor `projectTable` / `artifactTitle` / `artifactKind` on measured attributes.
-      The artifact labels are Tailwind utility tokens today, so a second `text-xs line-clamp-1`
-      node inside a card (a timestamp, a version badge) fails the whole conversation export.
+- [ ] [FIX] Claude bulk export reaches at most the 20 rows the sidebar renders, whatever the
+      account size. Measured 2026-08-10: the Recents list is UI-capped at 20 and does not page
+      (12 scroll rounds, `scrollHeight` constant at 760 px, nothing trimmed), so
+      `loadMoreConversations` cannot surface anything below it — on the 25-conversation account
+      measured, 5 conversations are already unreachable, silently. The full list lives at
+      `/recents` as a `table[data-cds="Table"]` behind the sidebar's "모두 보기 / View all"
+      control. Needs a route decision (move the bulk track to `/recents`), not a selector, plus
+      its own measurement of whether `/recents` pages at larger scale — 25 rows fit without
+      crossing a page boundary. See docs/live-dom-verification.md → Claude → 2026-08-10.
+- [ ] [FIX] The exported Claude artifact kind is localized, so the same artifact exports
+      differently per UI language. Measured 2026-08-10 on a ko-KR account: `문서 · MD`,
+      `코드 · JSX`. `artifactMarkers` (`src/adapters/claude/index.ts`) builds
+      `[Artifact: <title> (<kind>)]` and that string reaches Markdown and JSON verbatim
+      (`src/export/markdown.ts`, `src/export/json.ts`). The card exposes no machine-readable kind
+      — no `data-*` exists on it at all — so this needs a decision (derive from the trailing
+      token, or drop the kind) rather than a different selector.
 
 ## Review Backlog
 
 ### PR #61 (Claude navigation/stream failure modes, 2026-08-10)
 
-- [ ] *(blocked by: needs a live-DOM session — the 2026-08-09 measurement says the sidebar does NOT recycle (20 links survived a scroll to the bottom plus a 2.5 s wait), so whether a much longer sidebar recycles is unmeasured and no early-exit can be designed without it)*
-      [FIX] Keep a revealed Claude sidebar target reachable across a recycling walk.
-      `revealSidebarAnchor` searches only after `loadMoreConversations` returns, so if a long
-      sidebar renders the target mid-walk and drops it again before the port clamps, a valid
-      conversation is reported missing. Measure whether the sidebar recycles at length; if it
-      does, stop the walk as soon as the target resolves instead of walking to the end.
+*(No open items — the sidebar-recycling `[FIX]` was closed 2026-08-10 by measurement rather than by
+a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
+The larger hazard that measurement exposed is filed above.)*
 
 ## Next (roadmap — not v1)
 
-- [ ] *(blocked by: needs its own live-DOM session — only the conversation view was measured on 2026-07-25; the sidebar was seen in passing (33 `[data-test-id="conversation"]` anchors in their own `infinite-scroller`) but its paging shape, scroll port, and whether it loads from the server were never measured)*
-      Gemini adapter: bulk/sidebar export (`listConversations` / `openConversation` /
-      `loadMoreConversations`)
-- [ ] *(blocked by: Gemini's Gems and project routes and their list markup are unmeasured — `matches` deliberately excludes them, so those pages currently mount nothing)*
-      Gemini adapter: Gems / Projects track (`matchesProject` + the project bulk members)
+- [ ] Gemini adapter: bulk/sidebar export (`listConversations` / `openConversation` /
+      `loadMoreConversations`). Unblocked 2026-08-10 — the sidebar's paging shape, scroll port and
+      identity are now measured: page size **20**, append-only (no recycling), every page landing
+      within one 1500 ms round, and a 1:1 item↔anchor mapping (93 items, 93 distinct `/app/<16-hex>`
+      ids, 0 anchors outside a `[data-test-id="conversation"]`). Two implementation constraints
+      from that session: the sidebar's `infinite-scroller` carries **no** `data-test-id` (resolve it
+      by containment, as Claude's `aside` is), and with the sidebar **collapsed** the anchors are
+      absent from the document entirely. See docs/live-dom-verification.md → Gemini → 2026-08-10.
+- [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*
+      Gemini adapter: Notebooks track (`matchesProject` + the project bulk members). Narrowed
+      2026-08-10: the **Gems half was dropped as not-applicable** — `/gem/<id>` is a Gem-scoped new
+      chat screen (0 `div.conversation-container`, 0 `a[href^="/app/"]`, an `empty-disclaimer`), not
+      a home listing that Gem's conversations, so there is no member list to enumerate. Notebooks
+      (`[data-test-id="notebooks-expandable-section"]`, `/notebooks/create`, `project-sidenav-list`)
+      is Gemini's actual project analogue and is what this item now covers.

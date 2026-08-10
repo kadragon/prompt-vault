@@ -6,7 +6,6 @@ description: |
   from whoever implemented and from qa-verifier — never the agent that built or
   QA'd the feature.
 tools: Read, Grep, Glob, Bash
-model: opus
 ---
 
 ## Objective

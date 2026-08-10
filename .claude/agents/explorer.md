@@ -5,7 +5,6 @@ description: |
   session, OR when the target area spans >5 files. Read-only — produces a map,
   not a change. Spawn before editing an unfamiliar adapter.
 tools: Read, Grep, Glob
-model: sonnet
 ---
 
 ## Objective
