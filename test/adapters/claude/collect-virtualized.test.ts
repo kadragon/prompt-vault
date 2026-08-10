@@ -311,7 +311,20 @@ function makeWindowedDoc({
   const visibleNodes = (): unknown[] => turns.flatMap((t, i) => nodesIn(t, i));
 
   return {
-    querySelector: (sel: string) => (sel === '[data-autoscroll-container]' ? container : null),
+    querySelector: (sel: string) => {
+      if (sel === '[data-autoscroll-container]') return container;
+      // The marker-absence watchdog asks the DOCUMENT whether the measured stream marker exists
+      // anywhere, which is how it tells a renamed attribute from a row still mounting. Answering
+      // null unconditionally would make it fire on every conversation, so the fake resolves the
+      // query the same way a real document would — through the rendered rows.
+      if (sel === selectors.streamMarker) {
+        return (
+          turns.flatMap((t, i) => (intersects(i) ? [makeRow(t, i)] : [])).map((row) => row.querySelector(sel)).find(Boolean) ??
+          null
+        );
+      }
+      return null;
+    },
     querySelectorAll: (sel: string) => {
       // Rows carry data-index; the adapter reads them to learn which positions rendered.
       if (sel === '[data-index]') {
@@ -409,6 +422,47 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     });
   });
 
+  // `role: artifact ? 'assistant' : 'user'` is only sound because the two markers are mutually
+  // exclusive in the measured DOM — a DOM invariant, not one the adapter used to enforce. A row
+  // carrying both would have exported the user's `[File: …]` markers as ASSISTANT content:
+  // silently wrong attribution rather than a visible failure (AGENTS.md #4).
+  it('fails loud when one row carries both an artifact card and an attachment', async () => {
+    const turns = alternating(12);
+    turns[11] = {
+      ...turns[11],
+      artifact: { title: 'Pv probe artifact', kind: 'HTML' },
+      tiles: [{ shape: 'tile', name: 'notes.txt' }],
+    };
+    await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
+      /artifact card and a file attachment/,
+    );
+  });
+
+  it('keeps each marker kind on its own measured role when they appear separately', async () => {
+    const turns = alternating(12);
+    turns[11] = { ...turns[11], artifact: { title: 'Pv probe artifact', kind: 'HTML' } };
+    turns[10] = { ...turns[10], content: '', tiles: [{ shape: 'tile', name: 'notes.txt' }] };
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages[10]).toEqual({ role: 'user', content: '[File: notes.txt]' });
+    expect(messages[11].role).toBe('assistant');
+    expect(messages[11].content).toContain('[Artifact: Pv probe artifact (HTML)]');
+  });
+
+  // A marker missing from the NEWEST row is a wrapper still mounting and must keep waiting. A
+  // marker present on NO row is the attribute itself being gone, which never settles — the walk
+  // used to spend `STREAM_SETTLE_MAX_STEPS` (~60s live) reaching a correct error.
+  it('fails fast when the stream marker is absent from every row, not just the newest', async () => {
+    const turns = alternating(12).map((t) => ({ ...t, streamMissing: true }));
+    const doc = makeWindowedDoc({ turns });
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/message-completion marker/);
+    // Far below the settle bound the un-watched walk would have run to.
+    expect(roundsOf(doc)).toBeLessThan(60);
+  });
+
+  // Also pins the watchdog's lower edge: a marker missing only from the NEWEST row is a wrapper
+  // still mounting (~1.2s live — docs/live-dom-verification.md → Claude → 2026-07-29), and every
+  // other assistant row still carries it, so the attribute is intact. Asserting the settle-bound
+  // wording rather than the watchdog's proves it did not fire early.
   it('does not treat a missing stream marker as completion and fails within the supplied bound', async () => {
     const turns = alternating(12);
     turns[11] = { ...turns[11], streamMissing: true };

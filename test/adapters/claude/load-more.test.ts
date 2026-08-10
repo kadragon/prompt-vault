@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { claudeAdapter } from '../../../src/adapters/claude';
 import { Window } from 'happy-dom';
+import { ExtractionError } from '../../../src/core/errors';
 
 const ROW_HEIGHT = 20;
 
@@ -95,9 +96,11 @@ describe('claudeAdapter.loadMoreConversations', () => {
     expect(list?.map((conversation) => conversation.id)).toEqual(['0', '1']);
   });
 
-  it('returns an empty list when the sidebar is absent', async () => {
+  // Same reasoning as `listConversations`: an absent sidebar is a markup change, and resolving
+  // to `[]` would present it as an account with nothing to export (AGENTS.md #4).
+  it('fails loud when the sidebar is absent', async () => {
     const root = { querySelectorAll: () => [] } as unknown as ParentNode;
-    await expect(claudeAdapter.loadMoreConversations?.(root, { stepDelayMs: 0 })).resolves.toEqual([]);
+    await expect(claudeAdapter.loadMoreConversations?.(root, { stepDelayMs: 0 })).rejects.toThrow(ExtractionError);
   });
 
   it('reports the step cap as incomplete while still returning what it loaded', async () => {

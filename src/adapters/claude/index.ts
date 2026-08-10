@@ -30,6 +30,15 @@ const WALK_ABSOLUTE_MAX_STEPS = 2000;
 // measured stream marker is the completion signal, so the bottom dwell needs a bound larger
 // than the geometry-derived scroll-step count while still refusing an unending stream.
 const STREAM_SETTLE_MAX_STEPS = 400;
+// Consecutive bottom-parked rounds with NO `streamMarker` anywhere in the message list before
+// the walk gives up on the marker. `STREAM_SETTLE_MAX_STEPS` bounds a marker that is present but
+// never settles; this bounds a marker that Claude renamed away entirely, which the settle bound
+// would only surface after ~60s of scrolling. Sized against the measured window in which a row
+// exists BEFORE its stream node mounts — ~1.2s (rows 6→8 at t=21455, stream nodes 3→4 at t=22631;
+// docs/live-dom-verification.md → Claude → 2026-07-29). At the walk's own `SCROLL_STEP_DELAY_MS`
+// that is ~3s of bottom-parked rounds, so a wrapper still mounting is never mistaken for a
+// renamed attribute.
+const STREAM_MARKER_ABSENT_MAX_ROUNDS = 20;
 
 // Navigation-list tuning. Claude's measured sidebar/project surfaces are client-rendered;
 // there is no verified server-paging contract to wait for. The loader therefore walks the
@@ -121,10 +130,15 @@ function toolbarAnchor(root: ParentNode = document): Element | null {
  * Enumerate the measured recent-chat links in Claude's persistent sidebar. The map is keyed
  * by the stable `/chat/<id>` path so duplicate anchors (for example an active row rendered
  * twice during a transition) never create duplicate checklist entries.
+ *
+ * No `aside` at ALL is a markup change, not an empty account, and the two must not look alike:
+ * the bulk panel renders the same empty state for an empty list either way, so a dead selector
+ * would read to the user as "you have no conversations" (AGENTS.md #4 is satisfied for the
+ * download, not for the list). An `aside` that exists and simply carries no chat link IS the
+ * empty account and still returns `[]`.
  */
 function listConversations(root: ParentNode = document): SidebarConversation[] {
-  const sidebar = resolveSidebar(root);
-  if (!sidebar) return [];
+  const sidebar = requireSidebar(root);
   return collectNavigationConversations(
     sidebar.querySelectorAll(selectors.sidebarConversationLink),
     documentOrigin(root),
@@ -145,12 +159,34 @@ function listConversations(root: ParentNode = document): SidebarConversation[] {
  * conversations, including the attachment-only row).
  */
 function readRowMarkers(el: Element): { artifact: string; files: string } | null {
+  let markers: { artifact: string; files: string };
   try {
-    return { artifact: artifactMarkers(el), files: attachmentMarkers(el) };
+    markers = { artifact: artifactMarkers(el), files: attachmentMarkers(el) };
   } catch (error) {
     if (el.querySelector(selectors.messageArticle)) throw error;
     return null;
   }
+  // Both callers pick `role: artifact ? 'assistant' : 'user'`, which is only sound because the
+  // two markers are mutually exclusive in the measured DOM: `attachmentMarkers` claims a row
+  // only through the user-exclusive `action-bar-edit`, while `artifactMarkers` requires the row
+  // to carry the assistant's `.standard-markdown`. Nothing enforced that, so a row carrying both
+  // exported the user's `[File: …]` markers as ASSISTANT content — silently wrong attribution,
+  // which AGENTS.md #4 rules out. The combination cannot occur in the measured markup, so
+  // reaching here is proof it changed.
+  //
+  // Deliberately OUTSIDE the `messageArticle` gate above, unlike the reader failures. That gate
+  // exists because a lone artifact-shaped node can appear outside the message list (the artifact
+  // side panel), and one stray node must not abort a working export. This condition cannot be
+  // produced that way: it needs an assistant prose container AND the user-exclusive edit control
+  // AND a well-formed card AND a named tile, all in one subtree. Gating it would instead make
+  // the check depend on `role="article"` surviving the very markup change that triggered it.
+  if (markers.artifact && markers.files) {
+    throw new ExtractionError(
+      'A Claude message carries both an artifact card and a file attachment, which its markup ' +
+        'has never done. Its author could not be determined — please report this.',
+    );
+  }
+  return markers;
 }
 
 /**
@@ -163,6 +199,21 @@ function readRowMarkers(el: Element): { artifact: string; files: string } | null
 function resolveSidebar(root: ParentNode = document): Element | null {
   const asides = Array.from(root.querySelectorAll(selectors.sidebar));
   return asides.find((aside) => aside.querySelector(selectors.sidebarConversationLink)) ?? asides.at(-1) ?? null;
+}
+
+/**
+ * `resolveSidebar`, but a missing sidebar fails loud instead of resolving to an empty list.
+ * Used by the two enumerating members; `findSidebarAnchor` deliberately keeps the nullable
+ * form because `openConversation` owns its own per-conversation wording for that case.
+ */
+function requireSidebar(root: ParentNode = document): Element {
+  const sidebar = resolveSidebar(root);
+  if (!sidebar) {
+    throw new ExtractionError(
+      'Could not find Claude’s conversation sidebar. Claude’s markup may have changed — please report this.',
+    );
+  }
+  return sidebar;
 }
 
 /**
@@ -218,8 +269,16 @@ function navigationTitle(anchor: Element): string {
 }
 
 /**
- * Fold measured navigation anchors into an ordered id map. Invalid hrefs or nameless links
- * reject the operation so the bulk panel cannot present a plausible but incomplete list.
+ * Fold measured navigation anchors into an ordered id map.
+ *
+ * An individual anchor that cannot be read — a nested path like `/chat/<id>/share`, or an
+ * icon-only link with no accessible name — is SKIPPED rather than rejecting the whole list.
+ * The all-or-nothing contract this replaces let one such anchor block exporting every other
+ * conversation, which is a far likelier outcome of ordinary Claude UI churn than a wholesale
+ * markup change. What is preserved is the half that matters: a surface that rendered anchors
+ * and resolved NONE of them still fails loud, so the bulk panel can never show a silently
+ * empty list where conversations exist (AGENTS.md #4). Zero anchors is not that case — it is
+ * the empty account, and its caller has already proved the sidebar itself is there.
  */
 function collectNavigationConversations(
   links: Iterable<Element>,
@@ -227,17 +286,20 @@ function collectNavigationConversations(
   surface: 'sidebar' | 'project',
 ): SidebarConversation[] {
   const acc = new Map<string, SidebarConversation>();
+  let seen = 0;
   for (const anchor of links) {
+    seen++;
     const href = anchor.getAttribute('href');
     const resolved = href ? resolveConversationHref(href, origin) : null;
     const title = navigationTitle(anchor);
-    if (!resolved || !title) {
-      throw new ExtractionError(
-        `Could not read a Claude ${surface} conversation link: its URL or title is missing. ` +
-          'Claude’s markup may have changed — please report this.',
-      );
-    }
+    if (!resolved || !title) continue;
     if (!acc.has(resolved.id)) acc.set(resolved.id, { id: resolved.id, title, url: resolved.url });
+  }
+  if (seen > 0 && acc.size === 0) {
+    throw new ExtractionError(
+      `Could not read any Claude ${surface} conversation link: their URLs or titles are missing. ` +
+        'Claude’s markup may have changed — please report this.',
+    );
   }
   return [...acc.values()];
 }
@@ -274,11 +336,17 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
 
   if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
 
-  const anchor = findSidebarAnchor(target.id);
+  // Reveal before searching. `findSidebarAnchor` only ever sees anchors already rendered, and
+  // the 2026-08-09 measurement (20 links, no recycling) attests that today's sidebar renders
+  // them all — but says nothing about a much longer one. Stepping the measured scroll port once
+  // is the same walk the panel's own "Load more" performs, so a target below the fold is
+  // materialized rather than reported as missing. One retry, not a loop: the loader already
+  // walks to the end of the port itself, so a second pass could only repeat the first.
+  const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, pollMs));
   if (!anchor) {
     throw new ExtractionError(
-      'Could not open a selected Claude conversation: its sidebar link was not found. ' +
-        'The recent-chat list may need scrolling into view. It was skipped.',
+      'Could not open a selected Claude conversation: its sidebar link was not found, ' +
+        'even after scrolling the recent-chat list. It was skipped.',
     );
   }
 
@@ -324,6 +392,24 @@ async function waitForOpenedConversation(
     if (stable >= OPEN_SETTLE_ROUNDS) return true;
   }
   return false;
+}
+
+/**
+ * Walk the sidebar's scroll port once so a target below the fold is rendered, then look again.
+ * Returns null when the walk surfaced nothing new — the caller turns that into its own skip
+ * error. A failure inside the walk is swallowed on purpose: this runs only when the anchor was
+ * already missing, so the caller's "link was not found" is the accurate report either way, and
+ * letting a scroll problem replace it would blame the wrong thing.
+ */
+async function revealSidebarAnchor(id: string, stepDelayMs: number): Promise<HTMLAnchorElement | null> {
+  try {
+    // `pollMs` is the caller's own render-frame budget and matches this loader's default, so the
+    // reveal walk paces itself exactly as it does today while staying drivable from a test.
+    await loadMoreConversations(document, { stepDelayMs });
+  } catch {
+    return null;
+  }
+  return findSidebarAnchor(id);
 }
 
 function findSidebarAnchor(id: string): HTMLAnchorElement | null {
@@ -455,8 +541,7 @@ async function loadMoreConversations(
   root: ParentNode = document,
   options: LoadMoreOptions = {},
 ): Promise<SidebarConversation[]> {
-  const sidebar = resolveSidebar(root);
-  if (!sidebar) return [];
+  const sidebar = requireSidebar(root);
 
   // The measured aside is a 953px layout shell; its nested recent-chat port is the actual
   // 564px scroll container. Start from a verified conversation anchor so the nearest scrolling
@@ -913,11 +998,19 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
     }
 
     // Pass 2 — back down to the last turn.
+    const watchStreamMarker = streamMarkerWatchdog(doc);
     const reachedBottom = await walk(container, stepDelayMs, options.maxSteps, record, {
       // Scroll position alone cannot distinguish a settled newest response from a response
       // that is still growing at the bottom. The measured marker is authoritative when the
       // newest assistant row is present; absent marker remains non-terminal while it mounts.
-      atEnd: (c) => c.scrollTop + c.clientHeight >= c.scrollHeight - 1 && streamState(doc) === 'settled',
+      atEnd: (c) => {
+        const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 1;
+        // Throws once the marker has been missing from the whole list for long enough to be a
+        // rename rather than a mount. Checked only at the bottom, where "still generating" is
+        // the only remaining reason to keep waiting.
+        if (atBottom) watchStreamMarker();
+        return atBottom && streamState(doc) === 'settled';
+      },
       step: (c) => {
         c.scrollTop = Math.min(c.scrollTop + stepPx, c.scrollHeight);
       },
@@ -977,6 +1070,35 @@ async function walk(
     motion.step(container);
     await delay(stepDelayMs);
   }
+}
+
+/**
+ * A per-walk counter that fails the export once `selectors.streamMarker` has been absent from
+ * EVERY rendered row for `STREAM_MARKER_ABSENT_MAX_ROUNDS` consecutive bottom-parked rounds.
+ *
+ * `streamState` treats a missing marker as `'pending'` — deliberately, since a row renders
+ * before its wrapper mounts — so a renamed attribute never settles and the walk runs to
+ * `STREAM_SETTLE_MAX_STEPS`, spending ~60s scrolling before reaching the (correct, loud) error.
+ * The two conditions are distinguishable, which is what makes failing early safe rather than a
+ * guess: a marker missing from the *newest* row while present on older ones is a mount in
+ * progress, whereas a marker present on NO row at all is the attribute itself being gone. Only
+ * the second is counted, and any sighting resets the count, so a genuinely streaming response
+ * keeps the full existing bound.
+ */
+function streamMarkerWatchdog(doc: Document): () => void {
+  let absentRounds = 0;
+  return () => {
+    if (doc.querySelector(selectors.streamMarker)) {
+      absentRounds = 0;
+      return;
+    }
+    if (++absentRounds < STREAM_MARKER_ABSENT_MAX_ROUNDS) return;
+    throw new ExtractionError(
+      'Claude’s message-completion marker was not found anywhere in the conversation, so this ' +
+        'extension cannot tell a finished response from one still being written. Claude’s markup ' +
+        'may have changed — please report this.',
+    );
+  };
 }
 
 type StreamState = 'settled' | 'streaming' | 'pending' | 'invalid';

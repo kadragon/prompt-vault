@@ -30,24 +30,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
       [FIX] Anchor `projectTable` / `artifactTitle` / `artifactKind` on measured attributes.
       The artifact labels are Tailwind utility tokens today, so a second `text-xs line-clamp-1`
       node inside a card (a timestamp, a version badge) fails the whole conversation export.
-- [ ] [FIX] Distinguish "Claude's sidebar markup changed" from "this account has no
-      conversations". Both render the bulk panel's empty state today, so a broken selector reads
-      as an empty account (AGENTS.md #4 is satisfied only for downloads, not for the list).
-- [ ] [FIX] Degrade instead of hard-failing on one odd Claude sidebar anchor.
-      `collectNavigationConversations` rejects the whole list when any `a[href^="/chat/"]` has
-      no accessible name or a nested path, so one icon-only or `/chat/<id>/share` link blocks
-      exporting every other conversation. Decide between skipping unusable anchors (failing loud
-      only when nothing resolves) and keeping the current all-or-nothing contract.
-- [ ] [FIX] Reveal a Claude sidebar target before searching for its anchor. `openConversation`
-      only searches rendered anchors; the 2026-08-09 measurement (20 links, no recycling) says
-      this is safe today, but a much longer sidebar is unproven.
-- [ ] [TEST] Assert the Claude artifact/attachment marker exclusivity that
-      `role: artifact ? 'assistant' : 'user'` relies on. It is a measured DOM invariant, not one
-      the code enforces — a row carrying both silently exports the user's `[File: …]` markers as
-      assistant content.
-- [ ] [FIX] Bound the Claude stream-marker wait. If Claude renames `[data-is-streaming]`,
-      extraction spends ~60s scrolling before the (correct, loud) error. Fail faster when the
-      marker is absent from every row rather than merely unsettled.
 
 ## Next (roadmap — not v1)
 
