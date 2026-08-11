@@ -76,6 +76,14 @@ const FORMATS: ReadonlyArray<FormatSpec> = [
 // from a fallback overlay and upgrade the latter once the header bar appears.
 const PLACEMENT_ATTR = 'data-prompt-vault-placement';
 
+// All three tracks share `CONTAINER_ID`, so the container alone cannot say which page's
+// trigger it is. The track is stamped beside the placement so each `sync*` can recognize a
+// container left over from the page the SPA just navigated away from and replace it, rather
+// than re-positioning the previous track's trigger into the new page's mount. Without it the
+// invariant is held only by the bootstrap calling `removeButtons` on an href change.
+const TRACK_ATTR = 'data-prompt-vault-track';
+type Track = 'conversation' | 'project' | 'recents';
+
 // Blocks a second export while one is in flight. A module-level flag (not the
 // buttons' `disabled` state) so the guard survives the buttons being re-mounted
 // mid-export by an SPA header re-render — the fresh buttons default to enabled, but
@@ -231,6 +239,7 @@ export function createButtons(
   const container = doc.createElement('div');
   container.id = CONTAINER_ID;
   container.setAttribute(PLACEMENT_ATTR, placement);
+  container.setAttribute(TRACK_ATTR, 'conversation');
   if (placement === 'native') {
     // `gap-0.5` keeps the two icon buttons from abutting so their hover highlights
     // don't touch — matching the spacing of ChatGPT's own header controls.
@@ -285,7 +294,7 @@ export function createProjectTrigger(
   placement: 'native' | 'overlay',
   buttonClass?: string,
 ): HTMLDivElement {
-  return createBulkTrigger(doc, placement, buttonClass, DOWNLOAD_PROJECT_BULK_ARIA_LABEL, () =>
+  return createBulkTrigger(doc, placement, buttonClass, 'project', DOWNLOAD_PROJECT_BULK_ARIA_LABEL, () =>
     openProjectBulkExport(doc),
   );
 }
@@ -301,7 +310,7 @@ export function createRecentsTrigger(
   placement: 'native' | 'overlay',
   buttonClass?: string,
 ): HTMLDivElement {
-  return createBulkTrigger(doc, placement, buttonClass, DOWNLOAD_RECENTS_BULK_ARIA_LABEL, () =>
+  return createBulkTrigger(doc, placement, buttonClass, 'recents', DOWNLOAD_RECENTS_BULK_ARIA_LABEL, () =>
     openRecentsBulkExport(doc),
   );
 }
@@ -310,12 +319,14 @@ function createBulkTrigger(
   doc: Document,
   placement: 'native' | 'overlay',
   buttonClass: string | undefined,
+  track: Track,
   ariaLabel: string,
   onClick: () => void,
 ): HTMLDivElement {
   const container = doc.createElement('div');
   container.id = CONTAINER_ID;
   container.setAttribute(PLACEMENT_ATTR, placement);
+  container.setAttribute(TRACK_ATTR, track);
 
   const button = doc.createElement('button');
   button.type = 'button';
@@ -620,6 +631,15 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
   }
 }
 
+/**
+ * Whether a mounted container belongs to a different track than the one being synced. A
+ * container with no stamp at all is treated as stale too: it can only come from a build that
+ * predates the attribute, and re-mounting is cheap next to leaving the wrong trigger in place.
+ */
+function isStaleTrack(existing: Element, track: Track): boolean {
+  return existing.getAttribute(TRACK_ATTR) !== track;
+}
+
 /** Mount/refresh the per-conversation export toolbar (format buttons + bulk icon). */
 function syncConversationButtons(doc: Document, href: string, allowOverlayFallback: boolean): void {
   const adapter = pickAdapter(href);
@@ -629,7 +649,11 @@ function syncConversationButtons(doc: Document, href: string, allowOverlayFallba
   const existing = doc.getElementById(CONTAINER_ID);
   if (existing) {
     const isOverlay = existing.getAttribute(PLACEMENT_ATTR) === 'overlay';
-    if (isOverlay && mount) {
+    if (isStaleTrack(existing, 'conversation')) {
+      // Left over from the page the SPA navigated away from: drop it and mount fresh,
+      // rather than re-positioning another track's trigger into this page's mount.
+      existing.remove();
+    } else if (isOverlay && mount) {
       // Upgrade the fallback overlay to the now-available native bar.
       existing.remove();
     } else {
@@ -669,6 +693,7 @@ function syncProjectTrigger(doc: Document, href: string, allowOverlayFallback: b
     resolveMount: () => adapter?.projectToolbarMount?.(doc) ?? null,
     buttonClass: adapter?.projectToolbarButtonClass,
     create: createProjectTrigger,
+    track: 'project',
   });
 }
 
@@ -682,6 +707,7 @@ function syncRecentsTrigger(doc: Document, href: string, allowOverlayFallback: b
     resolveMount: () => adapter?.recentsToolbarMount?.(doc) ?? null,
     buttonClass: adapter?.recentsToolbarButtonClass,
     create: createRecentsTrigger,
+    track: 'recents',
   });
 }
 
@@ -695,12 +721,14 @@ interface ListTriggerSpec {
   resolveMount: () => Element | null;
   buttonClass: string | undefined;
   create: (doc: Document, placement: 'native' | 'overlay', buttonClass?: string) => HTMLDivElement;
+  /** Which track this sync owns, so a container stamped with another one is recognized as stale. */
+  track: Track;
 }
 
 function syncListTrigger(
   doc: Document,
   allowOverlayFallback: boolean,
-  { resolveMount, buttonClass, create }: ListTriggerSpec,
+  { resolveMount, buttonClass, create, track }: ListTriggerSpec,
 ): void {
   // The "bulk" toolbar setting governs bulk-export UI overall; when the user has turned
   // it off, hide this trigger too (not just the per-conversation bulk icon), so the
@@ -715,7 +743,11 @@ function syncListTrigger(
   const existing = doc.getElementById(CONTAINER_ID);
   if (existing) {
     const isOverlay = existing.getAttribute(PLACEMENT_ATTR) === 'overlay';
-    if (isOverlay && mount) {
+    if (isStaleTrack(existing, track)) {
+      // Another track's container (or this one's on the previous page): drop it and mount
+      // fresh, so a `/chat/<id>` toolbar is never prepended into the list section.
+      existing.remove();
+    } else if (isOverlay && mount) {
       // Upgrade the fallback overlay to the now-available native section.
       existing.remove();
     } else {

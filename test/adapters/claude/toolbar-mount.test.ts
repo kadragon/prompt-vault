@@ -93,6 +93,50 @@ describe('claudeAdapter.toolbarButtonClass', () => {
   });
 });
 
+// The project / `/recents` "Download all" triggers wear the same captured string plus `px-md`.
+// Pinned against the same fixture Share button for the same reason: nothing type-checks a class
+// token, and an invented one shows up only as an unstyled button on the live page (AGENTS.md #5).
+describe('claudeAdapter list-trigger button classes', () => {
+  function shareButtonClasses(): Set<string> {
+    const share = loadFixture('short.html').querySelector(
+      '[data-testid="wiggle-controls-actions-share"]',
+    );
+    return new Set((share?.getAttribute('class') ?? '').split(/\s+/).filter(Boolean));
+  }
+
+  const listClasses = (): string[] =>
+    [claudeAdapter.projectToolbarButtonClass, claudeAdapter.recentsToolbarButtonClass].map((value) => value ?? '');
+
+  it('gives both list triggers a class, so they do not render as default browser buttons', () => {
+    for (const value of listClasses()) expect(value.split(/\s+/).filter(Boolean).length).toBeGreaterThan(0);
+    // One captured string, two labeled triggers with identical chrome.
+    expect(claudeAdapter.projectToolbarButtonClass).toBe(claudeAdapter.recentsToolbarButtonClass);
+  });
+
+  it('uses only tokens that Claude’s own header button actually carries', () => {
+    const native = shareButtonClasses();
+    for (const value of listClasses()) {
+      expect(value.split(/\s+/).filter(Boolean).filter((token) => !native.has(token))).toEqual([]);
+    }
+  });
+
+  it('keeps `px-md`, the labeled control’s padding the icon-only toolbar drops', () => {
+    // The one token that separates these from `toolbarButtonClass`: "Download all" is labeled,
+    // the header export buttons are icon-only squares.
+    expect(shareButtonClasses().has('px-md')).toBe(true);
+    for (const value of listClasses()) {
+      expect(value.split(/\s+/)).toContain('px-md');
+    }
+    expect((claudeAdapter.toolbarButtonClass ?? '').split(/\s+/)).not.toContain('px-md');
+  });
+
+  it('still excludes the toggle-only `aria-pressed:text-accent` on every button', () => {
+    for (const value of [...listClasses(), claudeAdapter.toolbarButtonClass ?? '']) {
+      expect(value.split(/\s+/)).not.toContain('aria-pressed:text-accent');
+    }
+  });
+});
+
 describe('claudeAdapter shape', () => {
   it('implements the measured conversation, sidebar, project, and recents members', () => {
     // The whole member set catches a navigation method added without the live verification
@@ -113,8 +157,10 @@ describe('claudeAdapter shape', () => {
       'openProjectHome',
       'openRecentsConversation',
       'openRecentsHome',
+      'projectToolbarButtonClass',
       'projectToolbarMount',
       'provider',
+      'recentsToolbarButtonClass',
       'recentsToolbarMount',
       'toolbarAnchor',
       'toolbarButtonClass',

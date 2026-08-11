@@ -36,19 +36,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > bulk track. None held the PR; each is either a pre-existing gap the sprint made visible or a
 > limit that needs a measurement session to close.
 
-- [ ] [TEST] The bulk-export `alert` branches are untested on all three tracks —
-      `EXPORT_NO_ADAPTER_MESSAGE` / `BULK_UNSUPPORTED_MESSAGE` in `openBulkExport`,
-      `openProjectBulkExport` and `openRecentsBulkExport` (`src/content/mount.ts`). No test
-      references either constant. One item, all three tracks; needs `alert` stubbing the file
-      does not do today.
-- [ ] [CONSTRAINT] Stamp the shared `CONTAINER_ID` with its track. `test/content/mount.test.ts`
-      pins the `/chat/<id>` → `/recents` → project-home hop, but it performs the `removeButtons`
-      call itself, so it pins the bootstrap's sequence rather than `syncButtons`' self-sufficiency:
-      dropping the removal at `src/content/index.ts` would leave the test green while a stale
-      track's trigger is re-positioned into the new page's mount. A `data-track` attribute makes
-      the invariant structural.
-- [ ] *(blocked by: needs a live-DOM session on a project holding knowledge documents and zero
-      conversations — the 2026-08-11 probe project held neither)*
+- [ ] *(blocked by: needs a live-DOM session on a project holding knowledge documents and zero conversations — the 2026-08-11 probe project held neither)*
       [VERIFY] Confirm what a Claude project with documents but no conversations renders. The
       adapter now decides emptiness from the absence of conversation links in `main` rather than
       the absence of a table, so it is correct either way — but whether such a project renders a
@@ -61,31 +49,33 @@ continuation line is invisible to it and the blocked item is offered as actionab
       selector. `projectTable` (`main table`) has always carried that assumption, so this is not a
       new one — but no measurement would have seen links outside `main`, and `/project/<id>` is
       unmeasured entirely.
-- [ ] [TEST] `recentsToolbarMount`'s fixture does not match the measured DOM: the comment records
-      the table's parent as a plain `div` (docs/live-dom-verification.md → 2026-08-11), while
-      `test/adapters/claude/recents.test.ts` nests the table directly in `<main>`. The test pins
-      the fixture's shape rather than the measured one.
-- [ ] [FEAT] Claude sets neither `projectToolbarButtonClass` nor `recentsToolbarButtonClass`, so
-      both native list triggers render as unstyled default browser buttons — the conversation
-      toolbar gets `toolbarButtonClass`, these do not. Pre-existing; a `product-evaluator` item
-      before a Web Store release.
-- [ ] [FIX] The `/recents` walk aborts the whole enumeration when a row transiently renders with
+- [ ] *(deferred: `/recents` measured non-paging and fully rendered at 26 rows on 2026-08-11, so this loop barely turns; revisit if a paging `/recents` is observed)*
+      [FIX] The `/recents` walk aborts the whole enumeration when a row transiently renders with
       no anchor, because it re-enters `listRecentsConversations` each round. That is the fail-loud
       direction and matches the row contract, but it is more brittle than the sidebar loader, which
-      skips unreadable anchors. Revisit if a paging `/recents` is ever observed.
+      skips unreadable anchors.
 - [ ] *(blocked by: needs a ja-JP or zh UI account — the measuring account is ko-KR only)*
       [VERIFY] Measure the artifact card's kind separator outside ko-KR. `artifactFormatToken`
       accepts U+00B7, U+30FB and U+2022 and passes any other shape through verbatim, so a different
       dot cannot break an export — but only U+00B7 is measured, and confirming the others would let
       the accepted set be narrowed back to what Claude actually renders.
-- [ ] [FIX] `returnToRecents` fires `history.back()` once and then polls for 15 s, so a member whose
-      open leaves two history entries (a post-load URL rewrite or a redirect) stalls the full
-      timeout, is skipped, and rewinds the stack one extra step. Same shape as the shipped project
-      track, so not new — but now duplicated on a second code path.
 - [ ] *(blocked by: needs an account holding zero conversations — the measuring account holds 26)*
       [FIX] `/recents` on a brand-new account takes the loud branch, so a user with no
       conversations could be shown a markup-drift error instead of an empty state. Unlike the
       project track there is no measured shell marker for `/recents` to separate the two.
+
+### QA follow-ups on the track attribute + history rewind (2026-08-11)
+
+> Non-blocking observations from the independent QA of the sprint that closed five items in the
+> group above. Both are missing coverage for a branch that sprint added, not defects in it.
+
+- [ ] [TEST] The already-on-route path's "fires zero `back()` calls" guarantee is pinned only by
+      tests with a 200 ms timeout — below the 3000 ms `RETURN_BACK_RETRY_MS` threshold — so they
+      would stay green even if `rewind` were wrongly set on that path. The guarantee currently
+      rests on `rewind` staying `null`. Add a case that runs past the retry threshold.
+- [ ] [TEST] An unstamped legacy container (no `data-prompt-vault-track`) is treated as stale by
+      design, documented at `src/content/mount.ts:635-638`, but no test asserts it. One case
+      would pin the doc comment.
 
 ### PR #61 (Claude navigation/stream failure modes, 2026-08-10)
 

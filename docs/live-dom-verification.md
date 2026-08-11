@@ -745,8 +745,12 @@ Same session. Conversation URLs are `claude.ai/chat/<uuid>`. Facts the adapter d
   text-primary aria-pressed:text-accent px-md
   ```
 
-  The adapter uses a subset (dropping `px-md`, a *labeled* control's padding, plus the
-  `disabled:`/`aria-*` state variants). A class string is the one kind of captured value nothing
+  The adapter uses two subsets of this one capture. `TOOLBAR_BUTTON_CLASS` (the conversation
+  header's icon-only export buttons) drops exactly `px-md` — a *labeled* control's padding — and
+  `aria-pressed:text-accent`, a toggle style; every other token, `disabled:` variants included, is
+  kept. `LIST_TOOLBAR_BUTTON_CLASS` (the project / `/recents` "Download all" triggers) keeps
+  `px-md`, since those buttons ARE labeled, and drops only `aria-pressed:text-accent`. A class
+  string is the one kind of captured value nothing
   type-checks, and an embellished token would surface only as unstyled buttons on the live page —
   so `test/adapters/claude/toolbar-mount.test.ts` pins every token of `toolbarButtonClass` to the
   fixture's reproduction of this string. Keep the fixture's copy FULL; abbreviating it turns that

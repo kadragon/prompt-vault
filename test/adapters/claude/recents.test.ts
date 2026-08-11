@@ -19,18 +19,23 @@ function docAt(url: string, html: string): Document {
   return window.document as unknown as Document;
 }
 
-// The measured `/recents` shape (2026-08-11): one `main table` carrying `data-cds="Table"`, one
-// chat anchor per row. The third row repeats the first conversation's id to pin the dedupe.
+// The measured `/recents` shape (2026-08-11, docs/live-dom-verification.md): `main` carries
+// `[data-testid="page-header"]` and the conversation table sits inside a plain `div` whose only
+// child is the table — so the trigger's mount is that `div`, not `main`. One `data-cds="Table"`,
+// one chat anchor per row; the third row repeats the first conversation's id to pin the dedupe.
 const RECENTS = `
   <body>
     <main>
-      <table data-cds="Table">
-        <tbody>
-          <tr class="group/cdsrow"><td><a href="/chat/aaa" aria-label="First recent chat">First recent chat</a></td></tr>
-          <tr class="group/cdsrow"><td><a href="/chat/bbb">Second recent chat</a></td></tr>
-          <tr class="group/cdsrow"><td><a href="/chat/aaa?from=duplicate" aria-label="First recent chat">First recent chat</a></td></tr>
-        </tbody>
-      </table>
+      <div data-testid="page-header">Recents</div>
+      <div>
+        <table data-cds="Table">
+          <tbody>
+            <tr class="group/cdsrow"><td><a href="/chat/aaa" aria-label="First recent chat">First recent chat</a></td></tr>
+            <tr class="group/cdsrow"><td><a href="/chat/bbb">Second recent chat</a></td></tr>
+            <tr class="group/cdsrow"><td><a href="/chat/aaa?from=duplicate" aria-label="First recent chat">First recent chat</a></td></tr>
+          </tbody>
+        </table>
+      </div>
     </main>
   </body>`;
 
@@ -68,10 +73,13 @@ describe('claudeAdapter.listRecentsConversations', () => {
   });
 
   it('uses the measured table parent as the trigger mount', () => {
-    // Measured 2026-08-11: the table's parent is a plain container whose only child is the
-    // table — the same mount shape the project trigger already uses.
+    // Measured 2026-08-11: the table's parent is a plain `div` whose only child is the table —
+    // the same mount shape the project trigger already uses. `main` holds a page header beside
+    // it, so resolving to `main` would put the trigger somewhere the measurement never showed.
     const doc = docAt(RECENTS_URL, RECENTS);
-    expect(claudeAdapter.recentsToolbarMount?.(doc)?.tagName).toBe('MAIN');
+    const mount = claudeAdapter.recentsToolbarMount?.(doc);
+    expect(mount?.tagName).toBe('DIV');
+    expect(mount?.firstElementChild?.tagName).toBe('TABLE');
   });
 
   it('fails loud when a measured row has no chat anchor', () => {

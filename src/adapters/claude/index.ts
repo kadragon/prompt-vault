@@ -53,6 +53,17 @@ const NAV_STABLE_ROUNDS = 3;
 const NAV_ABSOLUTE_MAX_STEPS = 400;
 const OPEN_POLL_MS = 150;
 const OPEN_TIMEOUT_MS = 15000;
+// How long a return-to-list poll waits for one `history.back()` to land before rewinding
+// another entry. A single `back()` assumes the member's open left exactly one history entry;
+// a post-load URL rewrite or a redirect leaves two, and the poll would then burn the whole
+// `OPEN_TIMEOUT_MS` on a target it can never reach. Sized well above the measured restore
+// (`history.back()` re-rendered `/recents` with all 26 rows in 151 ms, 2026-08-11), so a merely
+// slow SPA restore is never mistaken for a short rewind.
+const RETURN_BACK_RETRY_MS = 3000;
+// Total `back()` calls one return may make, retry included. Bounded because every extra step is
+// a guess: past the entry the open actually pushed, rewinding further walks the user's own
+// history. Three keeps the worst case one step beyond the two-entry shape this exists for.
+const MAX_RETURN_BACK_STEPS = 3;
 // The middle dot Claude renders between an artifact card's localized name and its format token
 // (`문서 · MD`, `코드 · JSX`, measured 2026-08-10). U+00B7 is the one actually measured; U+30FB
 // (the CJK/katakana middle dot) and U+2022 (bullet) are accepted alongside it because only a ko-KR
@@ -90,6 +101,14 @@ const TOOLBAR_BUTTON_CLASS =
   '[&:disabled:not([aria-busy])]:opacity-50 disabled:pointer-events-none ' +
   'transition-shadow duration-fast focus-visible:shadow-focus text-primary';
 
+// The same captured Share-button tokens for the project / `/recents` "Download all" triggers,
+// plus `px-md` — which the capture DOES carry and which the icon-only toolbar buttons drop only
+// because it is a *labeled* control's horizontal padding (docs/live-dom-verification.md →
+// 2026-07-25 → Native button classes). These triggers ARE labeled ("Download all"), so the
+// padding applies to them. `aria-pressed:text-accent` stays excluded for both: neither button is
+// a toggle. No token here is absent from the capture (AGENTS.md #5).
+const LIST_TOOLBAR_BUTTON_CLASS = `${TOOLBAR_BUTTON_CLASS} px-md`;
+
 /**
  * Claude adapter. Optional navigation members are limited to the measured sidebar,
  * Project-home and `/recents` DOM surfaces. The content layer gates each shared control on
@@ -111,12 +130,14 @@ export const claudeAdapter: ConversationAdapter = {
   openProjectConversation,
   openProjectHome,
   projectToolbarMount,
+  projectToolbarButtonClass: LIST_TOOLBAR_BUTTON_CLASS,
   matchesRecents,
   listRecentsConversations,
   openRecentsConversation,
   loadMoreRecentsConversations,
   openRecentsHome,
   recentsToolbarMount,
+  recentsToolbarButtonClass: LIST_TOOLBAR_BUTTON_CLASS,
 };
 
 /**
@@ -560,18 +581,45 @@ async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeo
   // there pops to the PREVIOUS entry — a `/chat/<id>` route — and the wait below would then
   // poll for a home the call itself just abandoned. A home whose table is still hydrating only
   // needs waiting out.
+  // Set only when a rewind was actually owed, so the already-there case still fires no `back()`
+  // at all — and cannot start retrying one either.
+  let rewind: (() => void) | null = null;
+  let backSteps = 0;
+  let lastBackAt = 0;
   if (currentPageUrlPath() !== homePath) {
     const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
     if (!historyObject?.back) {
       throw new ExtractionError('Could not return to the Claude project home: browser history is unavailable. It was skipped.');
     }
-    historyObject.back();
+    rewind = historyObject.back.bind(historyObject);
+    rewind();
+    backSteps = 1;
+    lastBackAt = Date.now();
   }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await delay(pollMs);
     if (currentPageUrlPath() === homePath && resolveProjectTable(document)) {
       return;
+    }
+    // One `back()` assumes the member's open pushed exactly one history entry. When it pushed
+    // two (a post-load URL rewrite, a redirect), the home is one further back and polling alone
+    // can never reach it — so rewind again instead of burning the rest of the timeout. Capped at
+    // `MAX_RETURN_BACK_STEPS`, since every step past the pushed entry walks the user's own history.
+    // Gated on still being OFF the home route: once `back()` has landed there, a table that is
+    // merely slow to hydrate only needs waiting out, and rewinding again would walk off the home
+    // the call just reached — turning a slow success into a timeout two entries deep in the
+    // user's history. The intermediate route this retry exists for is never the home, so the
+    // two-entry recovery is unaffected.
+    if (
+      rewind &&
+      currentPageUrlPath() !== homePath &&
+      backSteps < MAX_RETURN_BACK_STEPS &&
+      Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS
+    ) {
+      rewind();
+      backSteps++;
+      lastBackAt = Date.now();
     }
   }
   throw new ExtractionError('Timed out returning to the Claude project home. It may be loading slowly; it was skipped.');
@@ -743,6 +791,11 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
   // Only navigate when the page actually left `/recents`. Firing `back()` while already there
   // pops to the PREVIOUS entry — a `/chat/<id>` route — and the wait below would then poll for a
   // page the call itself just abandoned. A list still hydrating only needs waiting out.
+  // Set only when a rewind was actually owed, so the already-there case still fires no `back()`
+  // at all — and cannot start retrying one either.
+  let rewind: (() => void) | null = null;
+  let backSteps = 0;
+  let lastBackAt = 0;
   if (!matchesRecents(currentPageUrl())) {
     const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
     if (!historyObject?.back) {
@@ -750,12 +803,30 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
         'Could not return to the Claude recents page: browser history is unavailable. It was skipped.',
       );
     }
-    historyObject.back();
+    rewind = historyObject.back.bind(historyObject);
+    rewind();
+    backSteps = 1;
+    lastBackAt = Date.now();
   }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await delay(pollMs);
     if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
+    // Same two-entry recovery as `returnToProjectHome`: when the open pushed a second history
+    // entry, `/recents` is one further back and polling alone never reaches it. Capped, because
+    // each step past the pushed entry rewinds the user's own history. Gated on still being off
+    // `/recents` for the same reason as the twin: a landed-but-hydrating list needs waiting out,
+    // not another rewind.
+    if (
+      rewind &&
+      !matchesRecents(currentPageUrl()) &&
+      backSteps < MAX_RETURN_BACK_STEPS &&
+      Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS
+    ) {
+      rewind();
+      backSteps++;
+      lastBackAt = Date.now();
+    }
   }
   throw new ExtractionError('Timed out returning to the Claude recents page. It may be loading slowly; it was skipped.');
 }

@@ -11,6 +11,9 @@ import {
 } from '../../src/content/mount';
 import { BULK_PANEL_ID } from '../../src/content/bulk-panel';
 import { DEFAULT_SETTINGS } from '../../src/settings/store';
+import { BULK_UNSUPPORTED_MESSAGE, EXPORT_NO_ADAPTER_MESSAGE } from '../../src/strings';
+import { chatgptAdapter } from '../../src/adapters/chatgpt';
+import { claudeAdapter } from '../../src/adapters/claude';
 
 // setToolbarSettings mutates module state; reset to the all-on default after every test so
 // the filtering cases below never leak into the syncButtons tests that assume a full toolbar.
@@ -76,18 +79,40 @@ function docWithClaudeProjectTable(): Document {
   return window.document as unknown as Document;
 }
 
-// Claude's `/recents` history page: the measured `main table` of chat links, whose parent is
-// the trigger's native mount (docs/live-dom-verification.md → Claude → 2026-08-11).
+// Claude's `/recents` history page as measured (docs/live-dom-verification.md → Claude →
+// 2026-08-11): `main` carries `[data-testid="page-header"]`, and the table of chat links sits in
+// a plain `div` whose only child it is — that `div` is the trigger's native mount.
+const CLAUDE_RECENTS_BODY =
+  '<body><main><div data-testid="page-header">Recents</div>' +
+  '<div><table data-cds="Table"><tbody>' +
+  '<tr class="group/cdsrow"><td><a href="/chat/recent-1" aria-label="First recent">First recent</a></td></tr>' +
+  '<tr class="group/cdsrow"><td><a href="/chat/recent-2" aria-label="Second recent">Second recent</a></td></tr>' +
+  '</tbody></table></div></main></body>';
+
 function docWithClaudeRecentsTable(): Document {
   const window = new Window({ url: CLAUDE_RECENTS_URL });
+  window.document.write(CLAUDE_RECENTS_BODY);
+  return window.document as unknown as Document;
+}
+
+// One app shell that satisfies all three Claude tracks at once — the header action bar plus the
+// measured list table — so a route change can be driven over a single document, as the SPA does.
+function docWithClaudeAppShell(): Document {
+  const window = new Window({ url: CLAUDE_RECENTS_URL });
   window.document.write(
-    '<body><main><table data-cds="Table"><tbody>' +
-      '<tr class="group/cdsrow"><td><a href="/chat/recent-1" aria-label="First recent">First recent</a></td></tr>' +
-      '<tr class="group/cdsrow"><td><a href="/chat/recent-2" aria-label="Second recent">Second recent</a></td></tr>' +
-      '</tbody></table></main></body>',
+    `<body><header><div data-testid="${CLAUDE_ACTIONS_ID}">` +
+      `<button data-testid="${CLAUDE_ACTIONS_ID}-share"></button></div></header>` +
+      '<main><div data-testid="page-header">Recents</div>' +
+      '<div><table data-cds="Table"><tbody><tr class="group/cdsrow"><td>' +
+      '<a href="/chat/recent-1" aria-label="First recent">First recent</a>' +
+      '</td></tr></tbody></table></div></main></body>',
   );
   return window.document as unknown as Document;
 }
+
+// Stamped on the container by every track, so a sync can tell its own mount from one left behind
+// by the page the SPA just navigated away from.
+const TRACK_ATTR = 'data-prompt-vault-track';
 
 describe('syncButtons', () => {
   it('injects the buttons inside the header bar on a conversation page', () => {
@@ -360,7 +385,10 @@ describe('syncButtons on Claude’s /recents history page', () => {
     syncButtons(doc, CLAUDE_RECENTS_URL);
 
     const container = doc.getElementById(CONTAINER_ID);
-    expect(container?.parentElement?.tagName).toBe('MAIN');
+    // The measured mount is the table's own `div` wrapper, not `main` — which also holds the
+    // page header, so mounting there would put the trigger above a heading instead of the list.
+    expect(container?.parentElement?.tagName).toBe('DIV');
+    expect(container?.nextElementSibling?.tagName).toBe('TABLE');
     expect(container?.querySelectorAll('button').length).toBe(1);
     // The whole point of the separate track: on `/recents` the trigger covers the entire
     // history, so announcing it as "this project" would be wrong.
@@ -415,15 +443,7 @@ describe('syncButtons on Claude’s /recents history page', () => {
     // cosmetic. Driven exactly as the bootstrap does it (src/content/index.ts: on an href
     // change, drop the previous page's container, then sync), because that removal is what
     // keeps a stale track's trigger from being re-positioned into the new page's mount.
-    const window = new Window({ url: CLAUDE_RECENTS_URL });
-    window.document.write(
-      `<body><header><div data-testid="${CLAUDE_ACTIONS_ID}">` +
-        `<button data-testid="${CLAUDE_ACTIONS_ID}-share"></button></div></header>` +
-        '<main><table data-cds="Table"><tbody><tr class="group/cdsrow"><td>' +
-        '<a href="/chat/recent-1" aria-label="First recent">First recent</a>' +
-        '</td></tr></tbody></table></main></body>',
-    );
-    const doc = window.document as unknown as Document;
+    const doc = docWithClaudeAppShell();
 
     const step = (href: string): Element | null => {
       removeButtons(doc);
@@ -438,14 +458,167 @@ describe('syncButtons on Claude’s /recents history page', () => {
     expect(conversation?.querySelectorAll('button').length).toBe(5);
 
     const recents = step(CLAUDE_RECENTS_URL);
-    expect(recents?.parentElement?.tagName).toBe('MAIN');
+    expect(recents?.parentElement?.tagName).toBe('DIV');
     expect(recents?.querySelector('button')?.getAttribute('aria-label')).toBe('Download all recent conversations');
 
     const project = step(CLAUDE_PROJECT_URL);
-    expect(project?.parentElement?.tagName).toBe('MAIN');
+    expect(project?.parentElement?.tagName).toBe('DIV');
     expect(project?.querySelector('button')?.getAttribute('aria-label')).toBe(
       'Download all conversations in this project',
     );
+  });
+
+  it('drops a stale track’s container itself, with syncButtons as the only call', () => {
+    // The invariant the test above cannot state: the three tracks share `CONTAINER_ID`, and
+    // `syncButtons` — not the bootstrap's `removeButtons` ordering — is what keeps the previous
+    // page's trigger from being re-positioned into the new page's mount. So this drives the hops
+    // through `syncButtons` ALONE, exactly as the navigation poll would with that line deleted.
+    const doc = docWithClaudeAppShell();
+
+    const step = (href: string): Element | null => {
+      syncButtons(doc, href);
+      expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
+      return doc.getElementById(CONTAINER_ID);
+    };
+
+    const conversation = step(CLAUDE_CONV_URL);
+    expect(conversation?.getAttribute(TRACK_ATTR)).toBe('conversation');
+    expect(conversation?.parentElement?.getAttribute('data-testid')).toBe(CLAUDE_ACTIONS_ID);
+    expect(conversation?.querySelectorAll('button').length).toBe(5);
+
+    const recents = step(CLAUDE_RECENTS_URL);
+    expect(recents?.getAttribute(TRACK_ATTR)).toBe('recents');
+    // Mounted into the table's wrapper `div`, and as a fresh single-button trigger — not the
+    // conversation toolbar carried over from the previous route.
+    expect(recents?.parentElement?.tagName).toBe('DIV');
+    expect(recents?.nextElementSibling?.tagName).toBe('TABLE');
+    expect(recents?.querySelectorAll('button').length).toBe(1);
+    expect(recents?.querySelector('button')?.getAttribute('aria-label')).toBe('Download all recent conversations');
+
+    const project = step(CLAUDE_PROJECT_URL);
+    expect(project?.getAttribute(TRACK_ATTR)).toBe('project');
+    expect(project?.parentElement?.tagName).toBe('DIV');
+    expect(project?.querySelectorAll('button').length).toBe(1);
+    expect(project?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Download all conversations in this project',
+    );
+  });
+});
+
+// Every bulk trigger is fail-loud (AGENTS.md #4): a click that cannot be serviced must say so
+// visibly and open nothing, rather than showing an empty panel. The three `open*BulkExport`
+// functions are module-private, so each case is driven the way a user reaches them — mount the
+// trigger through `syncButtons`, then click its button. `alert` is stubbed on `globalThis`
+// because that is what the bare call resolves against, not the per-test happy-dom window.
+describe('bulk-export triggers when the click cannot be serviced', () => {
+  const NO_ADAPTER_LOCATION = { href: 'https://example.com/', origin: 'https://example.com', pathname: '/' };
+
+  function stubAlert(): ReturnType<typeof vi.fn> {
+    const alerts = vi.fn();
+    vi.stubGlobal('alert', alerts);
+    return alerts;
+  }
+
+  /**
+   * Temporarily remove one of an adapter's paired bulk members and return the restore. Deleting
+   * the member (rather than loosening the content layer's gate) is what makes the *unsupported*
+   * branch reachable at all: every track renders its trigger only when the pair is present, so
+   * the pair can only go missing between mount and click.
+   */
+  function suppressMember(adapter: object, key: string): () => void {
+    const bag = adapter as Record<string, unknown>;
+    const original = bag[key];
+    delete bag[key];
+    return () => {
+      bag[key] = original;
+    };
+  }
+
+  it('reports no adapter when the conversation toolbar’s bulk icon is clicked off a known page', () => {
+    const doc = docWithClaudeHeader();
+    syncButtons(doc, CLAUDE_CONV_URL);
+    const alerts = stubAlert();
+    vi.stubGlobal('location', NO_ADAPTER_LOCATION);
+
+    doc.getElementById(CONTAINER_ID)?.querySelectorAll('button')[4]?.click();
+
+    expect(alerts).toHaveBeenCalledWith(EXPORT_NO_ADAPTER_MESSAGE);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('reports an unsupported bulk track when the sidebar members go missing after mount', () => {
+    const doc = docWithClaudeHeader();
+    syncButtons(doc, CLAUDE_CONV_URL); // mounted with both members present, so the icon renders
+    const alerts = stubAlert();
+    vi.stubGlobal('location', { href: CLAUDE_CONV_URL, origin: 'https://claude.ai', pathname: '/chat/abc-123' });
+
+    const restore = suppressMember(claudeAdapter, 'listConversations');
+    try {
+      doc.getElementById(CONTAINER_ID)?.querySelectorAll('button')[4]?.click();
+    } finally {
+      restore();
+    }
+
+    expect(alerts).toHaveBeenCalledWith(BULK_UNSUPPORTED_MESSAGE);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('reports no adapter when the project trigger is clicked off a known project page', () => {
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+    const alerts = stubAlert();
+    vi.stubGlobal('location', NO_ADAPTER_LOCATION);
+
+    doc.getElementById(CONTAINER_ID)?.querySelector('button')?.click();
+
+    expect(alerts).toHaveBeenCalledWith(EXPORT_NO_ADAPTER_MESSAGE);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('reports an unsupported bulk track when the project members go missing after mount', () => {
+    const doc = docWithProjectSection();
+    syncButtons(doc, PROJECT_URL);
+    const alerts = stubAlert();
+    vi.stubGlobal('location', { href: PROJECT_URL, origin: 'https://chatgpt.com', pathname: '/g/g-p-abc123/project' });
+
+    const restore = suppressMember(chatgptAdapter, 'openProjectConversation');
+    try {
+      doc.getElementById(CONTAINER_ID)?.querySelector('button')?.click();
+    } finally {
+      restore();
+    }
+
+    expect(alerts).toHaveBeenCalledWith(BULK_UNSUPPORTED_MESSAGE);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('reports no adapter when the recents trigger is clicked off a known history page', () => {
+    const doc = docWithClaudeRecentsTable();
+    syncButtons(doc, CLAUDE_RECENTS_URL);
+    const alerts = stubAlert();
+    vi.stubGlobal('location', NO_ADAPTER_LOCATION);
+
+    doc.getElementById(CONTAINER_ID)?.querySelector('button')?.click();
+
+    expect(alerts).toHaveBeenCalledWith(EXPORT_NO_ADAPTER_MESSAGE);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('reports an unsupported bulk track when the recents members go missing after mount', () => {
+    const doc = docWithClaudeRecentsTable();
+    syncButtons(doc, CLAUDE_RECENTS_URL);
+    const alerts = stubAlert();
+    vi.stubGlobal('location', { href: CLAUDE_RECENTS_URL, origin: 'https://claude.ai', pathname: '/recents' });
+
+    const restore = suppressMember(claudeAdapter, 'openRecentsConversation');
+    try {
+      doc.getElementById(CONTAINER_ID)?.querySelector('button')?.click();
+    } finally {
+      restore();
+    }
+
+    expect(alerts).toHaveBeenCalledWith(BULK_UNSUPPORTED_MESSAGE);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
   });
 });
 
