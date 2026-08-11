@@ -67,6 +67,10 @@
     "message": "Download all conversations in this project",
     "description": "Accessible name for the project bulk-download trigger."
   },
+  "downloadRecentsBulkAriaLabel": {
+    "message": "Download all recent conversations",
+    "description": "Accessible name for the bulk-download trigger on the full history page."
+  },
   "bulkPanelTitle": {
     "message": "Export multiple conversations",
     "description": "Title of the bulk-export selection panel."

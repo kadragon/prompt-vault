@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isConversationPage, isProjectPage } from '../../src/content/page';
+import { isConversationPage, isProjectPage, isRecentsPage } from '../../src/content/page';
 
 describe('isConversationPage', () => {
   it('accepts a ChatGPT conversation URL', () => {
@@ -58,5 +58,31 @@ describe('isProjectPage', () => {
 
   it('rejects malformed input', () => {
     expect(isProjectPage('not a url')).toBe(false);
+  });
+
+  // The three gates are mutually exclusive by construction, which is what lets `syncButtons`
+  // pick one branch per route.
+  it('does not claim Claude’s history page', () => {
+    expect(isProjectPage('https://claude.ai/recents')).toBe(false);
+  });
+});
+
+describe('isRecentsPage', () => {
+  it('accepts Claude’s measured history page, with or without a trailing slash', () => {
+    expect(isRecentsPage('https://claude.ai/recents')).toBe(true);
+    expect(isRecentsPage('https://claude.ai/recents/')).toBe(true);
+  });
+
+  it('rejects Claude routes handled by the other two gates', () => {
+    expect(isRecentsPage('https://claude.ai/chat/abc-123')).toBe(false);
+    expect(isRecentsPage('https://claude.ai/project/abc-123')).toBe(false);
+  });
+
+  it('rejects providers with no history page, look-alike hosts and malformed input', () => {
+    // ChatGPT and Gemini omit `matchesRecents`, so no provider claims another's `/recents`.
+    expect(isRecentsPage('https://chatgpt.com/recents')).toBe(false);
+    expect(isRecentsPage('https://gemini.google.com/recents')).toBe(false);
+    expect(isRecentsPage('https://claude.ai.attacker.example/recents')).toBe(false);
+    expect(isRecentsPage('not a url')).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { pickAdapter, pickProjectAdapter } from '../adapters';
+import { pickAdapter, pickProjectAdapter, pickRecentsAdapter } from '../adapters';
 import type { ConversationAdapter } from '../adapters';
 import type { SidebarConversation } from '../core/sidebar';
 import { ExtractionError } from '../core/errors';
@@ -19,11 +19,12 @@ import {
   DOWNLOAD_PDF_LABEL,
   DOWNLOAD_PROJECT_BULK_ARIA_LABEL,
   DOWNLOAD_PROJECT_BULK_LABEL,
+  DOWNLOAD_RECENTS_BULK_ARIA_LABEL,
   EXPORT_FAILED_MESSAGE,
   EXPORT_NO_ADAPTER_MESSAGE,
 } from '../strings';
 import { assertConversationNonEmpty } from './guard';
-import { isConversationPage, isProjectPage } from './page';
+import { isConversationPage, isProjectPage, isRecentsPage } from './page';
 import { DEFAULT_SETTINGS, FORMAT_KEYS, type ToolbarSettings } from '../settings/store';
 
 // Which toolbar controls to render. Defaults to everything-on so the toolbar matches the
@@ -284,14 +285,42 @@ export function createProjectTrigger(
   placement: 'native' | 'overlay',
   buttonClass?: string,
 ): HTMLDivElement {
+  return createBulkTrigger(doc, placement, buttonClass, DOWNLOAD_PROJECT_BULK_ARIA_LABEL, () =>
+    openProjectBulkExport(doc),
+  );
+}
+
+/**
+ * The same trigger for a provider's full-history page (Claude's `/recents`), which is the whole
+ * conversation list rather than one project's. Identical chrome to `createProjectTrigger` — only
+ * the accessible name differs, since "this project" would be wrong here — and it opens the panel
+ * through the recents track.
+ */
+export function createRecentsTrigger(
+  doc: Document,
+  placement: 'native' | 'overlay',
+  buttonClass?: string,
+): HTMLDivElement {
+  return createBulkTrigger(doc, placement, buttonClass, DOWNLOAD_RECENTS_BULK_ARIA_LABEL, () =>
+    openRecentsBulkExport(doc),
+  );
+}
+
+function createBulkTrigger(
+  doc: Document,
+  placement: 'native' | 'overlay',
+  buttonClass: string | undefined,
+  ariaLabel: string,
+  onClick: () => void,
+): HTMLDivElement {
   const container = doc.createElement('div');
   container.id = CONTAINER_ID;
   container.setAttribute(PLACEMENT_ATTR, placement);
 
   const button = doc.createElement('button');
   button.type = 'button';
-  button.setAttribute('aria-label', DOWNLOAD_PROJECT_BULK_ARIA_LABEL);
-  button.title = DOWNLOAD_PROJECT_BULK_ARIA_LABEL;
+  button.setAttribute('aria-label', ariaLabel);
+  button.title = ariaLabel;
 
   if (placement === 'native') {
     // Right-align the trigger at the top of the conversation-list section.
@@ -306,6 +335,8 @@ export function createProjectTrigger(
     const inner = doc.createElement('div');
     Object.assign(inner.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' });
     inner.appendChild(bulkIcon(doc));
+    // One visible label ("Download all") for every track that mounts this trigger; the track is
+    // distinguished by the accessible name above, not by re-wording the button.
     const label = doc.createElement('span');
     label.textContent = DOWNLOAD_PROJECT_BULK_LABEL;
     inner.appendChild(label);
@@ -339,7 +370,7 @@ export function createProjectTrigger(
     button.appendChild(label);
   }
 
-  button.addEventListener('click', () => openProjectBulkExport(doc));
+  button.addEventListener('click', onClick);
   container.appendChild(button);
   return container;
 }
@@ -453,6 +484,40 @@ function openProjectBulkExport(doc: Document): void {
   });
 }
 
+/**
+ * Open the same selection panel on a provider's full-history page, wired to the adapter's
+ * recents enumeration and navigation. Fail-loud like `openBulkExport`. After the batch the user
+ * is returned to the history page. Separate from `openBulkExport` because the history sidebar
+ * and the history PAGE are different DOM surfaces with different navigation: the sidebar track
+ * opens conversations from a persistent aside, this one returns to `/recents` between members.
+ */
+function openRecentsBulkExport(doc: Document): void {
+  if (exportInFlight) return;
+  const adapter = pickRecentsAdapter(location.href);
+  if (!adapter) {
+    alert(EXPORT_NO_ADAPTER_MESSAGE);
+    return;
+  }
+  if (!adapter.listRecentsConversations || !adapter.openRecentsConversation) {
+    alert(BULK_UNSUPPORTED_MESSAGE);
+    return;
+  }
+
+  driveBulkPanel(doc, adapter, {
+    list: () => adapter.listRecentsConversations!(doc),
+    open: (url) => adapter.openRecentsConversation!(url),
+    // Back to the history page the run started from; best-effort, so a provider without it is fine.
+    returnToStart: (startUrl) => adapter.openRecentsHome?.(startUrl) ?? Promise.resolve(),
+    // "Load more": walk the history page's list, accumulating across rounds. `onIncomplete` IS
+    // forwarded here (unlike the project track): the provider's "the whole list is rendered at
+    // once" evidence was measured on a small account, so a walk that gives up while rows are
+    // still appearing must be surfaced rather than presented as complete (AGENTS.md #4).
+    loadMore: adapter.loadMoreRecentsConversations
+      ? (onProgress, onIncomplete) => adapter.loadMoreRecentsConversations!(doc, { onProgress, onIncomplete })
+      : undefined,
+  });
+}
+
 /** The track-specific pieces the shared bulk driver needs (enumerate / open / return). */
 interface BulkTrack {
   list: () => SidebarConversation[];
@@ -548,6 +613,8 @@ export function syncButtons(doc: Document, href: string, { allowOverlayFallback 
     syncConversationButtons(doc, href, allowOverlayFallback);
   } else if (isProjectPage(href)) {
     syncProjectTrigger(doc, href, allowOverlayFallback);
+  } else if (isRecentsPage(href)) {
+    syncRecentsTrigger(doc, href, allowOverlayFallback);
   } else {
     removeButtons(doc);
   }
@@ -597,16 +664,53 @@ function syncConversationButtons(doc: Document, href: string, allowOverlayFallba
  * rather than a header bar with a Share anchor.
  */
 function syncProjectTrigger(doc: Document, href: string, allowOverlayFallback: boolean): void {
+  const adapter = pickProjectAdapter(href);
+  syncListTrigger(doc, allowOverlayFallback, {
+    resolveMount: () => adapter?.projectToolbarMount?.(doc) ?? null,
+    buttonClass: adapter?.projectToolbarButtonClass,
+    create: createProjectTrigger,
+  });
+}
+
+/**
+ * Mount/refresh the full-history page's "Download all" trigger. Same shape as the project
+ * trigger — only the adapter members and the trigger's accessible name differ.
+ */
+function syncRecentsTrigger(doc: Document, href: string, allowOverlayFallback: boolean): void {
+  const adapter = pickRecentsAdapter(href);
+  syncListTrigger(doc, allowOverlayFallback, {
+    resolveMount: () => adapter?.recentsToolbarMount?.(doc) ?? null,
+    buttonClass: adapter?.recentsToolbarButtonClass,
+    create: createRecentsTrigger,
+  });
+}
+
+/** The per-track pieces `syncListTrigger` varies over. */
+interface ListTriggerSpec {
+  /**
+   * Deferred, not a resolved element: this runs on every navigation poll tick, and with the
+   * bulk setting off the trigger is never mounted — so the adapter's DOM query must not be
+   * paid at all in that case.
+   */
+  resolveMount: () => Element | null;
+  buttonClass: string | undefined;
+  create: (doc: Document, placement: 'native' | 'overlay', buttonClass?: string) => HTMLDivElement;
+}
+
+function syncListTrigger(
+  doc: Document,
+  allowOverlayFallback: boolean,
+  { resolveMount, buttonClass, create }: ListTriggerSpec,
+): void {
   // The "bulk" toolbar setting governs bulk-export UI overall; when the user has turned
-  // it off, hide the project trigger too (not just the per-conversation bulk icon), so the
+  // it off, hide this trigger too (not just the per-conversation bulk icon), so the
   // setting behaves consistently across pages rather than silently ignoring it here.
   if (!cachedSettings.bulk) {
     removeButtons(doc);
     return;
   }
 
-  const adapter = pickProjectAdapter(href);
-  const mount = adapter?.projectToolbarMount?.(doc) ?? null;
+  const mount = resolveMount();
 
   const existing = doc.getElementById(CONTAINER_ID);
   if (existing) {
@@ -623,9 +727,9 @@ function syncProjectTrigger(doc: Document, href: string, allowOverlayFallback: b
   }
 
   if (mount) {
-    mount.prepend(createProjectTrigger(doc, 'native', adapter?.projectToolbarButtonClass));
+    mount.prepend(create(doc, 'native', buttonClass));
   } else if (allowOverlayFallback) {
-    doc.body.appendChild(createProjectTrigger(doc, 'overlay'));
+    doc.body.appendChild(create(doc, 'overlay'));
   }
 }
 

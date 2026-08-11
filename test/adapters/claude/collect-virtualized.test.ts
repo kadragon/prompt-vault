@@ -414,7 +414,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
 
   it('keeps an artifact marker on its assistant row while recycling the message list', async () => {
     const turns = alternating(12);
-    turns[11] = { ...turns[11], artifact: { title: 'Pv probe artifact', kind: 'HTML' } };
+    turns[11] = { ...turns[11], artifact: { title: 'Pv probe artifact', kind: '코드 · HTML' } };
     const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
     expect(messages[11]).toEqual({
       role: 'assistant',
@@ -430,7 +430,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     const turns = alternating(12);
     turns[11] = {
       ...turns[11],
-      artifact: { title: 'Pv probe artifact', kind: 'HTML' },
+      artifact: { title: 'Pv probe artifact', kind: '코드 · HTML' },
       tiles: [{ shape: 'tile', name: 'notes.txt' }],
     };
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
@@ -440,7 +440,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
 
   it('keeps each marker kind on its own measured role when they appear separately', async () => {
     const turns = alternating(12);
-    turns[11] = { ...turns[11], artifact: { title: 'Pv probe artifact', kind: 'HTML' } };
+    turns[11] = { ...turns[11], artifact: { title: 'Pv probe artifact', kind: '코드 · HTML' } };
     turns[10] = { ...turns[10], content: '', tiles: [{ shape: 'tile', name: 'notes.txt' }] };
     const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
     expect(messages[10]).toEqual({ role: 'user', content: '[File: notes.txt]' });

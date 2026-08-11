@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { matches, matchesProject } from '../../../src/adapters/claude/matches';
+import { matches, matchesProject, matchesRecents } from '../../../src/adapters/claude/matches';
+import { pickRecentsAdapter } from '../../../src/adapters';
 
 describe('claude matches', () => {
   it('accepts a conversation page, with or without a trailing slash', () => {
@@ -56,5 +57,40 @@ describe('claude matchesProject', () => {
     expect(matchesProject('https://example.com/project/abc-123')).toBe(false);
     expect(matchesProject('https://claude.ai.attacker.example/project/abc-123')).toBe(false);
     expect(matchesProject('not a url')).toBe(false);
+  });
+});
+
+describe('claude matchesRecents', () => {
+  it('accepts the measured history page, with or without a trailing slash', () => {
+    expect(matchesRecents('https://claude.ai/recents')).toBe(true);
+    expect(matchesRecents('https://claude.ai/recents/')).toBe(true);
+  });
+
+  it('rejects look-alike hosts', () => {
+    expect(matchesRecents('https://claude.ai.attacker.example/recents')).toBe(false);
+    expect(matchesRecents('https://example.com/recents')).toBe(false);
+    expect(matchesRecents('not a url')).toBe(false);
+  });
+
+  it('rejects nested and neighbouring routes', () => {
+    // An exact path, not a prefix: nothing below `/recents` was measured, so the trigger must not
+    // be offered on a page whose table this adapter has never seen.
+    expect(matchesRecents('https://claude.ai/recents/archived')).toBe(false);
+    expect(matchesRecents('https://claude.ai/recentsly')).toBe(false);
+    expect(matchesRecents('https://claude.ai/chat/abc-123')).toBe(false);
+  });
+});
+
+describe('pickRecentsAdapter', () => {
+  it('routes Claude’s history page to the Claude adapter', () => {
+    expect(pickRecentsAdapter('https://claude.ai/recents')?.provider).toBe('claude');
+  });
+
+  it('returns null where no registered adapter claims a history page', () => {
+    // ChatGPT and Gemini omit the recents track entirely, so the trigger never mounts there.
+    expect(pickRecentsAdapter('https://chatgpt.com/recents')).toBeNull();
+    expect(pickRecentsAdapter('https://gemini.google.com/recents')).toBeNull();
+    expect(pickRecentsAdapter('https://claude.ai/chat/abc-123')).toBeNull();
+    expect(pickRecentsAdapter('not a url')).toBeNull();
   });
 });

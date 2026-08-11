@@ -94,7 +94,7 @@ describe('claudeAdapter.toolbarButtonClass', () => {
 });
 
 describe('claudeAdapter shape', () => {
-  it('implements the measured conversation, sidebar, and project members', () => {
+  it('implements the measured conversation, sidebar, project, and recents members', () => {
     // The whole member set catches a navigation method added without the live verification
     // and keeps the optional generic UI gates coupled to the provider contract.
     expect(claudeAdapter.provider).toBe('claude');
@@ -102,14 +102,20 @@ describe('claudeAdapter shape', () => {
       'extract',
       'listConversations',
       'listProjectConversations',
+      'listRecentsConversations',
       'loadMoreConversations',
+      'loadMoreRecentsConversations',
       'matches',
       'matchesProject',
+      'matchesRecents',
       'openConversation',
       'openProjectConversation',
       'openProjectHome',
+      'openRecentsConversation',
+      'openRecentsHome',
       'projectToolbarMount',
       'provider',
+      'recentsToolbarMount',
       'toolbarAnchor',
       'toolbarButtonClass',
       'toolbarMount',
