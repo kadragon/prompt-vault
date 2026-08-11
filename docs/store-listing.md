@@ -37,8 +37,8 @@ Key points:
   Your conversations never leave your browser.
 • Least privilege. It runs only on ChatGPT (chatgpt.com), Claude (claude.ai) and
   Gemini (gemini.google.com), and requests only the minimum permissions needed.
-• Nothing silently truncated. If a conversation or a conversation list cannot be read in
-  full, the extension tells you instead of saving a short file.
+• Fails loud, not short. When an export cannot be read, the extension shows an error
+  instead of downloading a half-empty file.
 • Choose your toolbar. The extension popup lets you show or hide each export format icon
   and the bulk-export icon.
 • English and Korean UI follows your browser language.
@@ -69,8 +69,8 @@ ChatGPT와 Claude는 사이드바에서도, 프로젝트 대화 목록에서도 
 • 전부 기기 안에서 처리합니다. 확장 프로그램은 어디로도 요청을 보내지 않습니다.
 • 권한은 꼭 필요한 만큼만. ChatGPT(chatgpt.com), Claude(claude.ai),
   Gemini(gemini.google.com) 세 곳에서만 동작합니다.
-• 조용히 잘린 파일은 만들지 않습니다. 대화나 목록을 끝까지 읽지 못하면 그 자리에서
-  알려 드립니다.
+• 문제가 생기면 알려 드립니다. 대화를 읽어 오지 못하면 반쪽짜리 파일을 내려받는 대신
+  오류를 띄웁니다.
 • 툴바가 번잡하면 팝업에서 필요 없는 형식 아이콘과 일괄 내보내기 아이콘을 꺼 두세요.
 • 브라우저 언어에 맞춰 한국어나 영어로 나옵니다.
 
@@ -83,11 +83,19 @@ ChatGPT와 Claude는 사이드바에서도, 프로젝트 대화 목록에서도 
 ```
 Prompt Vault has one purpose: to export the user's own AI chat conversations to local
 Markdown, PDF, JSON, or HTML files. It supports ChatGPT, Claude and Gemini. The user exports the
-open conversation or, on ChatGPT and Claude, selects a set of conversations from the
-sidebar, a project list, or the history page through the optional bulk action. The
-extension reads conversation content only in response to that user action and only to
-create local downloads.
+open conversation or, on ChatGPT and Claude, selects a set of conversations from the sidebar
+or a project list — and on Claude also from the full history page — through the optional bulk
+action. The extension reads conversation content only in response to that user action and
+only to create local downloads.
 ```
+
+**Check every quality claim against the repo's own caveats before it ships.** Listing copy and
+screenshot captions are product claims, and the code records where it cannot keep them: adapter
+doc comments (`src/adapters/gemini/index.ts` on the residual silent-truncation hazard) and open
+`backlog.md` items. This cycle produced both failure modes in one pass — a "nothing silently
+truncated" bullet the loaders explicitly disclaim, and a fidelity screenshot displaying two
+filed rendering defects. Grep the backlog and the adapter comments for the subject of any
+absolute claim; prefer "fails loud" over "never fails".
 
 ## Privacy and permission declarations
 
@@ -127,7 +135,7 @@ Data-use declarations:
 |-------|-------------|-------------------|
 | Store icon | 128×128 PNG | Ready: `public/icons/icon128.png` |
 | Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
-| Screenshots (Korean listing) | same requirement, uploaded under the `ko` locale | Ready: `assets/store/ko/screenshot-0{1..5}-*.png` — same five views, Korean UI and Korean conversation content |
+| Screenshots (Korean listing) | same requirement, uploaded under the `ko` locale | Ready: `assets/store/ko/screenshot-0{1..5}-*.png` — the same five *views*, captured separately, so the content differs (Korean UI, Korean conversations, and a different selection count in shot 2) |
 | Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
 
@@ -154,14 +162,21 @@ Shipped screenshot set (in listing order):
 
 1. `screenshot-01-chatgpt-toolbar` — ChatGPT conversation, MD/PDF/JSON/HTML/Bulk controls
    ringed in the conversation header.
-2. `screenshot-02-project-bulk-export` — the bulk panel over a ChatGPT project home with all
-   four conversations selected.
+2. `screenshot-02-project-bulk-export` — the bulk panel over a ChatGPT project home with every
+   conversation selected (four in the English capture, five in the Korean one, which was taken
+   after another demo conversation was added).
 3. `screenshot-03-claude-conversation` — the same toolbar on Claude, evidence for the
    multi-provider claim. Captioned "Same buttons on Claude", not "…and Gemini": no Gemini
    pixel is in frame, and a caption must not claim more than its own image shows.
 4. `screenshot-04-popup-settings` — the extension popup's format and bulk-icon toggles.
 5. `screenshot-05-exported-pdf` — a real exported PDF with mixed English/Korean prose and
-   code blocks, demonstrating selectable text and correctly rendered CJK glyphs.
+   code blocks, demonstrating selectable text and correctly rendered CJK glyphs. Its demo
+   conversation deliberately holds Python and shell only: the first capture used a JavaScript
+   answer and put both open PDF defects on display — the code font's ligature turned `=>` into
+   `⇒`, and an inline-code run kept its backticks (both filed in `backlog.md`). Choosing content
+   that avoids them keeps the caption true of the image, but it hides a defect that is still
+   there, so **re-capture this shot from a conversation containing `=>` once those two items
+   land** — that is the version worth shipping.
 
 **Capturing in English on a Korean machine.** macOS Chrome takes its UI language from the OS —
 there is no "display Chrome in this language" control in `chrome://settings/languages` — so
@@ -177,7 +192,8 @@ moves cover most of the frame without touching the user's own Chrome or any acco
 
 The Korean set needs none of that — it is what this machine produces untouched. Capture it
 *before* switching anything, or restore both settings first: the header order, and `dist/`'s own
-`ko` messages file. The two sets show the same five views, so a change to one is a change to both.
+`ko` messages file. The two sets cover the same five views, so a change to what a view *shows* is a change to
+both — but they are separate captures, and their conversation content and counts differ.
 
 **What that does NOT cover, measured 2026-08-11:** strings Claude renders from
 `navigator.language` stay Korean regardless of the header — in the shipped

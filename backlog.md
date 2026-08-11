@@ -30,6 +30,20 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### Store screenshot follow-ups (PR #65 review, 2026-08-11)
+
+- [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
+      [FIX] The English-listing `screenshot-03-claude-conversation.png` still shows Claude's
+      native Share control as `공유`. Claude renders that string from `navigator.language`, which
+      follows the OS UI language, so neither the `Accept-Language` reorder nor an account setting
+      moves it — see the capture notes in `docs/store-listing.md`. Re-capture once the browser can
+      be launched in English, or drop shot 3 from the English set rather than ship mixed-language
+      product chrome.
+- [ ] [FIX] Re-capture `screenshot-05-exported-pdf.png` (both locales) from a conversation that
+      contains `=>` and an inline-code run, once the two PDF rendering items below are fixed. The
+      shipped capture uses Python/shell only, which keeps the caption honest but means the shot no
+      longer exercises the two cases most likely to regress.
+
 ### PDF rendering artifacts seen while capturing store screenshots (2026-08-11)
 
 > Both were observed in a real export (`chatgpt-…-Python-and-bash-snippets-20260811.pdf`) made
