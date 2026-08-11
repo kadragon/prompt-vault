@@ -195,6 +195,46 @@ describe('Claude /recents navigation openers', () => {
     }
   });
 
+  it('stops rewinding once back() has landed on /recents, however slowly its table hydrates', async () => {
+    // The retry exists for a `back()` that lands SHORT of `/recents`. A `back()` that landed on
+    // `/recents` whose table is merely slow needs waiting out — rewinding again from there walks
+    // the user's own history and turns a slow success into a timeout.
+    vi.useFakeTimers();
+    try {
+      const { doc, state, backs } = installRecentsPage(
+        '<body><div data-index="0"><div class="standard-markdown">previous answer</div></div></body>',
+        '/chat/previous',
+      );
+      backs.onBack = () => {
+        if (backs.count > 1) {
+          // Rewound past `/recents` into the user's own history.
+          setPathname(state, '/chat/user-earlier');
+          doc.body.innerHTML = '<body><main>someone else’s page</main></body>';
+          return;
+        }
+        setPathname(state, RECENTS_PATH);
+        doc.body.innerHTML = '<main>still hydrating</main>';
+      };
+
+      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+        pollMs: 100,
+        timeoutMs: 15000,
+      });
+      // Past the 3s retry interval, so an unguarded retry has already fired by the time the
+      // table appears.
+      setTimeout(() => {
+        doc.body.innerHTML = RECENTS_TABLE;
+      }, 8000);
+      await vi.advanceTimersByTimeAsync(9000);
+
+      await settled;
+      expect(backs.count).toBe(1);
+      expect(state.pathname).toBe(RECENTS_PATH);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('waits out a hydrating /recents instead of navigating away from it', async () => {
     const { doc, state, backs } = installRecentsPage('<body><main>still hydrating</main></body>');
     setTimeout(() => {

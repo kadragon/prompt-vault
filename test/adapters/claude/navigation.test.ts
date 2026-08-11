@@ -276,6 +276,44 @@ describe('Claude navigation openers', () => {
     }
   });
 
+  it('stops rewinding once back() has landed on the project home, however slowly its table hydrates', async () => {
+    // Twin of the `/recents` case: the retry is for a `back()` that landed SHORT of the home.
+    // Once the home route is reached, a slow table only needs waiting out — rewinding again
+    // walks the user's own history and turns a slow success into a timeout.
+    vi.useFakeTimers();
+    try {
+      const { doc, state, backs } = installProjectPage(
+        '<body><div data-index="0"><div class="standard-markdown">previous answer</div></div></body>',
+      );
+      setPathname(state, '/chat/previous');
+      backs.onBack = () => {
+        if (backs.count > 1) {
+          setPathname(state, '/chat/user-earlier');
+          doc.body.innerHTML = '<main>someone else’s page</main>';
+          return;
+        }
+        setPathname(state, PROJECT_HOME_PATH);
+        doc.body.innerHTML = '<main>still hydrating</main>';
+      };
+
+      const settled = claudeAdapter.openProjectHome?.(`https://claude.ai${PROJECT_HOME_PATH}`, {
+        pollMs: 100,
+        timeoutMs: 15000,
+      });
+      setTimeout(() => {
+        doc.body.innerHTML =
+          '<main><table data-cds="Table"><tbody><tr><td><a href="/chat/next" aria-label="Next">Next</a></td></tr></tbody></table></main>';
+      }, 8000);
+      await vi.advanceTimersByTimeAsync(9000);
+
+      await settled;
+      expect(backs.count).toBe(1);
+      expect(state.pathname).toBe(PROJECT_HOME_PATH);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('waits out a hydrating project home instead of navigating away from it', async () => {
     // Already on the home route: firing `back()` here pops to the previous `/chat/<id>` entry
     // and the wait below would then poll for a home the call itself just abandoned.

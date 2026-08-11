@@ -606,7 +606,17 @@ async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeo
     // two (a post-load URL rewrite, a redirect), the home is one further back and polling alone
     // can never reach it — so rewind again instead of burning the rest of the timeout. Capped at
     // `MAX_RETURN_BACK_STEPS`, since every step past the pushed entry walks the user's own history.
-    if (rewind && backSteps < MAX_RETURN_BACK_STEPS && Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS) {
+    // Gated on still being OFF the home route: once `back()` has landed there, a table that is
+    // merely slow to hydrate only needs waiting out, and rewinding again would walk off the home
+    // the call just reached — turning a slow success into a timeout two entries deep in the
+    // user's history. The intermediate route this retry exists for is never the home, so the
+    // two-entry recovery is unaffected.
+    if (
+      rewind &&
+      currentPageUrlPath() !== homePath &&
+      backSteps < MAX_RETURN_BACK_STEPS &&
+      Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS
+    ) {
       rewind();
       backSteps++;
       lastBackAt = Date.now();
@@ -804,8 +814,15 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
     if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
     // Same two-entry recovery as `returnToProjectHome`: when the open pushed a second history
     // entry, `/recents` is one further back and polling alone never reaches it. Capped, because
-    // each step past the pushed entry rewinds the user's own history.
-    if (rewind && backSteps < MAX_RETURN_BACK_STEPS && Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS) {
+    // each step past the pushed entry rewinds the user's own history. Gated on still being off
+    // `/recents` for the same reason as the twin: a landed-but-hydrating list needs waiting out,
+    // not another rewind.
+    if (
+      rewind &&
+      !matchesRecents(currentPageUrl()) &&
+      backSteps < MAX_RETURN_BACK_STEPS &&
+      Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS
+    ) {
       rewind();
       backSteps++;
       lastBackAt = Date.now();
