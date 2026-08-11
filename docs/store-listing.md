@@ -50,34 +50,32 @@ Claude; Gemini supports single-conversation export.
 ### Description (Korean, optional listing)
 
 ```
-Prompt Vault는 AI 채팅 대화를 로컬 파일로 저장해 계정이나 클라우드 없이 영구 사본을
-보관하게 해 줍니다. 대화 데이터는 브라우저 밖으로 전송되지 않습니다.
+Prompt Vault는 AI와 나눈 대화를 내 컴퓨터에 파일로 남겨 둡니다. 계정도 클라우드도 필요
+없고, 대화 내용이 브라우저 밖으로 나가는 일도 없습니다.
 
-ChatGPT, Claude, Gemini 대화 페이지 헤더에 내보내기 버튼이 나타납니다. 클릭 한 번으로
-현재 대화를 원하는 형식으로 컴퓨터에 저장합니다.
+ChatGPT, Claude, Gemini 대화창 위쪽에 내보내기 버튼이 생깁니다. 원하는 형식을 한 번
+누르면 지금 보고 있는 대화가 그대로 파일이 됩니다.
 
-• Markdown (.md) — 제목과 코드 블록이 보존된 이식성 좋은 텍스트
-• PDF (.pdf) — 선택 가능한 텍스트, 한글/CJK 글꼴과 고정폭 코드 블록 지원
-• JSON (.json) — 구조화된 왕복 변환용 데이터
-• HTML (.html) — 어떤 브라우저에서도 열 수 있는 자체 완결 문서
+• Markdown (.md) — 제목과 코드 블록을 그대로 살린 가벼운 텍스트
+• PDF (.pdf) — 글자를 그대로 복사해 쓸 수 있고, 한글도 코드도 깨지지 않습니다
+• JSON (.json) — 다시 불러 쓰기 좋은 구조화 데이터
+• HTML (.html) — 브라우저만 있으면 바로 열리는 한 장짜리 문서
 
-여러 대화를 한 번에 저장하려면 일괄 내보내기 패널을 열고 원하는 대화를 선택한 뒤 한
-형식으로 내려받으면 됩니다. ChatGPT와 Claude에서는 사이드바와 프로젝트 대화 목록에서,
-Claude에서는 전체 기록 페이지(claude.ai/recents)에서도 사용할 수 있습니다.
+여러 개를 한꺼번에 챙기고 싶다면 일괄 내보내기 창을 열고 원하는 대화만 골라 담으세요.
+ChatGPT와 Claude는 사이드바에서도, 프로젝트 대화 목록에서도 되고, Claude는 전체 기록
+페이지(claude.ai/recents)에서도 됩니다.
 
-핵심:
-• 100% 로컬. 확장 프로그램 자체는 네트워크 요청을 하지 않으며 어떤 서버로도 대화를
-  보내지 않습니다.
-• 최소 권한. ChatGPT(chatgpt.com), Claude(claude.ai), Gemini(gemini.google.com)에서만
-  동작합니다.
-• 잘린 저장 없음. 대화나 대화 목록을 끝까지 읽지 못하면 짧은 파일을 만드는 대신 오류를
-  표시합니다.
-• 툴바 선택. 확장 프로그램 팝업에서 형식별 아이콘과 일괄 내보내기 아이콘을 표시하거나
-  숨길 수 있습니다.
-• 브라우저 언어에 따라 영어 또는 한국어 UI를 표시합니다.
+이런 점을 신경 썼습니다.
+• 전부 기기 안에서 처리합니다. 확장 프로그램은 어디로도 요청을 보내지 않습니다.
+• 권한은 꼭 필요한 만큼만. ChatGPT(chatgpt.com), Claude(claude.ai),
+  Gemini(gemini.google.com) 세 곳에서만 동작합니다.
+• 조용히 잘린 파일은 만들지 않습니다. 대화나 목록을 끝까지 읽지 못하면 그 자리에서
+  알려 드립니다.
+• 툴바가 번잡하면 팝업에서 필요 없는 형식 아이콘과 일괄 내보내기 아이콘을 꺼 두세요.
+• 브라우저 언어에 맞춰 한국어나 영어로 나옵니다.
 
-현재 지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 ChatGPT와 Claude에서
-제공되며, Gemini는 단일 대화 내보내기를 지원합니다.
+지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 ChatGPT와 Claude에서
+쓸 수 있고, Gemini는 대화를 하나씩 내보냅니다.
 ```
 
 ### Single-purpose statement (Privacy tab)
@@ -131,6 +129,16 @@ Data-use declarations:
 | Screenshots | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
 | Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
+
+**Per-locale assets.** The dashboard localizes the listing per language: description, screenshots
+and the promotional video can each differ by locale, and a localized screenshot is shown ahead of
+the global one to a viewer in that language. The **store icon, category, small promo tile and
+marquee promo tile cannot be localized** — one set serves every locale, which is why the tile's
+wordmark stays English. So the Korean listing can carry its own Korean-UI screenshot set without
+disturbing the English one; it is optional, and until it exists the English set is what Korean
+viewers see. Keep the two sets describing the same features — the store warns on localized
+metadata that changes the described feature set.
+([source](https://developer.chrome.com/docs/webstore/cws-dashboard-listing), checked 2026-08-11)
 
 Do not mock or reconstruct product screenshots. Capture the installed extension on a real,
 logged-in session, then remove or obscure account details, private conversation titles,
