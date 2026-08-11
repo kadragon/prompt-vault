@@ -4,7 +4,7 @@
     "description": "Extension display name shown in the Chrome toolbar and extensions list."
   },
   "appDesc": {
-    "message": "Back up AI chat conversations to local Markdown/PDF files. ChatGPT first.",
+    "message": "Back up ChatGPT, Claude, and Gemini chats to local Markdown, PDF, JSON, or HTML files. Nothing leaves your browser.",
     "description": "Extension description shown in the Chrome Web Store and extensions list."
   },
   "downloadMdLabel": {

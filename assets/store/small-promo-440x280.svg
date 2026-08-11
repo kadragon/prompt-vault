@@ -50,9 +50,15 @@
   </g>
 
   <!-- Prompt Vault mark, matching assets/icon.svg. -->
-  <g transform="translate(162 82)" filter="url(#shadow)">
+  <g transform="translate(162 66)" filter="url(#shadow)">
     <rect width="116" height="116" rx="25" fill="#FFFFFF"/>
     <path d="M27.188 30.813C27.188 25.808 31.245 21.75 36.25 21.75H79.75C84.755 21.75 88.813 25.808 88.813 30.813V61.625C88.813 66.63 84.755 70.688 79.75 70.688H52.563L38.063 87V70.688H36.25C31.245 70.688 27.188 66.63 27.188 61.625V30.813Z" fill="#EEF2FF"/>
     <path d="M58 36.25V56.188M58 56.188L48.031 46.219M58 56.188L67.969 46.219" stroke="#6366F1" stroke-width="6.344" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
+
+  <!-- Wordmark band: the Web Store tile must name the product, not only picture it. -->
+  <path d="M0 224H440V260C440 271.046 431.046 280 420 280H20C8.954 280 0 271.046 0 260V224Z" fill="#241566" fill-opacity="0.72"/>
+  <text x="220" y="254" text-anchor="middle" fill="#FFFFFF"
+        font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+        font-size="25" font-weight="700" letter-spacing="-0.3">Prompt Vault</text>
 </svg>
