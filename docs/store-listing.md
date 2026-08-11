@@ -126,7 +126,8 @@ Data-use declarations:
 | Asset | Requirement | Repository status |
 |-------|-------------|-------------------|
 | Store icon | 128×128 PNG | Ready: `public/icons/icon128.png` |
-| Screenshots | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
+| Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
+| Screenshots (Korean listing) | same requirement, uploaded under the `ko` locale | Ready: `assets/store/ko/screenshot-0{1..5}-*.png` — same five views, Korean UI and Korean conversation content |
 | Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
 
@@ -174,6 +175,10 @@ moves cover most of the frame without touching the user's own Chrome or any acco
   reload the unpacked extension. `dist/` is gitignored, so this never reaches a tracked file.
   Restore the file and reload again when finished.
 
+The Korean set needs none of that — it is what this machine produces untouched. Capture it
+*before* switching anything, or restore both settings first: the header order, and `dist/`'s own
+`ko` messages file. The two sets show the same five views, so a change to one is a change to both.
+
 **What that does NOT cover, measured 2026-08-11:** strings Claude renders from
 `navigator.language` stay Korean regardless of the header — in the shipped
 `screenshot-03-claude-conversation.png` the native Share control still reads `공유`. Claude has no
@@ -208,8 +213,10 @@ account name out of frame, and it removes most of the Korean nav at the same tim
 - [ ] Create or verify the Chrome Web Store developer account and complete registration payment
 - [ ] Upload `prompt-vault-v<version>.zip`
 - [ ] Paste the listing fields and select Productivity
-- [ ] Upload `public/icons/icon128.png`, the five screenshots in numbered order, and
-  `assets/store/small-promo-440x280.png`
+- [ ] Upload `public/icons/icon128.png`, the five `assets/store/screenshot-*.png` in numbered
+  order, and `assets/store/small-promo-440x280.png`
+- [ ] Add the Korean locale to the listing, paste the Korean description, and upload the five
+  `assets/store/ko/screenshot-*.png` in the same order
 - [ ] Enter the single-purpose statement and permission justifications
 - [ ] Confirm the privacy-policy URL is publicly accessible, then enter it
 - [ ] Complete data-use certifications so they match the declarations above
