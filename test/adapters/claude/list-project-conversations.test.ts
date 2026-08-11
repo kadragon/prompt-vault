@@ -113,6 +113,22 @@ describe('claudeAdapter.listProjectConversations', () => {
     expect(claudeAdapter.listProjectConversations?.(doc)).toEqual([]);
   });
 
+  it('renders an empty project that HAS knowledge documents as an empty list', () => {
+    // The shape the 2026-08-11 measurement could not see: the project measured empty held no
+    // documents, so it rendered no table at all. A project with documents and no conversations
+    // plausibly renders a document table, which `resolveProjectTable`'s first-table fallback hands
+    // back as the list — and the row contract then throws "a table row did not contain exactly one
+    // conversation link", which is the very error this fix exists to remove. Keying the empty
+    // decision on the absence of conversation LINKS rather than of a table covers both shapes.
+    const doc = docAt(
+      'https://claude.ai/cowork/project/019fee6c-e6ad-77e1-9e39-9b718ee6e400',
+      `<body>${SIDEBAR}<main><div data-testid="project-doc-upload"></div>` +
+        '<table data-cds="Table"><tbody><tr><td>project-notes.pdf</td></tr></tbody></table>' +
+        '</main></body>',
+    );
+    expect(claudeAdapter.listProjectConversations?.(doc)).toEqual([]);
+  });
+
   it('fails loud when the project home rendered but its list drifted out of a table', () => {
     // The half of the old first-table fallback worth keeping. A project WITH conversations still
     // renders links to them whatever element wraps them, so a stranded chat anchor beside a

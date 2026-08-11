@@ -168,11 +168,11 @@ describe('claudeAdapter.extract', () => {
     expect(english.messages[1].content).toBe(korean.messages[1].content);
   });
 
-  // The separator was present in every card measured (four kinds, 2026-07-29 + 2026-08-10), so a
-  // kind without one means the composition changed and the remaining text can no longer be
-  // assumed language-neutral. Falling back to it would put the localized string back into exports
-  // silently, which is the defect this fix exists to remove.
-  it('fails loud when an artifact kind is not in its measured `<name> · <format>` shape', async () => {
+  // A kind outside the measured two-part shape is passed through unchanged rather than throwing.
+  // Throwing would abort the export of the WHOLE conversation over a cosmetic token in one marker,
+  // leaving it permanently unexportable — out of all proportion, and on evidence of four cards from
+  // a single locale. Passthrough is exactly the pre-fix behaviour, so it can never be a regression.
+  it('passes an artifact kind outside its measured `<name> · <format>` shape through unchanged', async () => {
     const html =
       '<body>' +
       '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
@@ -184,12 +184,32 @@ describe('claudeAdapter.extract', () => {
       '<div class="standard-markdown"><p>the answer</p></div>' +
       '</div></div>' +
       '</body>';
-    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages[1].content).toBe('[Artifact: Pv probe artifact (문서)]\n\nthe answer');
   });
 
-  // The separator present but nothing after it is the same drift wearing a different shape; a
-  // trailing-empty split must not export `[Artifact: <title> ()]`.
-  it('fails loud when an artifact kind has a separator but no format token', async () => {
+  // The regression this guards is the opposite of a hard failure: taking the LAST segment of an
+  // arbitrary split would silently re-localize the marker the moment Claude inlines a third part,
+  // which is precisely the bug being fixed, wearing a new shape. Exactly two parts, or nothing.
+  it('does not take the trailing token when an artifact kind has more than two parts', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '<div class="text-xs line-clamp-1">코드 · JSX · 수정됨</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages[1].content).toBe('[Artifact: Pv probe artifact (코드 · JSX · 수정됨)]\n\nthe answer');
+  });
+
+  // A separator with nothing after it must not export `[Artifact: <title> ()]` — the empty token
+  // falls back to the raw kind like every other unmeasured shape.
+  it('keeps the raw kind when an artifact kind has a separator but no format token', async () => {
     const html =
       '<body>' +
       '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
@@ -201,7 +221,27 @@ describe('claudeAdapter.extract', () => {
       '<div class="standard-markdown"><p>the answer</p></div>' +
       '</div></div>' +
       '</body>';
-    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages[1].content).toBe('[Artifact: Pv probe artifact (문서 ·)]\n\nthe answer');
+  });
+
+  // The measured ko-KR dot is U+00B7, but only one locale was ever surveyed, so a ja/zh UI
+  // rendering the CJK middle dot for the same role must normalize identically rather than
+  // silently exporting a localized string.
+  it('normalizes a CJK middle dot the same way as the measured separator', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '<div class="text-xs line-clamp-1">ドキュメント・MD</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div>' +
+      '</body>';
+    const convo = await claudeAdapter.extract(docFrom(html));
+    expect(convo.messages[1].content).toBe('[Artifact: Pv probe artifact (MD)]\n\nthe answer');
   });
 
   it('fails loud when a measured artifact card has no readable kind', async () => {

@@ -47,6 +47,13 @@ continuation line is invisible to it and the blocked item is offered as actionab
       dropping the removal at `src/content/index.ts` would leave the test green while a stale
       track's trigger is re-positioned into the new page's mount. A `data-track` attribute makes
       the invariant structural.
+- [ ] *(blocked by: needs a live-DOM session on a project holding knowledge documents and zero
+      conversations — the 2026-08-11 probe project held neither)*
+      [VERIFY] Confirm what a Claude project with documents but no conversations renders. The
+      adapter now decides emptiness from the absence of conversation links in `main` rather than
+      the absence of a table, so it is correct either way — but whether such a project renders a
+      document table at all is still unmeasured, and the answer would let the row contract be
+      tightened.
 - [ ] *(blocked by: needs the same `/project/<id>` live-DOM session as the item above)*
       [FIX] A Claude project list rendered outside `<main>` would read as `[]` rather than failing
       loud. `listProjectConversations` scopes its stranded-link probe to `main a[href^="/chat/"]`
@@ -66,6 +73,15 @@ continuation line is invisible to it and the blocked item is offered as actionab
       no anchor, because it re-enters `listRecentsConversations` each round. That is the fail-loud
       direction and matches the row contract, but it is more brittle than the sidebar loader, which
       skips unreadable anchors. Revisit if a paging `/recents` is ever observed.
+- [ ] *(blocked by: needs a ja-JP or zh UI account — the measuring account is ko-KR only)*
+      [VERIFY] Measure the artifact card's kind separator outside ko-KR. `artifactFormatToken`
+      accepts U+00B7, U+30FB and U+2022 and passes any other shape through verbatim, so a different
+      dot cannot break an export — but only U+00B7 is measured, and confirming the others would let
+      the accepted set be narrowed back to what Claude actually renders.
+- [ ] [FIX] `returnToRecents` fires `history.back()` once and then polls for 15 s, so a member whose
+      open leaves two history entries (a post-load URL rewrite or a redirect) stalls the full
+      timeout, is skipped, and rewinds the stack one extra step. Same shape as the shipped project
+      track, so not new — but now duplicated on a second code path.
 - [ ] *(blocked by: needs an account holding zero conversations — the measuring account holds 26)*
       [FIX] `/recents` on a brand-new account takes the loud branch, so a user with no
       conversations could be shown a markup-drift error instead of an empty state. Unlike the

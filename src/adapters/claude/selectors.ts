@@ -209,8 +209,9 @@ export const selectors = {
    * and `코드 · JSX` were measured on this ko-KR account. Only the leading noun is translated;
    * the trailing token after the ` · ` separator is the artifact's format and is language-neutral.
    * `artifactMarkers` in `src/adapters/claude/index.ts` therefore exports only that token, so
-   * `[Artifact: <title> (MD)]` is the same string on every UI language. A kind with no separator
-   * fails loud there rather than falling back to the localized text.
+   * `[Artifact: <title> (MD)]` is the same string on every UI language. Only the exact two-part
+   * shape is normalized; any other kind is exported verbatim, which is what shipped before this
+   * and so can never be a regression. See `artifactFormatToken` for why it does not fail loud.
    */
   artifactCard: 'div[class~="group/artifact-block"]',
   artifactCell: '[class~="artifact-block-cell"]',

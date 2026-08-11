@@ -45,6 +45,28 @@ describe('claudeAdapter.listRecentsConversations', () => {
     ]);
   });
 
+  it('fails loud rather than silently shortening the list when a row anchor is unreadable', () => {
+    // `/recents` IS the completeness claim this whole track exists to make, so the shared
+    // navigation helper's skip-what-you-cannot-read degradation — right for the sidebar, which
+    // never claimed to be the full history — would turn 3 rows into 2 with no signal (AGENTS.md
+    // #4). Here the second row's anchor carries no accessible name at all.
+    const doc = docAt(
+      RECENTS_URL,
+      '<body><main><table data-cds="Table"><tbody>' +
+        '<tr class="group/cdsrow"><td><a href="/chat/aaa" aria-label="First recent chat">First recent chat</a></td></tr>' +
+        '<tr class="group/cdsrow"><td><a href="/chat/bbb"></a></td></tr>' +
+        '</tbody></table></main></body>',
+    );
+    expect(() => claudeAdapter.listRecentsConversations?.(doc)).toThrow(ExtractionError);
+  });
+
+  it('still dedupes two rows pointing at one conversation instead of calling it unreadable', () => {
+    // The completeness check above must count UNREADABLE anchors, not compare list lengths: the
+    // helper also dedupes, and a repeated conversation is a legitimately shorter list.
+    const list = claudeAdapter.listRecentsConversations?.(docAt(RECENTS_URL, RECENTS)) ?? [];
+    expect(list).toHaveLength(2);
+  });
+
   it('uses the measured table parent as the trigger mount', () => {
     // Measured 2026-08-11: the table's parent is a plain container whose only child is the
     // table — the same mount shape the project trigger already uses.

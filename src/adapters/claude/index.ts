@@ -54,8 +54,12 @@ const NAV_ABSOLUTE_MAX_STEPS = 400;
 const OPEN_POLL_MS = 150;
 const OPEN_TIMEOUT_MS = 15000;
 // The middle dot Claude renders between an artifact card's localized name and its format token
-// (`문서 · MD`, `코드 · JSX`, measured 2026-08-10). U+00B7, not the ASCII period or a bullet.
-const ARTIFACT_KIND_SEPARATOR = '·';
+// (`문서 · MD`, `코드 · JSX`, measured 2026-08-10). U+00B7 is the one actually measured; U+30FB
+// (the CJK/katakana middle dot) and U+2022 (bullet) are accepted alongside it because only a ko-KR
+// account was ever surveyed and a ja/zh UI plausibly renders a different dot for the same role.
+// Recognizing an extra separator can only normalize a kind that would otherwise pass through
+// verbatim, so the wider set has no downside — see `artifactFormatToken`.
+const ARTIFACT_KIND_SEPARATORS = /[·・•]/;
 
 // Set when the project bulk panel first enumerates its measured home table. A project run
 // opens several members sequentially; after the first click the table may be replaced by the
@@ -232,11 +236,12 @@ function requireSidebar(root: ParentNode = document): Element {
  * conversation list. The first table is still returned when none carries an anchor, so a
  * project list whose rows lost their links stays a visible failure instead of an empty list.
  *
- * Narrowing this to anchor-bearing tables only was tried and reverted: it was aimed at the empty
- * project, which 2026-08-11 measured as rendering **no** `main table` at all rather than a
- * knowledge table this could mistake for the list. It never reaches here, so the narrowing would
- * have given up the drift guard for nothing. See `listProjectConversations` for where the empty
- * project is actually distinguished.
+ * The empty project is NOT distinguished here — `listProjectConversations` does it, and it checks
+ * for stranded conversation links before it trusts this resolver's fallback. That split matters:
+ * the project measured empty on 2026-08-11 held no knowledge documents and so rendered no table at
+ * all, but a project that has documents and no conversations plausibly renders a document table
+ * this function would hand back as the list. Deciding it here would mean guessing which kind of
+ * table it is; deciding it there needs only the absence of any conversation link.
  */
 function resolveProjectTable(root: ParentNode = document): Element | null {
   const tables = Array.from(root.querySelectorAll(selectors.projectTable));
@@ -253,42 +258,44 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
   const pageUrl = ownerDocument(root)?.defaultView?.location?.href ?? '';
   const onProjectRoute = Boolean(pageUrl) && matchesProject(pageUrl);
   if (onProjectRoute) activeProjectHomeUrl = pageUrl;
+  // The EMPTY project, decided before any table is trusted. A project home that has rendered and
+  // holds no conversation link at all in `main` has no conversations — whether or not it renders a
+  // table. That "whether or not" is the point: the project measured empty on 2026-08-11 held no
+  // documents and rendered no `main table`, but a project WITH knowledge documents and no
+  // conversations plausibly renders a document table, which `resolveProjectTable`'s first-table
+  // fallback would hand back as the list and the row contract below would then reject — the exact
+  // "a table row did not contain exactly one conversation link" error this fix exists to remove,
+  // surviving in the one shape the measurement could not see. Keying on the absence of links
+  // rather than the absence of a table covers both shapes without guessing what a table holds.
+  //
+  // Scoped to `main` via `projectMainConversationLink`: document-wide this would match the app
+  // shell's `aside`, which carries up to 20 recent-chat links on every measured route, and every
+  // empty project would fail for every account that has any history at all.
+  //
+  // `projectShell` is what keeps this from swallowing an unrendered page. Measured 2026-08-11: it
+  // is present on both an empty and a populated project home, and absent on `/chat/<id>`. Reporting
+  // an unrendered page as `[]` would be the silent failure AGENTS.md #4 forbids — downstream it is
+  // the bulk panel's "no conversations" state, which a user cannot tell apart from a full project
+  // reported as empty.
+  //
+  // Residual, measured rather than assumed: on a populated project the shell appears at ~104 ms and
+  // the table plus its links at ~520 ms (2026-08-11, 4-member project, SPA navigation), so there is
+  // a ~350 ms window that looks exactly like an empty project. It is not reachable through the UI —
+  // the native trigger mounts on the table itself, and the overlay fallback waits out a 3 s grace
+  // (`src/content/index.ts`), an order of magnitude beyond the measured window. A hydration slower
+  // than that grace would report a populated project as empty; no DOM signal distinguishes the two,
+  // which is recorded in docs/live-dom-verification.md rather than papered over.
+  const homeRendered = Boolean(root.querySelector(selectors.projectShell));
+  const anyConversationLink = Boolean(root.querySelector(selectors.projectMainConversationLink));
+  if (onProjectRoute && homeRendered && !anyConversationLink) return [];
+
   const table = resolveProjectTable(root);
   if (!table) {
-    // No conversation table on a project route covers three situations, and only ONE of them is
-    // the ordinary empty project. Reporting either of the others as `[]` is the silent failure
-    // AGENTS.md #4 forbids: downstream it is the bulk panel's "no conversations" state, which a
-    // user cannot tell apart from a full project reported as empty.
-    //
-    // 1. The project home has not rendered at all — `projectShell` absent. Measured 2026-08-11:
-    //    the shell is present on both an empty and a populated project home and absent on
-    //    `/chat/<id>`, so its absence means this is not a rendered project home. Fails loud.
-    // 2. The home rendered and the list DID drift — the table markup changed but the conversation
-    //    links are still there. A conversation link left in `main` with no table around it is the
-    //    evidence: a project that has conversations still renders links to them, whatever element
-    //    now wraps them. Fails loud, which is what the pre-existing first-table fallback achieved
-    //    and what must not be given up. Scoped to `main` via `projectMainConversationLink` —
-    //    document-wide it would match the app shell's `aside`, which carries up to 20 recent-chat
-    //    links on every measured route, and every empty project would fail for every account that
-    //    has any history at all.
-    // 3. The home rendered, no table, and no conversation link anywhere — the EMPTY project. This
-    //    is the only case that returns `[]`, and it is the one that used to reach the error below
-    //    and tell every user of an empty project that Claude's markup was broken.
-    //
-    // Residual, deliberately accepted and measured rather than assumed: on a populated project the
-    // shell appears at ~104 ms and the table plus its links at ~520 ms (2026-08-11, 4-member
-    // project, SPA navigation), so there is a ~350 ms window that looks exactly like case 3. It is
-    // not reachable through the UI: the native trigger mounts on the table itself, and the overlay
-    // fallback waits out a 3 s grace (`src/content/index.ts`) — an order of magnitude beyond the
-    // measured window. A hydration slower than that grace would report a populated project as
-    // empty; no DOM signal distinguishes it, which is recorded in docs/live-dom-verification.md
-    // rather than papered over.
-    //
-    // Off a project route (a caller probing an arbitrary document) an empty list stays honest
-    // either way.
-    const homeRendered = Boolean(root.querySelector(selectors.projectShell));
-    const strandedLinks = Boolean(root.querySelector(selectors.projectMainConversationLink));
-    if (onProjectRoute && (!homeRendered || strandedLinks)) {
+    // Not the empty project (that returned above), so on a project route this is a page that has
+    // not rendered the project home, or one whose list drifted away entirely while its links are
+    // gone too. Both are markup this adapter no longer recognizes, and both fail loud. Off a
+    // project route (a caller probing an arbitrary document) an empty list stays honest.
+    if (onProjectRoute) {
       throw new ExtractionError(
         'Could not find the Claude project conversation list on a project page. ' +
           'Claude’s markup may have changed — please report this.',
@@ -643,7 +650,27 @@ function listRecentsConversations(root: ParentNode = document): SidebarConversat
     }
     links.push(rowLinks[0]);
   }
-  return collectNavigationConversations(links, documentOrigin(root), 'recents');
+  const origin = documentOrigin(root);
+
+  // `collectNavigationConversations` SKIPS an anchor it cannot read — a nested path, or a link with
+  // no accessible name — and only throws when it resolved NONE. That degradation is right for the
+  // sidebar, which never claimed to be the whole history anyway. It is wrong here: this list IS the
+  // completeness claim the entire `/recents` track exists to make, so 26 rows silently exporting as
+  // 24 is the AGENTS.md #4 failure, and it would contradict the exactly-one-anchor row contract
+  // enforced immediately above. Counted per anchor rather than by comparing list lengths, because
+  // the helper also DEDUPES: two rows pointing at one conversation is a legitimate short list, an
+  // unreadable anchor is not.
+  const unreadable = links.filter((anchor) => {
+    const href = anchor.getAttribute('href');
+    return !(href && resolveConversationHref(href, origin)) || !navigationTitle(anchor);
+  }).length;
+  if (unreadable > 0) {
+    throw new ExtractionError(
+      'Could not read every Claude conversation on the recents page: some rows’ links or titles are ' +
+        'missing. Claude’s markup may have changed — please report this.',
+    );
+  }
+  return collectNavigationConversations(links, origin, 'recents');
 }
 
 /**
@@ -1675,21 +1702,27 @@ function artifactMarkers(row: Element): string {
  * Exporting the raw string made the SAME artifact export differently per language, which is a
  * property of the reader's UI rather than of the conversation.
  *
- * A kind carrying no separator is markup drift, not a variant: the separator was present in all
- * four cards surveyed, so its absence means the composition changed and the remaining text can no
- * longer be assumed language-neutral. Guessing there would reintroduce the localized string
- * silently, so this fails loud like every other reader in `artifactMarkers` (AGENTS.md #4/#5).
+ * **Anything that is not exactly that measured two-part shape is passed through unchanged, and
+ * nothing here throws.** Two review findings shaped this, and they pull in opposite directions:
+ *
+ * - Failing loud on a kind with no separator would abort the export of the WHOLE conversation
+ *   (`artifactMarkers` → `readRowMarkers` → `extract`), leaving it permanently unexportable. That
+ *   blast radius is out of all proportion to the defect — a cosmetic token inside one marker, not
+ *   an empty or malformed conversation, which is what AGENTS.md #4 is about. The evidence is also
+ *   thin for a hard rule: four cards, one account, one locale.
+ * - Taking the LAST segment of an arbitrary split would silently re-introduce the very bug this
+ *   function removes the moment Claude inlines a third part (`코드 · JSX · 수정됨`), because that
+ *   trailing token is then localized again — silent, and therefore worse than the passthrough.
+ *
+ * Requiring exactly two parts satisfies both: the measured shape normalizes, everything else keeps
+ * today's pre-fix behaviour rather than degrading past it. A passthrough is never worse than what
+ * shipped before, so there is no silent regression to fail loud about.
  */
 function artifactFormatToken(kind: string): string {
-  const segments = kind.split(ARTIFACT_KIND_SEPARATOR);
-  const token = segments.length > 1 ? segments[segments.length - 1].trim() : '';
-  if (!token) {
-    throw new ExtractionError(
-      'Claude rendered an artifact card whose kind is not in its measured `<name> · <format>` shape. ' +
-        'The markup may have changed — please report this.',
-    );
-  }
-  return token;
+  const segments = kind.split(ARTIFACT_KIND_SEPARATORS);
+  if (segments.length !== 2) return kind;
+  const token = segments[1].trim();
+  return token || kind;
 }
 
 /**
