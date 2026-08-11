@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- [done] Store submission assets refreshed for v1.10.2 (2026-08-11) → docs/store-listing.md. The
+  listing had drifted two releases behind the code and stated two things that were false: the
+  manifest description still read "ChatGPT first" and named only Markdown/PDF, and the listing
+  copy still called bulk export "ChatGPT-only" after v1.10.0 shipped Claude's sidebar, project and
+  `/recents` tracks. Both corrected, in `_locales` and in the listing. The screenshots (captured
+  2026-07-29 against v1.7) were replaced with a five-shot set captured against v1.10.1: the
+  ChatGPT toolbar with the export controls ringed, the project bulk panel, the same toolbar on
+  Claude, the popup toggles, and a real exported PDF. Every conversation in them was created for
+  the capture inside a throwaway project and every sidebar collapsed, so no pre-existing
+  conversation title or account name appears. The small promo tile now carries the product name.
+  Capturing an English frame on a Korean machine needed two moves that are now written down —
+  `Accept-Language` reordering in the capture profile, and a temporary English `dist` locale —
+  because macOS Chrome takes `chrome.i18n` from the OS and neither is discoverable from the code.
+  The exported PDF also surfaced two rendering artifacts, both confirmed against the PDF's own
+  text layer rather than the rendered page (the layer holds `=>` and literal backticks, so the
+  substitution is the font's and the fence is the exporter's); they are filed, not fixed.
+
 - [done] Claude /recents QA follow-ups (v1.10.1) (2026-08-11) → docs/live-dom-verification.md
 - [done] Claude bulk export via /recents (v1.10.0) (2026-08-11) → docs/live-dom-verification.md
 - [done] Fail loud when a Claude project route renders no conversation table (v1.9.2) (2026-08-10)

@@ -4,7 +4,7 @@
     "description": "Extension display name shown in the Chrome toolbar and extensions list."
   },
   "appDesc": {
-    "message": "AI 채팅 대화를 로컬 Markdown/PDF 파일로 백업합니다. ChatGPT부터 지원.",
+    "message": "ChatGPT·Claude·Gemini 대화를 로컬 Markdown, PDF, JSON, HTML 파일로 백업합니다. 데이터는 브라우저 밖으로 나가지 않습니다.",
     "description": "Extension description shown in the Chrome Web Store and extensions list."
   },
   "downloadMdLabel": {

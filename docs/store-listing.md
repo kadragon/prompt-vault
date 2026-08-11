@@ -27,19 +27,24 @@ click saves the open conversation to your computer in the format you choose:
 • JSON (.json) — structured, round-trippable data
 • HTML (.html) — a self-contained document you can open in any browser
 
-Need more than one conversation? Enable the bulk-export button, choose conversations from
-the sidebar, and export the selected set in one format.
+Need more than one conversation? Open the bulk-export panel, tick the conversations you
+want, and save the whole set in one format and one run. On ChatGPT and Claude you can do
+this from the sidebar, from a project's conversation list, or — on Claude — from the full
+history page at claude.ai/recents.
 
 Key points:
 • 100% local. The extension makes no network requests and sends nothing to any server.
   Your conversations never leave your browser.
 • Least privilege. It runs only on ChatGPT (chatgpt.com), Claude (claude.ai) and
   Gemini (gemini.google.com), and requests only the minimum permissions needed.
+• Nothing silently truncated. If a conversation or a conversation list cannot be read in
+  full, the extension tells you instead of saving a short file.
 • Choose your toolbar. The extension popup lets you show or hide each export format icon
   and the bulk-export icon.
 • English and Korean UI follows your browser language.
 
-Supported providers: ChatGPT, Claude and Gemini. Bulk export is currently ChatGPT-only.
+Supported providers: ChatGPT, Claude and Gemini. Bulk export is available on ChatGPT and
+Claude; Gemini supports single-conversation export.
 ```
 
 ### Description (Korean, optional listing)
@@ -56,19 +61,23 @@ ChatGPT, Claude, Gemini 대화 페이지 헤더에 내보내기 버튼이 나타
 • JSON (.json) — 구조화된 왕복 변환용 데이터
 • HTML (.html) — 어떤 브라우저에서도 열 수 있는 자체 완결 문서
 
-여러 대화가 필요하면 일괄 내보내기 버튼을 활성화하고 사이드바에서 대화를 선택해 한
-형식으로 저장할 수 있습니다.
+여러 대화를 한 번에 저장하려면 일괄 내보내기 패널을 열고 원하는 대화를 선택한 뒤 한
+형식으로 내려받으면 됩니다. ChatGPT와 Claude에서는 사이드바와 프로젝트 대화 목록에서,
+Claude에서는 전체 기록 페이지(claude.ai/recents)에서도 사용할 수 있습니다.
 
 핵심:
 • 100% 로컬. 확장 프로그램 자체는 네트워크 요청을 하지 않으며 어떤 서버로도 대화를
   보내지 않습니다.
 • 최소 권한. ChatGPT(chatgpt.com), Claude(claude.ai), Gemini(gemini.google.com)에서만
   동작합니다.
+• 잘린 저장 없음. 대화나 대화 목록을 끝까지 읽지 못하면 짧은 파일을 만드는 대신 오류를
+  표시합니다.
 • 툴바 선택. 확장 프로그램 팝업에서 형식별 아이콘과 일괄 내보내기 아이콘을 표시하거나
   숨길 수 있습니다.
 • 브라우저 언어에 따라 영어 또는 한국어 UI를 표시합니다.
 
-현재 지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 ChatGPT에서만 제공됩니다.
+현재 지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 ChatGPT와 Claude에서
+제공되며, Gemini는 단일 대화 내보내기를 지원합니다.
 ```
 
 ### Single-purpose statement (Privacy tab)
@@ -76,9 +85,10 @@ ChatGPT, Claude, Gemini 대화 페이지 헤더에 내보내기 버튼이 나타
 ```
 Prompt Vault has one purpose: to export the user's own AI chat conversations to local
 Markdown, PDF, JSON, or HTML files. It supports ChatGPT, Claude and Gemini. The user exports the
-open conversation or, on ChatGPT, selects a set of sidebar conversations through the
-optional bulk action. The extension reads conversation content only in response to that
-user action and only to create local downloads.
+open conversation or, on ChatGPT and Claude, selects a set of conversations from the
+sidebar, a project list, or the history page through the optional bulk action. The
+extension reads conversation content only in response to that user action and only to
+create local downloads.
 ```
 
 ## Privacy and permission declarations
@@ -118,21 +128,53 @@ Data-use declarations:
 | Asset | Requirement | Repository status |
 |-------|-------------|-------------------|
 | Store icon | 128×128 PNG | Ready: `public/icons/icon128.png` |
-| Screenshots | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-{01-chatgpt-toolbar,02-settings,03-exported-pdf}.png` |
-| Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png` |
+| Screenshots | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
+| Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
 
 Do not mock or reconstruct product screenshots. Capture the installed extension on a real,
-logged-in ChatGPT session, then remove or obscure account details, private conversation
-titles, avatars, and other personal information. Keep each final image exactly 1280×800.
+logged-in session, then remove or obscure account details, private conversation titles,
+avatars, and other personal information. The shipped set was captured with the sidebar
+collapsed and every conversation created for the capture inside a throwaway
+**Prompt Vault Demo** project, so no pre-existing conversation title appears in any image.
+The caption band and the highlight ring around the toolbar icons are composited on top of
+the unmodified capture — never edit the product pixels themselves. Keep each final image
+exactly 1280×800.
 
-Recommended screenshot set:
+Shipped screenshot set (in listing order):
 
-1. Sanitized ChatGPT conversation with MD, PDF, JSON, HTML, and Bulk controls visible in
-   the conversation header.
-2. Extension popup showing format visibility and bulk-export settings.
-3. Exported PDF containing non-sensitive English/Korean text and a code block, demonstrating
-   selectable text and correctly rendered CJK glyphs.
+1. `screenshot-01-chatgpt-toolbar` — ChatGPT conversation, MD/PDF/JSON/HTML/Bulk controls
+   ringed in the conversation header.
+2. `screenshot-02-project-bulk-export` — the bulk panel over a ChatGPT project home with all
+   four conversations selected.
+3. `screenshot-03-claude-conversation` — the same toolbar on Claude, evidence for the
+   multi-provider claim. Captioned "Same buttons on Claude", not "…and Gemini": no Gemini
+   pixel is in frame, and a caption must not claim more than its own image shows.
+4. `screenshot-04-popup-settings` — the extension popup's format and bulk-icon toggles.
+5. `screenshot-05-exported-pdf` — a real exported PDF with mixed English/Korean prose and
+   code blocks, demonstrating selectable text and correctly rendered CJK glyphs.
+
+**Capturing in English on a Korean machine.** macOS Chrome takes its UI language from the OS —
+there is no "display Chrome in this language" control in `chrome://settings/languages` — so
+`chrome.i18n` resolves to `ko` and the extension's own popup and bulk panel render Korean. Two
+moves cover most of the frame without touching the user's own Chrome or any account setting:
+
+- Reorder the *capture profile's* language list so English (US) is first. That flips the
+  `Accept-Language` header, which is enough for ChatGPT's UI and for Claude's page title and
+  server-rendered strings on the next load.
+- Temporarily copy `public/_locales/en/messages.json` over `dist/_locales/ko/messages.json` and
+  reload the unpacked extension. `dist/` is gitignored, so this never reaches a tracked file.
+  Restore the file and reload again when finished.
+
+**What that does NOT cover, measured 2026-08-11:** strings Claude renders from
+`navigator.language` stay Korean regardless of the header — in the shipped
+`screenshot-03-claude-conversation.png` the native Share control still reads `공유`. Claude has no
+UI-language setting to change either (`claude.ai/settings/general`'s only language control is
+under **음성/Voice**, and it governs speech, not the interface). The remaining route is launching
+the capture browser with `--lang=en-US`, which the Playwright MCP server is not configured to
+pass; changing that is a user-scoped MCP config edit, so propose it rather than assuming it.
+Collapse the sidebar before capturing either way — it is what keeps the conversation history and
+account name out of frame, and it removes most of the Korean nav at the same time.
 
 ## Submission checklist
 
@@ -149,7 +191,7 @@ Recommended screenshot set:
 ### Live capture
 
 - [x] Use a non-sensitive demonstration conversation
-- [x] Capture three real screenshots at 1280×800
+- [x] Capture five real screenshots at 1280×800 (2026-08-11, extension v1.10.1 — no UI change in 1.10.2)
 - [x] Inspect every image for names, email addresses, avatars, sidebar history, and private text
 - [x] Confirm PDF Korean/CJK glyphs render without missing-glyph boxes
 
@@ -158,7 +200,7 @@ Recommended screenshot set:
 - [ ] Create or verify the Chrome Web Store developer account and complete registration payment
 - [ ] Upload `prompt-vault-v<version>.zip`
 - [ ] Paste the listing fields and select Productivity
-- [ ] Upload `public/icons/icon128.png`, 1–5 screenshots, and
+- [ ] Upload `public/icons/icon128.png`, the five screenshots in numbered order, and
   `assets/store/small-promo-440x280.png`
 - [ ] Enter the single-purpose statement and permission justifications
 - [ ] Confirm the privacy-policy URL is publicly accessible, then enter it
