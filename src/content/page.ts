@@ -4,7 +4,7 @@
 // provider — adding a provider is then a registry entry plus a manifest host, with
 // no edit here. Dependency direction is unchanged (content → adapters).
 
-import { pickAdapter, pickProjectAdapter } from '../adapters';
+import { pickAdapter, pickProjectAdapter, pickRecentsAdapter } from '../adapters';
 
 /**
  * True for a conversation page of ANY registered provider. Single source of truth
@@ -24,4 +24,13 @@ export function isConversationPage(url: string): boolean {
  */
 export function isProjectPage(url: string): boolean {
   return pickProjectAdapter(url) !== null;
+}
+
+/**
+ * True for the full-history list page of any registered provider that implements the recents
+ * track (Claude's `/recents` today; a provider omitting `matchesRecents` never matches). Gates
+ * the recents bulk-download trigger, parallel to `isProjectPage`.
+ */
+export function isRecentsPage(url: string): boolean {
+  return pickRecentsAdapter(url) !== null;
 }

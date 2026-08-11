@@ -23,4 +23,13 @@ export function pickProjectAdapter(url: string): ConversationAdapter | null {
   return adapters.find((adapter) => adapter.matchesProject?.(url)) ?? null;
 }
 
+/**
+ * The first adapter that handles this URL as its full-history list page, or null. Separate
+ * from both lookups above for the same reason `pickProjectAdapter` is: the history page is
+ * neither a conversation nor a project home, so neither of the other triggers mounts there.
+ */
+export function pickRecentsAdapter(url: string): ConversationAdapter | null {
+  return adapters.find((adapter) => adapter.matchesRecents?.(url)) ?? null;
+}
+
 export type { ConversationAdapter } from './types';

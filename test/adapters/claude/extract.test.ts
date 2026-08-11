@@ -132,7 +132,10 @@ describe('claudeAdapter.extract', () => {
       '<div data-index="1">' +
       '<div class="group/artifact-block"><div class="artifact-block-cell">' +
       '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
-      '<div class="text-xs line-clamp-1">HTML</div>' +
+      // The measured kind string, not a bare token: the card renders `<localized noun> · <FORMAT>`
+      // (2026-07-29 dumped `"코드"` / `"·"` / `"HTML"` as this node's text; 2026-08-10 recorded
+      // `문서 · MD` and `코드 · JSX`). Only the trailing token reaches the export.
+      '<div class="text-xs line-clamp-1">코드 · HTML</div>' +
       '</div></div>' +
       '<div class="standard-markdown"><p>the answer</p></div>' +
       '</div>' +
@@ -142,6 +145,63 @@ describe('claudeAdapter.extract', () => {
       { role: 'user', content: 'a question' },
       { role: 'assistant', content: '[Artifact: Pv probe artifact (HTML)]\n\nthe answer' },
     ]);
+  });
+
+  // The kind's leading noun is localized, so exporting the raw string made the SAME artifact
+  // export differently per UI language — a property of the reader's Claude UI, not of the
+  // conversation. Two locales, one exported marker.
+  it('exports the same artifact marker whatever the UI language localizes the kind to', async () => {
+    const rowFor = (kind: string) =>
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      `<div class="text-xs line-clamp-1">${kind}</div>` +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div>' +
+      '</body>';
+    const korean = await claudeAdapter.extract(docFrom(rowFor('문서 · MD')));
+    const english = await claudeAdapter.extract(docFrom(rowFor('Document · MD')));
+    expect(korean.messages[1].content).toBe('[Artifact: Pv probe artifact (MD)]\n\nthe answer');
+    expect(english.messages[1].content).toBe(korean.messages[1].content);
+  });
+
+  // The separator was present in every card measured (four kinds, 2026-07-29 + 2026-08-10), so a
+  // kind without one means the composition changed and the remaining text can no longer be
+  // assumed language-neutral. Falling back to it would put the localized string back into exports
+  // silently, which is the defect this fix exists to remove.
+  it('fails loud when an artifact kind is not in its measured `<name> · <format>` shape', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '<div class="text-xs line-clamp-1">문서</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
+  // The separator present but nothing after it is the same drift wearing a different shape; a
+  // trailing-empty split must not export `[Artifact: <title> ()]`.
+  it('fails loud when an artifact kind has a separator but no format token', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/artifact-block"><div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
+      '<div class="text-xs line-clamp-1">문서 ·</div>' +
+      '</div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
   });
 
   it('fails loud when a measured artifact card has no readable kind', async () => {
@@ -172,7 +232,7 @@ describe('claudeAdapter.extract', () => {
       '<div data-index="1"><div role="article" aria-setsize="2">' +
       '<div class="group/artifact-block"><div class="artifact-block-cell">' +
       '<div class="leading-tight text-sm line-clamp-1">Pv probe artifact</div>' +
-      '<div class="text-xs line-clamp-1">HTML</div>' +
+      '<div class="text-xs line-clamp-1">코드 · HTML</div>' +
       '<div class="text-xs line-clamp-1">v2</div>' +
       '</div></div>' +
       '<div class="standard-markdown"><p>the answer</p></div>' +

@@ -41,6 +41,11 @@ export const DOWNLOAD_BULK_ARIA_LABEL = m('downloadBulkAriaLabel');
 export const DOWNLOAD_PROJECT_BULK_LABEL = m('downloadProjectBulkLabel');
 export const DOWNLOAD_PROJECT_BULK_ARIA_LABEL = m('downloadProjectBulkAriaLabel');
 
+// The same trigger mounted on a provider's full-history page (Claude's `/recents`). The
+// visible label is shared with the project trigger ("Download all"); only the accessible
+// name differs, because "this project" is wrong for the whole history.
+export const DOWNLOAD_RECENTS_BULK_ARIA_LABEL = m('downloadRecentsBulkAriaLabel');
+
 // Selection-panel chrome.
 export const BULK_PANEL_TITLE = m('bulkPanelTitle');
 export const BULK_PANEL_FORMAT_LABEL = m('bulkPanelFormatLabel');

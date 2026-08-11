@@ -1,17 +1,23 @@
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import {
   CONTAINER_ID,
   createButtons,
   createProjectTrigger,
+  createRecentsTrigger,
+  removeButtons,
   setToolbarSettings,
   syncButtons,
 } from '../../src/content/mount';
+import { BULK_PANEL_ID } from '../../src/content/bulk-panel';
 import { DEFAULT_SETTINGS } from '../../src/settings/store';
 
 // setToolbarSettings mutates module state; reset to the all-on default after every test so
 // the filtering cases below never leak into the syncButtons tests that assume a full toolbar.
-afterEach(() => setToolbarSettings(DEFAULT_SETTINGS));
+afterEach(() => {
+  setToolbarSettings(DEFAULT_SETTINGS);
+  vi.unstubAllGlobals();
+});
 
 const CONV_URL = 'https://chatgpt.com/c/abc-123';
 const NON_CONV_URL = 'https://chatgpt.com/';
@@ -46,6 +52,7 @@ function bareDoc(): Document {
 
 const CLAUDE_CONV_URL = 'https://claude.ai/chat/abc-123';
 const CLAUDE_PROJECT_URL = 'https://claude.ai/project/abc-123';
+const CLAUDE_RECENTS_URL = 'https://claude.ai/recents';
 const CLAUDE_ACTIONS_ID = 'wiggle-controls-actions';
 
 // Claude's header action bar, whose only child is its native Share button.
@@ -65,6 +72,19 @@ function docWithClaudeProjectTable(): Document {
     '<body><main><table data-cds="Table"><tbody><tr class="group/cdsrow"><td>' +
       '<a href="/chat/project-chat" aria-label="Project chat">Project chat</a>' +
       '</td></tr></tbody></table></main></body>',
+  );
+  return window.document as unknown as Document;
+}
+
+// Claude's `/recents` history page: the measured `main table` of chat links, whose parent is
+// the trigger's native mount (docs/live-dom-verification.md → Claude → 2026-08-11).
+function docWithClaudeRecentsTable(): Document {
+  const window = new Window({ url: CLAUDE_RECENTS_URL });
+  window.document.write(
+    '<body><main><table data-cds="Table"><tbody>' +
+      '<tr class="group/cdsrow"><td><a href="/chat/recent-1" aria-label="First recent">First recent</a></td></tr>' +
+      '<tr class="group/cdsrow"><td><a href="/chat/recent-2" aria-label="Second recent">Second recent</a></td></tr>' +
+      '</tbody></table></main></body>',
   );
   return window.document as unknown as Document;
 }
@@ -331,6 +351,125 @@ describe('syncButtons on a Claude Project home page', () => {
     const doc = docWithClaudeProjectTable();
     syncButtons(doc, 'https://claude.ai/cowork/project/abc-123');
     expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+  });
+});
+
+describe('syncButtons on Claude’s /recents history page', () => {
+  it('mounts the recents bulk trigger on the measured table parent', () => {
+    const doc = docWithClaudeRecentsTable();
+    syncButtons(doc, CLAUDE_RECENTS_URL);
+
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container?.parentElement?.tagName).toBe('MAIN');
+    expect(container?.querySelectorAll('button').length).toBe(1);
+    // The whole point of the separate track: on `/recents` the trigger covers the entire
+    // history, so announcing it as "this project" would be wrong.
+    expect(container?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Download all recent conversations',
+    );
+  });
+
+  it('accepts the trailing-slash form of the route', () => {
+    const doc = docWithClaudeRecentsTable();
+    syncButtons(doc, 'https://claude.ai/recents/');
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+  });
+
+  it('falls back to a bottom-right overlay when the list has not rendered', () => {
+    const window = new Window({ url: CLAUDE_RECENTS_URL });
+    window.document.write('<body><main>still hydrating</main></body>');
+    const doc = window.document as unknown as Document;
+
+    syncButtons(doc, CLAUDE_RECENTS_URL, { allowOverlayFallback: true });
+    const container = doc.getElementById(CONTAINER_ID);
+    expect(container?.parentElement?.tagName).toBe('BODY');
+    expect(container?.style.position).toBe('fixed');
+    expect(container?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Download all recent conversations',
+    );
+  });
+
+  it('honours the bulk toolbar setting, as the project trigger does', () => {
+    const doc = docWithClaudeRecentsTable();
+    setToolbarSettings({ ...DEFAULT_SETTINGS, bulk: false });
+    syncButtons(doc, CLAUDE_RECENTS_URL);
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+  });
+
+  it('opens the bulk panel over the /recents list, not the sidebar’s slice', () => {
+    // Pins the click wiring end to end: the trigger must reach `openRecentsBulkExport`, which
+    // enumerates through the adapter's recents members. `location` is what that lookup reads.
+    const doc = docWithClaudeRecentsTable();
+    vi.stubGlobal('location', { href: CLAUDE_RECENTS_URL, origin: 'https://claude.ai', pathname: '/recents' });
+    syncButtons(doc, CLAUDE_RECENTS_URL);
+    doc.getElementById(CONTAINER_ID)?.querySelector('button')?.click();
+
+    const panel = doc.getElementById(BULK_PANEL_ID);
+    expect(panel).not.toBeNull();
+    expect(panel?.textContent).toContain('First recent');
+    expect(panel?.textContent).toContain('Second recent');
+  });
+
+  it('mounts one container carrying the right track’s name across an SPA route change', () => {
+    // The three tracks share `CONTAINER_ID`, so a route change is structural rather than
+    // cosmetic. Driven exactly as the bootstrap does it (src/content/index.ts: on an href
+    // change, drop the previous page's container, then sync), because that removal is what
+    // keeps a stale track's trigger from being re-positioned into the new page's mount.
+    const window = new Window({ url: CLAUDE_RECENTS_URL });
+    window.document.write(
+      `<body><header><div data-testid="${CLAUDE_ACTIONS_ID}">` +
+        `<button data-testid="${CLAUDE_ACTIONS_ID}-share"></button></div></header>` +
+        '<main><table data-cds="Table"><tbody><tr class="group/cdsrow"><td>' +
+        '<a href="/chat/recent-1" aria-label="First recent">First recent</a>' +
+        '</td></tr></tbody></table></main></body>',
+    );
+    const doc = window.document as unknown as Document;
+
+    const step = (href: string): Element | null => {
+      removeButtons(doc);
+      syncButtons(doc, href);
+      expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
+      return doc.getElementById(CONTAINER_ID);
+    };
+
+    // A conversation page gets the per-format toolbar in the header, not a list trigger.
+    const conversation = step(CLAUDE_CONV_URL);
+    expect(conversation?.parentElement?.getAttribute('data-testid')).toBe(CLAUDE_ACTIONS_ID);
+    expect(conversation?.querySelectorAll('button').length).toBe(5);
+
+    const recents = step(CLAUDE_RECENTS_URL);
+    expect(recents?.parentElement?.tagName).toBe('MAIN');
+    expect(recents?.querySelector('button')?.getAttribute('aria-label')).toBe('Download all recent conversations');
+
+    const project = step(CLAUDE_PROJECT_URL);
+    expect(project?.parentElement?.tagName).toBe('MAIN');
+    expect(project?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Download all conversations in this project',
+    );
+  });
+});
+
+describe('createRecentsTrigger', () => {
+  it('builds a single labeled button wearing the provider class, with the recents bulk aria-label', () => {
+    const container = createRecentsTrigger(bareDoc(), 'native', 'btn btn-secondary h-9 px-3');
+    const buttons = container.querySelectorAll('button');
+    expect(buttons.length).toBe(1);
+    // The accessible name is the only thing that distinguishes this trigger from the project
+    // one; the visible label is deliberately shared.
+    expect(buttons[0].getAttribute('aria-label')).toBe('Download all recent conversations');
+    expect(buttons[0].getAttribute('title')).toBe('Download all recent conversations');
+    expect(buttons[0].textContent).toContain('Download all');
+    expect(buttons[0].querySelector('svg')).not.toBeNull();
+    expect(buttons[0].className).toBe('btn btn-secondary h-9 px-3');
+    expect(buttons[0].style.background).toBe('');
+  });
+
+  it('positions the overlay variant bottom-right so it never covers page chrome', () => {
+    const container = createRecentsTrigger(bareDoc(), 'overlay');
+    expect(container.style.position).toBe('fixed');
+    expect(container.style.bottom).toBe('12px');
+    expect(container.style.top).toBe('');
+    expect(container.querySelector('button')?.style.background).toBe('#10a37f');
   });
 });
 

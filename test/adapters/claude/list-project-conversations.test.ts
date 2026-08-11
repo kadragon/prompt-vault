@@ -90,6 +90,47 @@ describe('claudeAdapter.listProjectConversations', () => {
     expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
   });
 
+  // Every project-home fixture below carries the app shell's `aside`, because the whole document
+  // is what the adapter is handed at runtime (`mount.ts` passes `doc`). The aside holds recent-chat
+  // anchors matching the SAME `a[href^="/chat/"]` string the project list uses — measured at 20 on
+  // every route — so a probe written against `<main>` alone silently passes here and fails for
+  // every real user who has any chat history. Do not drop the aside from these fixtures.
+  const SIDEBAR =
+    '<aside>' +
+    '<a href="/chat/sidebar-1" aria-label="Unrelated recent">Unrelated recent</a>' +
+    '<a href="/chat/sidebar-2" aria-label="Another recent">Another recent</a>' +
+    '</aside>';
+
+  it('renders an empty project as an empty list instead of a markup-drift error', () => {
+    // Measured 2026-08-11: an empty project renders NO `main table` whatsoever, so it landed on
+    // the drift branch above and reported Claude's markup as broken to a user who had simply not
+    // started a chat in the project yet. The project-home shell marker is what says the page did
+    // render — present on the empty and both populated projects measured, absent on `/chat/<id>`.
+    const doc = docAt(
+      'https://claude.ai/cowork/project/019fee6c-e6ad-77e1-9e39-9b718ee6e400',
+      `<body>${SIDEBAR}<main><div data-testid="project-doc-upload"></div></main></body>`,
+    );
+    expect(claudeAdapter.listProjectConversations?.(doc)).toEqual([]);
+  });
+
+  it('fails loud when the project home rendered but its list drifted out of a table', () => {
+    // The half of the old first-table fallback worth keeping. A project WITH conversations still
+    // renders links to them whatever element wraps them, so a stranded chat anchor beside a
+    // rendered project home is drift, not an empty project — and drift must never read as `[]`
+    // (AGENTS.md #4). Without this the whole markup-change case became silently empty.
+    //
+    // Paired with the empty-project case above, this is what pins the probe's SCOPE: the two
+    // fixtures differ only in whether the stray anchor is inside `main`, so a document-wide probe
+    // turns the empty case red and a probe that misses `main` entirely turns this one red.
+    const doc = docAt(
+      'https://claude.ai/cowork/project/019f6339-2458-73b9-a484-25f46bb23a16',
+      `<body>${SIDEBAR}<main><div data-testid="project-doc-upload"></div>` +
+        '<ul><li><a href="/chat/aaa" aria-label="First">First</a></li></ul>' +
+        '</main></body>',
+    );
+    expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
+  });
+
   it('still returns an empty list when the same markup is not on a project route', () => {
     // The route is what distinguishes drift from absence — off a project home there is no
     // claim being made about a project, so an empty list stays the honest answer.

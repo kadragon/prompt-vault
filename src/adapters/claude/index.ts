@@ -3,7 +3,7 @@ import type { SidebarConversation } from '../../core/sidebar';
 import { ExtractionError } from '../../core/errors';
 import { blockToMarkdown, htmlToMarkdown } from '../../core/html-to-markdown';
 import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
-import { matches, matchesProject } from './matches';
+import { matches, matchesProject, matchesRecents } from './matches';
 import { selectors, TITLE_SUFFIX } from './selectors';
 
 const PROVIDER = 'claude';
@@ -53,6 +53,9 @@ const NAV_STABLE_ROUNDS = 3;
 const NAV_ABSOLUTE_MAX_STEPS = 400;
 const OPEN_POLL_MS = 150;
 const OPEN_TIMEOUT_MS = 15000;
+// The middle dot Claude renders between an artifact card's localized name and its format token
+// (`문서 · MD`, `코드 · JSX`, measured 2026-08-10). U+00B7, not the ASCII period or a bullet.
+const ARTIFACT_KIND_SEPARATOR = '·';
 
 // Set when the project bulk panel first enumerates its measured home table. A project run
 // opens several members sequentially; after the first click the table may be replaced by the
@@ -84,10 +87,10 @@ const TOOLBAR_BUTTON_CLASS =
   'transition-shadow duration-fast focus-visible:shadow-focus text-primary';
 
 /**
- * Claude adapter. Optional navigation members are limited to the measured sidebar and
- * Project-home DOM surfaces. The content layer gates each shared control on the paired
- * members being present, so an unmeasured track stays absent rather than advertising a
- * button it cannot service.
+ * Claude adapter. Optional navigation members are limited to the measured sidebar,
+ * Project-home and `/recents` DOM surfaces. The content layer gates each shared control on
+ * the paired members being present, so an unmeasured track stays absent rather than
+ * advertising a button it cannot service.
  */
 export const claudeAdapter: ConversationAdapter = {
   provider: PROVIDER,
@@ -104,6 +107,12 @@ export const claudeAdapter: ConversationAdapter = {
   openProjectConversation,
   openProjectHome,
   projectToolbarMount,
+  matchesRecents,
+  listRecentsConversations,
+  openRecentsConversation,
+  loadMoreRecentsConversations,
+  openRecentsHome,
+  recentsToolbarMount,
 };
 
 /**
@@ -222,6 +231,12 @@ function requireSidebar(root: ParentNode = document): Element {
  * tables of its own, so the chat anchors — not document order — decide which table is the
  * conversation list. The first table is still returned when none carries an anchor, so a
  * project list whose rows lost their links stays a visible failure instead of an empty list.
+ *
+ * Narrowing this to anchor-bearing tables only was tried and reverted: it was aimed at the empty
+ * project, which 2026-08-11 measured as rendering **no** `main table` at all rather than a
+ * knowledge table this could mistake for the list. It never reaches here, so the narrowing would
+ * have given up the drift guard for nothing. See `listProjectConversations` for where the empty
+ * project is actually distinguished.
  */
 function resolveProjectTable(root: ParentNode = document): Element | null {
   const tables = Array.from(root.querySelectorAll(selectors.projectTable));
@@ -240,12 +255,40 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
   if (onProjectRoute) activeProjectHomeUrl = pageUrl;
   const table = resolveProjectTable(root);
   if (!table) {
-    // On a project route a missing table is markup drift, not an empty project: the two are
-    // indistinguishable downstream, because the bulk panel renders `[]` as its "no
-    // conversations" state. Reporting a full project as empty is exactly the silent failure
-    // AGENTS.md #4 forbids, so the route decides which of the two this is. Off a project
-    // route (a caller probing an arbitrary document) an empty list stays the honest answer.
-    if (onProjectRoute) {
+    // No conversation table on a project route covers three situations, and only ONE of them is
+    // the ordinary empty project. Reporting either of the others as `[]` is the silent failure
+    // AGENTS.md #4 forbids: downstream it is the bulk panel's "no conversations" state, which a
+    // user cannot tell apart from a full project reported as empty.
+    //
+    // 1. The project home has not rendered at all — `projectShell` absent. Measured 2026-08-11:
+    //    the shell is present on both an empty and a populated project home and absent on
+    //    `/chat/<id>`, so its absence means this is not a rendered project home. Fails loud.
+    // 2. The home rendered and the list DID drift — the table markup changed but the conversation
+    //    links are still there. A conversation link left in `main` with no table around it is the
+    //    evidence: a project that has conversations still renders links to them, whatever element
+    //    now wraps them. Fails loud, which is what the pre-existing first-table fallback achieved
+    //    and what must not be given up. Scoped to `main` via `projectMainConversationLink` —
+    //    document-wide it would match the app shell's `aside`, which carries up to 20 recent-chat
+    //    links on every measured route, and every empty project would fail for every account that
+    //    has any history at all.
+    // 3. The home rendered, no table, and no conversation link anywhere — the EMPTY project. This
+    //    is the only case that returns `[]`, and it is the one that used to reach the error below
+    //    and tell every user of an empty project that Claude's markup was broken.
+    //
+    // Residual, deliberately accepted and measured rather than assumed: on a populated project the
+    // shell appears at ~104 ms and the table plus its links at ~520 ms (2026-08-11, 4-member
+    // project, SPA navigation), so there is a ~350 ms window that looks exactly like case 3. It is
+    // not reachable through the UI: the native trigger mounts on the table itself, and the overlay
+    // fallback waits out a 3 s grace (`src/content/index.ts`) — an order of magnitude beyond the
+    // measured window. A hydration slower than that grace would report a populated project as
+    // empty; no DOM signal distinguishes it, which is recorded in docs/live-dom-verification.md
+    // rather than papered over.
+    //
+    // Off a project route (a caller probing an arbitrary document) an empty list stays honest
+    // either way.
+    const homeRendered = Boolean(root.querySelector(selectors.projectShell));
+    const strandedLinks = Boolean(root.querySelector(selectors.projectMainConversationLink));
+    if (onProjectRoute && (!homeRendered || strandedLinks)) {
       throw new ExtractionError(
         'Could not find the Claude project conversation list on a project page. ' +
           'Claude’s markup may have changed — please report this.',
@@ -272,6 +315,10 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
 /**
  * Mount the project trigger beside the measured table. Returning its parent keeps the
  * generic content layer from inserting a non-table `<div>` into `<tbody>`.
+ *
+ * Null on an EMPTY project, which renders no table to sit beside (measured 2026-08-11). The
+ * content layer's overlay fallback places the trigger there instead, so the empty project still
+ * gets a button — and the panel it opens now shows the empty state rather than an error.
  */
 function projectToolbarMount(root: ParentNode = document): Element | null {
   return resolveProjectTable(root)?.parentElement ?? null;
@@ -297,7 +344,7 @@ function navigationTitle(anchor: Element): string {
 function collectNavigationConversations(
   links: Iterable<Element>,
   origin: string,
-  surface: 'sidebar' | 'project',
+  surface: 'sidebar' | 'project' | 'recents',
 ): SidebarConversation[] {
   const acc = new Map<string, SidebarConversation>();
   let seen = 0;
@@ -532,6 +579,227 @@ async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = 
   if (location.pathname !== targetPath) {
     throw new ExtractionError('Returned to a different Claude project home than the bulk run started from.');
   }
+}
+
+// --- `/recents` bulk track ---------------------------------------------------------
+// Claude's sidebar renders only its newest 20 conversations, so the history track offered on
+// a `/chat/<id>` page can never reach the rest. `/recents` is the complete list (26 rows against
+// the sidebar's 20 on the same page, measured 2026-08-11), and it is structurally the project
+// home again: a `main table` of `/chat/<id>` anchors, opened by clicking a row and returned to
+// with `history.back()`. This track therefore reuses the project track's machinery rather than
+// re-deriving it, and only its user-visible label differs (see `DOWNLOAD_RECENTS_BULK_ARIA_LABEL`
+// in src/strings.ts) — "project" is the wrong word for the whole history.
+//
+// The extension never NAVIGATES to `/recents`: nothing in the DOM links to it (no
+// `a[href="/recents"]` exists, and the two "View all" entry points are `<button>`s with only
+// localized text to match on), and assigning `location` would reload the page and destroy an
+// open bulk panel. The trigger is offered ON `/recents` instead.
+
+/**
+ * The `<main>` table holding the `/recents` list. Mirrors `resolveProjectTable`: the chat
+ * anchors, not document order, decide which table is the conversation list, and the first table
+ * is still returned when none carries an anchor so a list whose rows lost their links stays a
+ * visible failure instead of an empty one.
+ */
+function resolveRecentsTable(root: ParentNode = document): Element | null {
+  const tables = Array.from(root.querySelectorAll(selectors.recentsTable));
+  return tables.find((table) => table.querySelector(selectors.recentsConversationLink)) ?? tables[0] ?? null;
+}
+
+/**
+ * Enumerate the measured `/recents` table. Every observed row had exactly one chat anchor
+ * (26/26 on 2026-08-11); a row without one is a visible structural failure rather than a
+ * silently shortened history.
+ *
+ * No table at all ON the `/recents` route fails loud, for the same reason as
+ * `listProjectConversations`: downstream, `[]` is the bulk panel's "no conversations" state,
+ * which a user cannot tell apart from their whole history being reported as empty (AGENTS.md #4).
+ * `/recents` has no empty-state marker measured to separate a rendered-but-empty page from an
+ * unrendered one — an account with zero conversations is `[unknown — read
+ * docs/live-dom-verification.md to verify]` — so the loud direction is taken for both. Off-route
+ * (a caller probing an arbitrary document) an empty list stays the honest answer.
+ */
+function listRecentsConversations(root: ParentNode = document): SidebarConversation[] {
+  const pageUrl = ownerDocument(root)?.defaultView?.location?.href ?? '';
+  const table = resolveRecentsTable(root);
+  if (!table) {
+    if (pageUrl && matchesRecents(pageUrl)) {
+      throw new ExtractionError(
+        'Could not find the Claude conversation list on the recents page. ' +
+          'Claude’s markup may have changed — please report this.',
+      );
+    }
+    return [];
+  }
+
+  const links: Element[] = [];
+  for (const row of Array.from(table.querySelectorAll(selectors.recentsRow))) {
+    const rowLinks = Array.from(row.querySelectorAll(selectors.recentsConversationLink));
+    if (rowLinks.length !== 1) {
+      throw new ExtractionError(
+        'Could not read the Claude recents conversation list: a table row did not contain exactly one ' +
+          'conversation link. Claude’s markup may have changed — please report this.',
+      );
+    }
+    links.push(rowLinks[0]);
+  }
+  return collectNavigationConversations(links, documentOrigin(root), 'recents');
+}
+
+/**
+ * Mount the `/recents` trigger beside the measured table — its parent, which was measured as a
+ * plain `div` whose only child is the table, the same mount shape `projectToolbarMount` uses.
+ * Returning the parent keeps the generic content layer from inserting a non-table `<div>` into
+ * `<tbody>`. Null before the table renders; the content layer's overlay fallback covers that.
+ */
+function recentsToolbarMount(root: ParentNode = document): Element | null {
+  return resolveRecentsTable(root)?.parentElement ?? null;
+}
+
+/** Open a `/recents` member through the measured `/chat/<id>` route and wait for its render. */
+async function openRecentsConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const target = resolveConversationHref(url, location.origin);
+  if (!target) {
+    throw new ExtractionError('Could not open a selected Claude conversation: its URL is malformed. It was skipped.');
+  }
+
+  if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
+
+  // The ROUTE decides whether `/recents` still has to be restored, never a rendered table: an
+  // assistant markdown table also matches `main table` from a `/chat/<id>` page, and trusting it
+  // would skip the return and fail every remaining member of the batch.
+  if (!matchesRecents(currentPageUrl())) {
+    await returnToRecents(pollMs, timeoutMs);
+  }
+
+  const anchor = findRecentsConversationAnchor(target.id);
+  if (!anchor) {
+    throw new ExtractionError(
+      'Could not open a selected Claude conversation: its link was not found on the recents page. ' +
+        'The list may need to render first. It was skipped.',
+    );
+  }
+
+  const beforeSignature = messageSignature();
+  // Clicking the verified anchor keeps the shared bulk panel alive across Claude's SPA
+  // navigation; assigning `location` would reload it away.
+  anchor.click();
+  if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
+  throw new ExtractionError(
+    'Timed out opening a selected Claude conversation. It may be loading slowly; it was skipped.',
+  );
+}
+
+function findRecentsConversationAnchor(id: string): HTMLAnchorElement | null {
+  const table = resolveRecentsTable(document);
+  if (!table) return null;
+  for (const anchor of table.querySelectorAll<HTMLAnchorElement>(selectors.recentsConversationLink)) {
+    const href = anchor.getAttribute('href');
+    const resolved = href ? resolveConversationHref(href, location.origin) : null;
+    if (resolved?.id === id) return anchor;
+  }
+  return null;
+}
+
+/**
+ * Return to `/recents` before opening the next member. A twin of `returnToProjectHome` rather
+ * than a shared generic: that function waits on `selectors.projectTable` and carries the project
+ * track's own user-facing wording, and parameterizing it would mean threading both a table
+ * resolver and a message bundle through a two-caller helper — more coupling than the ~15 shared
+ * lines are worth, and it would put the shipped project error strings at risk for no gain.
+ *
+ * Unlike the project twin there is no cached home URL to pass in: `/recents` is a single exact
+ * route (`RECENTS_PATH`), so the destination is known without recording where the run started.
+ */
+async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void> {
+  // Only navigate when the page actually left `/recents`. Firing `back()` while already there
+  // pops to the PREVIOUS entry — a `/chat/<id>` route — and the wait below would then poll for a
+  // page the call itself just abandoned. A list still hydrating only needs waiting out.
+  if (!matchesRecents(currentPageUrl())) {
+    const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
+    if (!historyObject?.back) {
+      throw new ExtractionError(
+        'Could not return to the Claude recents page: browser history is unavailable. It was skipped.',
+      );
+    }
+    historyObject.back();
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
+  }
+  throw new ExtractionError('Timed out returning to the Claude recents page. It may be loading slowly; it was skipped.');
+}
+
+/** Optional return hook used by the generic bulk driver after the batch (back to `/recents`). */
+async function openRecentsHome(homeUrl: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  if (!matchesRecents(homeUrl)) {
+    throw new ExtractionError('Asked to return to a Claude page that is not the recents list.');
+  }
+  if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
+  await returnToRecents(pollMs, timeoutMs);
+}
+
+/**
+ * Walk the `/recents` list so nothing below the fold is missed, accumulating across rounds.
+ *
+ * The measured page did not page or recycle — 26/26 rows held across a 12-round walk — so this
+ * normally returns after the port clamps, exactly what the sidebar loader does. It exists anyway
+ * because that measurement was taken at 26 conversations and says nothing about a much larger
+ * account, and `onIncomplete` is kept for the same reason: a walk that hits the step cap while
+ * rows are still appearing resolves with what it has AND signals that the list may be short,
+ * rather than presenting a truncated history as complete (AGENTS.md #4). Throwing instead would
+ * discard every conversation the walk did find (see `loadMoreConversations`).
+ */
+async function loadMoreRecentsConversations(
+  root: ParentNode = document,
+  options: LoadMoreOptions = {},
+): Promise<SidebarConversation[]> {
+  const table = resolveRecentsTable(root);
+  // Same fail-loud/empty split as `listRecentsConversations`, delegated to it so the two agree.
+  if (!table) return listRecentsConversations(root);
+
+  // The measured port (`.dframe-pane-scroller`) is an ANCESTOR of the table, so the table is the
+  // right place to start looking — unlike the sidebar, whose loader has to start from a link
+  // because its outer aside is a non-scrolling layout shell.
+  const container = findScrollableAncestor(table);
+  if (container.scrollHeight <= container.clientHeight) return listRecentsConversations(root);
+
+  const acc = new Map<string, SidebarConversation>();
+  let previousTop = -1;
+  let lastCount = -1;
+  let stable = 0;
+  const stepDelayMs = options.stepDelayMs ?? 150;
+  const stableRounds = options.stableRounds ?? NAV_STABLE_ROUNDS;
+  const maxSteps = options.maxSteps ?? NAV_ABSOLUTE_MAX_STEPS;
+
+  for (let step = 0; step < maxSteps; step++) {
+    // Re-enumerated from `root` each round rather than from the table captured above, so a list
+    // that re-renders its table while paging is still read.
+    for (const conversation of listRecentsConversations(root)) {
+      if (!acc.has(conversation.id)) acc.set(conversation.id, conversation);
+    }
+    if (acc.size > lastCount) {
+      options.onProgress?.(acc.size);
+      stable = 0;
+    } else if (container.scrollTop <= previousTop) {
+      stable++;
+      if (stable >= stableRounds) return [...acc.values()];
+    } else {
+      stable = 0;
+    }
+    previousTop = container.scrollTop;
+    lastCount = acc.size;
+    const advance = Math.max(1, Math.floor(container.clientHeight * NAV_SCROLL_STEP_FRACTION));
+    container.scrollTop = Math.min(container.scrollTop + advance, container.scrollHeight);
+    await delay(stepDelayMs);
+  }
+
+  options.onIncomplete?.();
+  return [...acc.values()];
 }
 
 function currentPageUrlPath(): string {
@@ -1393,9 +1661,35 @@ function artifactMarkers(row: Element): string {
         'Claude rendered an artifact card whose title or kind could not be read. The markup may have changed — please report this.',
       );
     }
-    markers.push(`[Artifact: ${title} (${kind})]`);
+    markers.push(`[Artifact: ${title} (${artifactFormatToken(kind)})]`);
   }
   return markers.join('\n\n');
+}
+
+/**
+ * Reduce a measured artifact kind to the locale-independent half of it.
+ *
+ * The card renders the kind as `<localized noun> · <FORMAT>` — `문서 · MD` and `코드 · JSX` were
+ * measured on a ko-KR account (`./selectors.ts` → `artifactKind`). Only the leading noun is
+ * translated; the trailing token is the artifact's format and is the same on every UI language.
+ * Exporting the raw string made the SAME artifact export differently per language, which is a
+ * property of the reader's UI rather than of the conversation.
+ *
+ * A kind carrying no separator is markup drift, not a variant: the separator was present in all
+ * four cards surveyed, so its absence means the composition changed and the remaining text can no
+ * longer be assumed language-neutral. Guessing there would reintroduce the localized string
+ * silently, so this fails loud like every other reader in `artifactMarkers` (AGENTS.md #4/#5).
+ */
+function artifactFormatToken(kind: string): string {
+  const segments = kind.split(ARTIFACT_KIND_SEPARATOR);
+  const token = segments.length > 1 ? segments[segments.length - 1].trim() : '';
+  if (!token) {
+    throw new ExtractionError(
+      'Claude rendered an artifact card whose kind is not in its measured `<name> · <format>` shape. ' +
+        'The markup may have changed — please report this.',
+    );
+  }
+  return token;
 }
 
 /**

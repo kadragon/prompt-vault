@@ -67,6 +67,10 @@
     "message": "이 프로젝트의 모든 대화 다운로드",
     "description": "Accessible name for the project bulk-download trigger."
   },
+  "downloadRecentsBulkAriaLabel": {
+    "message": "최근 대화 전체 다운로드",
+    "description": "Accessible name for the bulk-download trigger on the full history page."
+  },
   "bulkPanelTitle": {
     "message": "여러 대화 내보내기",
     "description": "Title of the bulk-export selection panel."

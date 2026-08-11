@@ -205,9 +205,12 @@ export const selectors = {
    * positional rewrite was considered and rejected: it trades one fragile handle (utility
    * classes) for another (a child-index chain), with no measured advantage.
    *
-   * Note for whoever touches the exported string: the kind is **localized** — `문서 · MD` and
-   * `코드 · JSX` were measured on this ko-KR account — and it reaches Markdown/JSON verbatim
-   * inside `[Artifact: <title> (<kind>)]`. Tracked in `backlog.md`.
+   * Note for whoever touches the exported string: the kind text is **localized** — `문서 · MD`
+   * and `코드 · JSX` were measured on this ko-KR account. Only the leading noun is translated;
+   * the trailing token after the ` · ` separator is the artifact's format and is language-neutral.
+   * `artifactMarkers` in `src/adapters/claude/index.ts` therefore exports only that token, so
+   * `[Artifact: <title> (MD)]` is the same string on every UI language. A kind with no separator
+   * fails loud there rather than falling back to the localized text.
    */
   artifactCard: 'div[class~="group/artifact-block"]',
   artifactCell: '[class~="artifact-block-cell"]',
@@ -285,6 +288,75 @@ export const selectors = {
   projectTable: 'main table',
   projectRow: 'tbody > tr',
   projectConversationLink: 'a[href^="/chat/"]',
+
+  /**
+   * The same anchor, scoped to the page body — for the one query that runs against the whole
+   * document rather than against a resolved table or row.
+   *
+   * `projectConversationLink` is byte-identical to `sidebarConversationLink`, which is correct
+   * while it is used inside a table but catastrophic document-wide: the app shell's `aside` carries
+   * up to 20 recent-chat links on every measured route (2026-08-10 / 2026-08-11), so an unscoped
+   * probe reports "this page has conversation links" for every account that has any history at all.
+   * `listProjectConversations` uses this scoped form to decide that a project home with no table
+   * also has no stranded list — `main` is the region every project-home measurement was taken in,
+   * and the region `projectTable` already restricts itself to.
+   */
+  projectMainConversationLink: 'main a[href^="/chat/"]',
+
+  /**
+   * Proof that a project home finished rendering, independent of whether it holds any
+   * conversations. Verified against the live page (2026-08-11).
+   *
+   * An empty project renders **no `main table` at all** — not a knowledge table, none — so
+   * "project route with no conversation table" covers two different situations: the ordinary
+   * empty project, and a page that has not rendered the project home. `listProjectConversations`
+   * must return `[]` for the first and fail loud for the second (AGENTS.md #4), and this is what
+   * separates them. Measured presence: 1 on the empty project created for that session, 1 on each
+   * of the two populated projects, and **0** on `/chat/<id>`.
+   *
+   * The doc-upload control is used as the marker because it is part of the project home's own
+   * chrome rather than of its list, so it is there before, during and after the list is empty. It
+   * is a `data-testid`, which is a test hook rather than a product API — but every other candidate
+   * on the page was worse: `chat-input` also renders on `/chat/<id>`, and the visible empty-state
+   * text is localized. If Claude renames it, an empty project goes back to reporting a markup
+   * change, which is the loud direction, not a silent one.
+   *
+   * **It is not a table-render signal, and is not used as one.** Measured on the same day: on a
+   * populated project the shell appears ~104 ms after navigation and the table ~520 ms, so for
+   * ~350 ms a populated project looks exactly like an empty one. `listProjectConversations`
+   * therefore also requires that no `projectConversationLink` exists anywhere before it will call
+   * a project empty; see the case analysis on that function.
+   */
+  projectShell: '[data-testid="project-doc-upload"]',
+
+  /**
+   * The `/recents` history page's conversation table — the surface the history bulk track is
+   * offered on, because it is the WHOLE list where the sidebar shows only its newest slice.
+   * Verified against the live page (2026-08-11): `/recents` rendered exactly **1** `main table`
+   * with **26** rows and **exactly one** `a[href^="/chat/"]` per row (26/26), while the same
+   * page's `aside` held **20** — the cap this track exists to get past.
+   *
+   * The list is **fully rendered, not virtualized and not recycling** at that size: a 12-round
+   * scroll walk of its port (`.dframe-pane-scroller`, 1500 ms dwell) held 26/26 every round with
+   * `scrollHeight` constant at 1369, and `/recents` tracked the account's growth (25 links on
+   * 2026-08-10 → 26 on 2026-08-11), so the page is not itself capped.
+   *
+   * **Scope limit:** "does not page" is established at 26 conversations only. The shape on a much
+   * larger account is `[unknown — read docs/live-dom-verification.md to verify]`, which is why
+   * `loadMoreRecentsConversations` keeps the `onIncomplete` completeness signal rather than
+   * treating one round as proof of a full list (AGENTS.md #4). The shape on an account with ZERO
+   * conversations is `[unknown — read docs/live-dom-verification.md to verify]` as well.
+   *
+   * `data-cds="Table"` was measured on this table (inside a `[data-cds="DataTable"]` ancestor) and
+   * is deliberately NOT pinned, for the same reason as `projectTable` above: it is one unversioned
+   * design-system attribute, and if Claude renames it the selector matches nothing, turning the
+   * complete history into a silently EMPTY list rather than a loud failure. Under the plain tag
+   * selector the same drift changes nothing. What guards the ambiguity instead is the route —
+   * `listRecentsConversations` fails loud when it is on `/recents` and resolves no table at all.
+   */
+  recentsTable: 'main table',
+  recentsRow: 'tbody > tr',
+  recentsConversationLink: 'a[href^="/chat/"]',
 
   /**
    * The header action bar holding Claude's native controls (Share, chat options). The

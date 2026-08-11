@@ -144,6 +144,62 @@ export interface ConversationAdapter {
    * omit to leave the native trigger unstyled but functional.
    */
   readonly projectToolbarButtonClass?: string;
+
+  // --- Recents bulk-download track (parallel to the two tracks above) ---
+  // Some providers cap their history sidebar at a slice of the account (Claude renders 20)
+  // while exposing the WHOLE list on a dedicated page. These members bulk-download from that
+  // page; a provider without one omits them and the trigger simply never mounts. Deliberately
+  // separate from the history track rather than a re-pointing of it: the two enumerate
+  // different DOM surfaces and only the page itself can be navigated back to between members.
+
+  /** True when `url` is this provider's full-history list page. */
+  matchesRecents?(url: string): boolean;
+
+  /**
+   * Enumerate the conversations shown on the full-history page into the lightweight
+   * `SidebarConversation` model, in display order (keyed by the stable conversation id).
+   * Pure DOM read. Returns `[]` when the list is absent off-route; fail-loud on the route
+   * itself, where an empty list would be indistinguishable from a whole history reported as
+   * empty (AGENTS.md #4). Defaults to the live `document`; tests pass a parsed fixture root.
+   */
+  listRecentsConversations?(root?: ParentNode): SidebarConversation[];
+
+  /**
+   * Like `openProjectConversation`, but for a member of the full-history list: returns to the
+   * history page when the batch has navigated away, then opens the conversation from there.
+   * Fail-loud on miss/timeout (AGENTS.md #4).
+   */
+  openRecentsConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
+
+  /**
+   * Like `loadMoreConversations`, but for the full-history page's list. Keeps the
+   * `onIncomplete` contract, since a provider whose page-size behaviour is only measured on a
+   * small account must never present a short list as complete.
+   */
+  loadMoreRecentsConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<SidebarConversation[]>;
+
+  /**
+   * Client-side navigate back to the full-history page `homeUrl` a bulk run started from, so
+   * the user is returned where they began. Best-effort — resolves at once when already there;
+   * the bulk caller swallows a rejection, as it does not affect the batch result.
+   */
+  openRecentsHome?(homeUrl: string, opts?: OpenConversationOptions): Promise<void>;
+
+  /**
+   * The element on the full-history page to mount the bulk-download trigger into (e.g. the
+   * section holding the conversation list), or null when it is not in the DOM yet — the
+   * content layer then falls back to a non-overlapping overlay. Defaults to the live
+   * `document`; tests pass a parsed fixture root.
+   */
+  recentsToolbarMount?(root?: ParentNode): Element | null;
+
+  /**
+   * Provider-owned CSS class string applied to the recents bulk-download trigger when it mounts
+   * natively (see `recentsToolbarMount`), so it wears the provider's own labeled-button chrome.
+   * Kept in the adapter so the shared content layer carries no provider-specific styling.
+   * Optional — omit to leave the native trigger unstyled but functional.
+   */
+  readonly recentsToolbarButtonClass?: string;
 }
 
 /**

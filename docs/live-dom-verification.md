@@ -1227,6 +1227,107 @@ Scope limits: one account, `ko-KR`, two projects (1 and 4 members), four artifac
 two-children structure and the single-match counts are established across those four kinds, not
 across every kind Claude can render.
 
+### 2026-08-11 — `/recents` holds the whole list and is walkable, but nothing links to it; an empty project renders no table at all
+
+Settled the two `[FIX]`es that the 2026-08-10 session could only file: where the conversations
+above the sidebar's 20-row cap actually live, and what an empty project home renders. Both answers
+changed the shape of the fix, so read the two "consequence" paragraphs, not just the numbers.
+
+**Method and environment.** Playwright MCP, `npx @playwright/mcp@latest`, no `--user-data-dir` and
+no `--extension`; the profile was already logged in and no login step was performed. Probes were
+self-contained snippets copying selector strings rather than importing them, and returned counts,
+attribute names and booleans — no conversation text was returned by any probe. The account held
+**26** conversations (25 on 2026-08-10) and **two** pre-existing projects; a third, empty project
+was **created in the account for this measurement** (`pv-empty-project-probe`,
+`/cowork/project/019fee6c-e6ad-77e1-9e39-9b718ee6e400`), since neither existing project was empty.
+
+**`/recents` is the complete list, and it does not page.**
+
+| Surface | conversation tables | rows | anchors per row | chat links |
+|---|---|---|---|---|
+| `/recents` `main table` | 1 (`data-cds="Table"`, inside `[data-cds="DataTable"]`) | 26 | 1 on 26/26 | 26 |
+| the same page's `aside` | — | — | — | 20 |
+
+So the sidebar cap is confirmed from the other side: 46 `a[href^="/chat/"]` exist on `/recents`,
+26 in the table and 20 in the aside. A 12-round scroll walk of the table's port
+(`.dframe-pane-scroller`, `overflow-y: auto`, 1500 ms dwell) held **26/26 rendered on every round**,
+`scrollHeight` constant at 1369 and `scrollTop` clamping at 510 after the first step, with the
+first row still rendered at the end — so the list is **fully rendered, not virtualized, and not
+recycling**. `/recents` also tracked the account's growth (25 links on 2026-08-10 → 26 today),
+which is the evidence that it is not itself capped at a fixed number.
+
+*Scope limit:* "does not page" is established **at 26 conversations**. Whether `/recents` pages on a
+much larger account is `[unknown — not measured]`, exactly as the sidebar's own shape was before
+2026-08-10. Any walker built on this must keep a completeness signal rather than assume one round.
+
+**The batch loop works: click a row, then `history.back()`.** From `/recents`, clicking a row's
+anchor reached `/chat/<id>` with rendered rows in **1005 ms**; `history.back()` restored `/recents`
+in **151 ms** with all **26** rows already present, and still 26 after a further 1500 ms settle. So
+the project track's return-to-home shape (`returnToProjectHome` in `src/adapters/claude/index.ts`)
+transfers to this surface unchanged. `/recents` carries **no** `wiggle-controls-actions` header bar;
+its `main` exposes `[data-testid="page-header"]`, and the conversation table's parent is a plain
+`div` whose only child is the table — the same mount shape `projectToolbarMount` already uses.
+
+**Consequence, and the reason the planned fix changed: nothing in the DOM links to `/recents`.**
+No `a[href="/recents"]` exists anywhere in the document. The sidebar's two entry points are
+`<button>`s — `aria-label="View all"` at the section header and `모두 보기` at the list foot — and
+neither carries a locale-independent handle (`data-cds="Button" data-size="xs"` is shared by dozens
+of unrelated controls, and the labels are UI text). There is therefore **no way to move an
+already-open bulk panel from `/chat/<id>` to `/recents`**: clicking is impossible without a
+fabricated selector (AGENTS.md #5), and assigning `location` reloads the page, which destroys the
+panel — the very reason `openConversation` clicks anchors instead. So the history bulk track is
+offered **on `/recents` itself**, as the project track is offered on a project home, rather than
+navigating there on the user's behalf.
+
+**An empty project renders zero `main table`.** Measured on the project created above, against the
+two populated ones:
+
+| Project | `main table` | chat links in `main` | `[data-testid="project-doc-upload"]` |
+|---|---|---|---|
+| empty (`pv-empty-project-probe`) | **0** | 0 | 1 |
+| 1 member | 1 | 1 | 1 |
+| 4 members | 1 | 4 | 1 |
+| (`/chat/<id>`, for contrast) | 0 | 0 | **0** |
+
+**Consequence: the `backlog.md` diagnosis was wrong, and so was the fix it implied.** It held that
+an empty project resolves `tables[0]` to "a knowledge/file table" and then throws on its rows. There
+is no such table — a populated project home renders exactly **one** `main table`, the conversation
+list, and an empty one renders none. What an empty project actually hits is the *other* branch: the
+markup-drift error PR #62 added for "a project route that renders no table at all". That error
+fires on every empty project. The discriminator is `[data-testid="project-doc-upload"]`, present on
+both project homes measured (empty and populated) and absent on `/chat/<id>`: the project-home shell
+having rendered, with no conversation table, **is** the empty project; the shell not having rendered
+is still drift. Narrowing `resolveProjectTable` (which was tried first, on the backlog's premise) is
+**not** the fix and was reverted — it would have traded the drift guard away for nothing.
+
+**The shell is not a table-render signal — the two hydrate ~400 ms apart.** This was measured
+*after* the first version of the fix shipped `shell present ⇒ empty project`, because review asked
+what the shell actually proves. A 50 ms sampler installed on `/projects`, then an SPA click through
+to the 4-member project:
+
+| t (ms) | route | `project-doc-upload` | `main table` | chat links in `main` |
+|---|---|---|---|---|
+| 7 | `/projects` | 0 | 0 | 0 |
+| 104 | project home | 1 | 0 | 0 |
+| 520 | project home | 1 | 1 | 4 |
+
+So a populated project spends **~350 ms** in a state indistinguishable from an empty one, and the
+table and its links arrive together (never links without a table, never a table before the shell).
+Consequence, recorded in `listProjectConversations`: the shell alone is not sufficient to call a
+project empty. The adapter additionally requires **no `a[href^="/chat/"]` inside `main`** — a
+project that has conversations still renders links to them however the wrapper changes, so list
+drift stays loud instead of collapsing to "no conversations". The `main` scoping is load-bearing,
+not incidental: the app shell's `aside` carries up to 20 recent-chat anchors matching that same
+selector on every route measured here, so a document-wide probe would fail every empty project for
+every account with any history. All project-home counts above are `main`-scoped for the same
+reason. The remaining hole is a hydration slower than the
+content layer's 3 s overlay-fallback grace, which is ~6× the measured 520 ms; no DOM signal
+separates that from an empty project, so it is accepted and written down rather than assumed away.
+
+Scope limits: one account, `ko-KR`, 26 conversations, three projects (0, 1 and 4 members), one
+`/recents` walk, one hydration trace (SPA navigation; a cold full page load is
+`[unknown — not measured]`). `/project/<id>` remains `[unknown — not measured]`.
+
 ## Gemini
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
