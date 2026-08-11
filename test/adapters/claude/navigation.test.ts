@@ -220,6 +220,62 @@ describe('Claude navigation openers', () => {
     expect(state.pathname).toBe('/chat/next');
   });
 
+  // The project twin of the `/recents` rewind cases (test/adapters/claude/recents-navigation.test.ts):
+  // an open that pushed two history entries leaves the home one step further back than a single
+  // `back()` reaches. Fake timers, because the retry interval is the real multi-second one.
+  it('rewinds a second entry when one back() lands short of the project home', async () => {
+    vi.useFakeTimers();
+    try {
+      const { doc, state, backs } = installProjectPage(
+        '<body><div data-index="0"><div class="standard-markdown">previous answer</div></div></body>',
+      );
+      setPathname(state, '/chat/previous');
+      backs.onBack = () => {
+        if (backs.count < 2) {
+          setPathname(state, '/chat/previous-rewritten');
+          return;
+        }
+        setPathname(state, PROJECT_HOME_PATH);
+        doc.body.innerHTML =
+          '<main><table data-cds="Table"><tbody><tr><td><a href="/chat/next" aria-label="Next">Next</a></td></tr></tbody></table></main>';
+      };
+
+      const settled = claudeAdapter.openProjectHome?.(`https://claude.ai${PROJECT_HOME_PATH}`, {
+        pollMs: 100,
+        timeoutMs: 15000,
+      });
+      await vi.advanceTimersByTimeAsync(5000);
+
+      await settled;
+      expect(state.pathname).toBe(PROJECT_HOME_PATH);
+      expect(backs.count).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('caps the rewind and still times out visibly when the project home is unreachable', async () => {
+    vi.useFakeTimers();
+    try {
+      const { state, backs } = installProjectPage(
+        '<body><div data-index="0"><div class="standard-markdown">previous answer</div></div></body>',
+      );
+      setPathname(state, '/chat/previous');
+
+      const settled = claudeAdapter.openProjectHome?.(`https://claude.ai${PROJECT_HOME_PATH}`, {
+        pollMs: 100,
+        timeoutMs: 15000,
+      });
+      const rejection = expect(settled).rejects.toBeInstanceOf(ExtractionError);
+      await vi.advanceTimersByTimeAsync(16000);
+      await rejection;
+
+      expect(backs.count).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('waits out a hydrating project home instead of navigating away from it', async () => {
     // Already on the home route: firing `back()` here pops to the previous `/chat/<id>` entry
     // and the wait below would then poll for a home the call itself just abandoned.

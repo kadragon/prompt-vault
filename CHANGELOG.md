@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Claude /recents QA follow-ups (v1.10.1) (2026-08-11) → docs/live-dom-verification.md
 - [done] Claude bulk export via /recents (v1.10.0) (2026-08-11) → docs/live-dom-verification.md
 - [done] Fail loud when a Claude project route renders no conversation table (v1.9.2) (2026-08-10)
   → docs/live-dom-verification.md. Recorded the 2026-08-10 live-DOM session, which closed three
