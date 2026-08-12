@@ -45,16 +45,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
       shipped capture uses Python/shell only, which keeps the caption honest but means the shot no
       longer exercises the two cases most likely to regress.
 
-### PDF export follow-ups (PR #66 review, 2026-08-12)
-
-- [ ] [FIX] Markdown escapes leak into the PDF as visible backslashes. `escapeMarkdownText` escapes
-      `` ` ``, `\`, `[`, `]`, `|` and flanking `*`/`_`/`~` so the *Markdown* export stays valid, but
-      the PDF renderer consumes that same escaped string and has no unescaping step — prose that
-      showed `a ` b` on the page reaches the PDF as `a \` b`. Pre-existing and wider than the inline
-      code fix in PR #66 (which only stopped an escaped backtick from being mistaken for a
-      delimiter); closing it means teaching the PDF renderer to unescape, or giving it an
-      un-escaped source string. The HTML exporter may have the same gap — check before fixing.
-
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 
 > Non-blocking findings from the independent QA of the sprint that shipped the Claude `/recents`

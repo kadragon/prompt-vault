@@ -125,7 +125,7 @@ Data-use declarations:
   Use requirements.
 - **Privacy policy URL:**
   `https://raw.githubusercontent.com/kadragon/prompt-vault/main/docs/PRIVACY.md`
-  — publicly reachable now, but the local policy dated 2026-07-22 will appear there only
+  — publicly reachable now, but the local policy dated 2026-08-12 will appear there only
   after this branch merges to `main`. Enter it in the dashboard only after the merge, then
   confirm the served content and file hash match the submitted policy.
 

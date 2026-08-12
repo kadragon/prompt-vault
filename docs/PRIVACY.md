@@ -1,6 +1,6 @@
 # Privacy Policy — Prompt Vault (AI Chat Backup)
 
-_Last updated: 2026-07-26_
+_Last updated: 2026-08-12_
 
 Prompt Vault is a browser extension that backs up your AI chat conversations to local
 files (Markdown, PDF, JSON, HTML). This policy explains what the extension does and does
@@ -18,8 +18,9 @@ Chrome Sync enabled (see below) — no conversation content is ever synced or se
 
 - **The conversation(s) you ask it to export.** When you click a single-export button, the
   extension reads the currently open conversation from the page's DOM. If you use the
-  optional bulk-export action, it reads the set of conversations you select from the
-  sidebar, opening each in turn to read it. In every case the extension reads a
+  optional bulk-export action, it reads the set of conversations you select — from the
+  sidebar, from a project's conversation list, or, on Claude, from the full history page at
+  `claude.ai/recents` — opening each in turn to read it. In every case the extension reads a
   conversation only in response to your action, and only to convert it into a file for you.
 
 ## What the extension does with it
