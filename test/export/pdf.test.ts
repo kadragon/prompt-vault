@@ -1,5 +1,8 @@
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
+import { Window } from 'happy-dom';
+import { htmlToMarkdown } from '../../src/core/html-to-markdown';
 import type { Conversation } from '../../src/core/conversation';
 import { PDF_FONT, PDF_FONT_FEATURES, pdfFilename, toPdfDocDefinition } from '../../src/export/pdf';
 
@@ -14,7 +17,9 @@ interface FontkitFont {
 const fontkit = createRequire(import.meta.url)('fontkit') as {
   openSync(path: string): FontkitFont;
 };
-const jetendard = fontkit.openSync(new URL('../../src/export/fonts/Jetendard-Regular.ttf', import.meta.url).pathname);
+const jetendard = fontkit.openSync(
+  fileURLToPath(new URL('../../src/export/fonts/Jetendard-Regular.ttf', import.meta.url)),
+);
 const glyphNames = (text: string, features?: unknown): string[] =>
   jetendard.layout(text, features).glyphs.map((g) => g.name);
 
@@ -120,7 +125,39 @@ describe('toPdfDocDefinition', () => {
       string,
       { background?: string }
     >;
-    expect(styles.inlineCode?.background).toBe(styles.code?.background);
+    expect(styles.inlineCode?.background).toBe('#f4f4f4');
+    expect(styles.code?.background).toBe('#f4f4f4');
+  });
+
+  // The serializer widens the fence and pads the body whenever the code text holds
+  // a backtick (html-to-markdown `inlineCode`, per CommonMark), so the exporter is
+  // fed those forms in practice. Driving this end to end — HTML through the real
+  // serializer into the exporter — is what proves the two stay in step.
+  it.each([
+    ['<p>call <code>reduce()</code> now</p>', 'call ', 'reduce()', ' now'],
+    ['<p>see <code>a`b</code> here</p>', 'see ', 'a`b', ' here'],
+    ['<p>see <code>a``b</code> here</p>', 'see ', 'a``b', ' here'],
+    ['<p>see <code>`</code> here</p>', 'see ', '`', ' here'],
+  ])('carries %s through the serializer into a styled run', (html, before, code, after) => {
+    const window = new Window();
+    const container = window.document.createElement('div');
+    container.innerHTML = html;
+    const runs = proseRuns(htmlToMarkdown(container as unknown as Element));
+    expect(runs).toEqual([
+      { text: before },
+      { text: code, style: 'inlineCode' },
+      { text: after },
+    ]);
+  });
+
+  it('does not pair backticks that the serializer escaped as literal text', () => {
+    const window = new Window();
+    const container = window.document.createElement('div');
+    container.innerHTML = '<p>a ` b ` c</p>'; // literal backticks in prose, not code
+    const markdown = htmlToMarkdown(container as unknown as Element);
+    expect(markdown).toBe('a \\` b \\` c');
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: markdown }] }));
+    expect(all.some((n) => n.text === markdown)).toBe(true); // one plain string, no runs
   });
 
   it('leaves an unpaired backtick as literal text', () => {

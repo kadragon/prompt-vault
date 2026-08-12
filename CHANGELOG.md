@@ -9,8 +9,13 @@
   turn a default-on feature *off*, so `defaultStyle` now carries `{calt: false, liga: false}` and the
   test lays `=>` out against the embedded font itself rather than asserting on the doc definition.
   Inline code was emitted as literal backticks with no styling to justify them; prose runs are now
-  split so the span drops its backticks and takes the fenced block's tint. Unpaired, empty and
-  line-straddling backticks stay literal.
+  split so the span drops its backticks and takes the fenced block's tint. The span matcher is
+  driven by what the repo's own serializer emits rather than by the single-backtick common case:
+  `html-to-markdown`'s `inlineCode` widens the fence and pads the body whenever the code text holds
+  a backtick, and `escapeMarkdownText` escapes every literal prose backtick, so the exporter closes
+  on a backreference to the opening run, strips CommonMark padding, and never pairs an escaped
+  backtick. Unpaired, empty and line-straddling backticks stay literal; the cases are pinned end to
+  end through the real serializer.
 
 - [done] Store submission assets refreshed for v1.10.2 (2026-08-11) → docs/store-listing.md. The
   listing had drifted two releases behind the code and stated two things that were false: the
