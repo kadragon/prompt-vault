@@ -40,25 +40,20 @@ continuation line is invisible to it and the blocked item is offered as actionab
       be launched in English, or drop shot 3 from the English set rather than ship mixed-language
       product chrome.
 - [ ] [FIX] Re-capture `screenshot-05-exported-pdf.png` (both locales) from a conversation that
-      contains `=>` and an inline-code run, once the two PDF rendering items below are fixed. The
+      contains `=>` and an inline-code run. The two PDF rendering items it waited on landed in
+      v1.10.3 (ligatures disabled, inline code styled), so this is now unblocked. The
       shipped capture uses Python/shell only, which keeps the caption honest but means the shot no
       longer exercises the two cases most likely to regress.
 
-### PDF rendering artifacts seen while capturing store screenshots (2026-08-11)
+### PDF export follow-ups (PR #66 review, 2026-08-12)
 
-> Both were observed in a real export (`chatgpt-…-Python-and-bash-snippets-20260811.pdf`) made
-> while capturing `assets/store/screenshot-05-exported-pdf.png`. Cosmetic, but they land in the
-> one artifact the listing shows off, so they are worth closing before wide distribution.
-
-- [ ] [FIX] Inline code loses its markers in the PDF but keeps its backticks. A prose run that
-      ChatGPT renders as `<code>reduce()</code>` reaches the PDF as the literal text
-      `` `reduce()` `` — the Markdown fence is emitted, but the PDF has no inline-code style to
-      justify it. Decide one way: style the run (monospace/tint) and drop the backticks, or leave
-      the text plain. Pin whichever with a test on the PDF text runs.
-- [ ] [FIX] The PDF's monospace font substitutes coding ligatures into code text. `=>` renders as
-      `⇒` in an exported JavaScript block, so what the reader copies out of the PDF does not match
-      what the page showed. Disable the ligature feature for the code font (or pick a
-      non-ligature face) and assert `=>` survives a round trip.
+- [ ] [FIX] Markdown escapes leak into the PDF as visible backslashes. `escapeMarkdownText` escapes
+      `` ` ``, `\`, `[`, `]`, `|` and flanking `*`/`_`/`~` so the *Markdown* export stays valid, but
+      the PDF renderer consumes that same escaped string and has no unescaping step — prose that
+      showed `a ` b` on the page reaches the PDF as `a \` b`. Pre-existing and wider than the inline
+      code fix in PR #66 (which only stopped an escaped backtick from being mistaken for a
+      delimiter); closing it means teaching the PDF renderer to unescape, or giving it an
+      un-escaped source string. The HTML exporter may have the same gap — check before fixing.
 
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 

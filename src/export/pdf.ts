@@ -19,6 +19,17 @@ import { buildExportFilename } from './filename';
 // runtime registers.
 export const PDF_FONT = 'Jetendard';
 
+// Jetendard inherits JetBrains Mono's coding ligatures, which are on by default:
+// `=>` is substituted with a single `⇒` glyph, so what the reader copies out of the
+// PDF no longer matches what the page showed. pdfmake hands this value straight to
+// pdfkit → fontkit, where the object form `{tag: false}` is the only way to turn a
+// default-on feature off — the tag-array form can only enable. The pdfmake typings
+// describe the array form alone, hence the cast; test/export/pdf.test.ts pins the
+// glyph output against the embedded font using the repo's own fontkit. Note the
+// shipped shaper is the copy bundled inside `pdfmake/build/pdfmake`, not that
+// devDependency — a pdfmake bump warrants re-checking this by hand.
+export const PDF_FONT_FEATURES = { calt: false, liga: false } as const;
+
 // Human-readable label per role. Exhaustive over Role so a new role is a compile
 // error here rather than a silently unlabeled section (mirrors markdown.ts).
 const ROLE_LABEL: Record<Role, string> = {
@@ -38,6 +49,10 @@ const STYLES: TDocumentDefinitions['styles'] = {
     preserveLeadingSpaces: true,
     margin: [0, 2, 0, 2],
   },
+  // Inline code inside prose: same tint as the fenced block so the run reads as
+  // code, which is what justifies dropping its Markdown backticks. No margin —
+  // it is an inline run inside a paragraph, not a block.
+  inlineCode: { background: '#f4f4f4', color: '#24292e' },
 };
 
 /**
@@ -52,7 +67,13 @@ export function toPdfDocDefinition(conversation: Conversation): TDocumentDefinit
   }
   return {
     content,
-    defaultStyle: { font: PDF_FONT, fontSize: 10 },
+    defaultStyle: {
+      font: PDF_FONT,
+      fontSize: 10,
+      // See PDF_FONT_FEATURES: the object form is deliberate and unrepresentable
+      // in pdfmake's tag-array typing.
+      fontFeatures: PDF_FONT_FEATURES as unknown as PDFKit.Mixins.OpenTypeFeatures[],
+    },
     styles: STYLES,
     pageMargins: [40, 40, 40, 40],
   };
@@ -67,10 +88,10 @@ export function pdfFilename(conversation: Conversation, now: Date): string {
 }
 
 // Split a message body into prose and fenced-code segments, mapping each to a
-// content node: prose is emitted verbatim (inline Markdown syntax is left as
-// literal text — full Markdown styling is out of scope for v1), code segments get
-// the boxed monospace `code` style. Leading-space preservation on code keeps
-// indentation intact.
+// content node: prose keeps its text but has inline-code spans lifted into styled
+// runs (other inline Markdown syntax is still left as literal text — full Markdown
+// styling is out of scope for v1), code segments get the boxed monospace `code`
+// style. Leading-space preservation on code keeps indentation intact.
 function renderBody(body: string): Content[] {
   const nodes: Content[] = [];
   for (const segment of splitFencedCode(body)) {
@@ -78,10 +99,58 @@ function renderBody(body: string): Content[] {
     if (segment.code) {
       nodes.push({ text: segment.text, style: 'code' });
     } else {
-      nodes.push({ text: segment.text.trim(), margin: [0, 2, 0, 2] });
+      nodes.push({ text: splitInlineCode(segment.text.trim()), margin: [0, 2, 0, 2] });
     }
   }
   return nodes;
+}
+
+// A Markdown inline-code span: a run of N backticks, a body, then a closing run of
+// exactly N (the `\1` backreference, plus the guards that keep the run from being
+// part of a longer one). Both details are forced by what this repo's own serializer
+// emits (src/core/html-to-markdown.ts):
+//   - `inlineCode` fences with `longestBacktickRun + 1` backticks and pads the body
+//     with a space when the code text itself contains a backtick, per CommonMark —
+//     so a single-backtick pattern would tear those spans apart mid-content.
+//   - `escapeMarkdownText` escapes every literal backtick in prose as `` \` ``, so a
+//     backslash-preceded run is not a delimiter at all and must not pair with one.
+// An unpaired run, an empty span and a span straddling a line break still fail to
+// match and stay literal text, which is what the source page showed.
+const INLINE_CODE = /(?<![\\`])(`+)([^\n]*?)(?<![\\`])\1(?!`)/g;
+
+// Lift inline-code spans out of a prose run: the backticks are dropped and the code
+// text gets the `inlineCode` style, so the marker is replaced by the styling it was
+// standing in for rather than surviving as stray punctuation. Prose with no inline
+// code stays a plain string, keeping the common node shape unchanged.
+function splitInlineCode(text: string): string | Content[] {
+  const runs: Content[] = [];
+  const re = new RegExp(INLINE_CODE.source, INLINE_CODE.flags);
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    const code = stripCodePadding(match[2]);
+    if (code.length === 0) continue; // an empty span is not code — leave it literal
+    if (match.index > lastIndex) {
+      runs.push({ text: text.slice(lastIndex, match.index) });
+    }
+    runs.push({ text: code, style: 'inlineCode' });
+    lastIndex = re.lastIndex;
+  }
+  if (runs.length === 0) return text;
+  if (lastIndex < text.length) {
+    runs.push({ text: text.slice(lastIndex) });
+  }
+  return runs;
+}
+
+// CommonMark: one leading and one trailing space are stripped from a code span
+// when both are present and the body is not all spaces — the padding the
+// serializer adds so a body touching a backtick stays parseable.
+function stripCodePadding(body: string): string {
+  if (body.length >= 2 && body.startsWith(' ') && body.endsWith(' ') && body.trim().length > 0) {
+    return body.slice(1, -1);
+  }
+  return body;
 }
 
 interface Segment {
