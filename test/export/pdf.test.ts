@@ -157,7 +157,48 @@ describe('toPdfDocDefinition', () => {
     const markdown = htmlToMarkdown(container as unknown as Element);
     expect(markdown).toBe('a \\` b \\` c');
     const all = nodes(conversation({ messages: [{ role: 'assistant', content: markdown }] }));
-    expect(all.some((n) => n.text === markdown)).toBe(true); // one plain string, no runs
+    // One plain string, no runs — and the escapes that kept it literal in the
+    // Markdown export do not reach the page (see the unescaping cases below).
+    expect(all.some((n) => n.text === 'a ` b ` c')).toBe(true);
+  });
+
+  // The PDF renders prose, not Markdown source: the backslashes `escapeMarkdownText`
+  // added so the *Markdown* export stays valid are delimiters of that format, and
+  // showing them on the page is showing the reader punctuation the source page never
+  // had. Driven through the real serializer so the cases are the ones it actually
+  // emits, not hand-invented escapes.
+  it.each([
+    ['<p>see [1] and a ` b</p>', 'see [1] and a ` b'],
+    ['<p>a | b</p>', 'a | b'],
+    ['<p>*emph* and _under_</p>', '*emph* and _under_'],
+    ['<p>C:\\path</p>', 'C:\\path'],
+    ['<p># not a heading</p>', '# not a heading'],
+  ])('strips the Markdown escapes from %s before rendering it', (html, expected) => {
+    const window = new Window();
+    const container = window.document.createElement('div');
+    container.innerHTML = html;
+    const markdown = htmlToMarkdown(container as unknown as Element);
+    expect(markdown).toContain('\\'); // the escape is really there in the source
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: markdown }] }));
+    expect(all.some((n) => n.text === expected)).toBe(true);
+  });
+
+  it('leaves a backslash inside an inline-code run alone (code bodies are never escaped)', () => {
+    const window = new Window();
+    const container = window.document.createElement('div');
+    container.innerHTML = '<p>run <code>C:\\path</code> now</p>';
+    const runs = proseRuns(htmlToMarkdown(container as unknown as Element));
+    expect(runs).toEqual([
+      { text: 'run ' },
+      { text: 'C:\\path', style: 'inlineCode' },
+      { text: ' now' },
+    ]);
+  });
+
+  it('leaves a backslash inside a fenced code block alone', () => {
+    const body = '```\nconst re = /\\d+/;\n```';
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: body }] }));
+    expect(all.some((n) => n.style === 'code' && n.text === 'const re = /\\d+/;')).toBe(true);
   });
 
   it('leaves an unpaired backtick as literal text', () => {

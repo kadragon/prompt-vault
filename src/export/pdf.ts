@@ -131,16 +131,34 @@ function splitInlineCode(text: string): string | Content[] {
     const code = stripCodePadding(match[2]);
     if (code.length === 0) continue; // an empty span is not code — leave it literal
     if (match.index > lastIndex) {
-      runs.push({ text: text.slice(lastIndex, match.index) });
+      runs.push({ text: unescapeMarkdown(text.slice(lastIndex, match.index)) });
     }
     runs.push({ text: code, style: 'inlineCode' });
     lastIndex = re.lastIndex;
   }
-  if (runs.length === 0) return text;
+  if (runs.length === 0) return unescapeMarkdown(text);
   if (lastIndex < text.length) {
-    runs.push({ text: text.slice(lastIndex) });
+    runs.push({ text: unescapeMarkdown(text.slice(lastIndex)) });
   }
   return runs;
+}
+
+// A CommonMark backslash escape: a backslash followed by ASCII punctuation. Any
+// other backslash is a literal one and is left as it stands.
+const MARKDOWN_ESCAPE = /\\([!-/:-@[-`{-~])/g;
+
+// Undo the escaping `escapeMarkdownText` applied upstream. That pass exists so the
+// *Markdown* export stays valid source; this exporter renders prose instead — it
+// drops the fences and the inline-code backticks — so a surviving backslash is
+// punctuation the source page never showed (`a \` b` for a literal backtick,
+// `\[1\]`, `\|`, `\*`). Applied ONLY to prose runs: code bodies, inline and fenced,
+// are never escaped in the first place (see src/core/markdown-escape.ts), so
+// unescaping them would eat a real backslash out of a regex or a Windows path.
+// A single left-to-right pass, which is what makes the doubled backslash the
+// escaper emits first (`C:\path` → `C:\\path`) round-trip to one rather than
+// exposing the character it protects.
+function unescapeMarkdown(text: string): string {
+  return text.replace(MARKDOWN_ESCAPE, '$1');
 }
 
 // CommonMark: one leading and one trailing space are stripped from a code span

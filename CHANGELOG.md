@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- [done] PDF export: stop showing the Markdown escapes as visible backslashes (v1.10.4)
+  (2026-08-12). `escapeMarkdownText` backslash-escapes `` ` ``, `\`, `[`, `]`, `|` and flanking
+  `*`/`_`/`~` at the text-node source so the *Markdown* export stays valid source; the PDF
+  renderer consumed that same string and had no unescaping step, so prose that showed `a ` b`
+  on the page reached the PDF as `a \` b`. The prose runs are now unescaped on the CommonMark
+  rule (backslash + ASCII punctuation) as the last step, after the fenced- and inline-code
+  splitting that depends on the escapes still being present. Code bodies are deliberately
+  untouched — neither fenced nor inline code is escaped upstream, so unescaping them would eat
+  a real backslash out of a regex or a Windows path; both are pinned. The HTML exporter was
+  checked and needs no equivalent change: it shows each message's Markdown verbatim inside a
+  `<pre>`, a deliberate source view where the backslashes are the source.
+
 - [done] PDF export: kill the font's coding ligatures and style inline code (v1.10.3) (2026-08-12).
   Both artifacts were filed off the v1.10.2 screenshot capture. Jetendard inherits JetBrains Mono's
   `calt`/`liga` sets, so `=>` reached the PDF's text layer as a single `⇒` glyph and did not survive
