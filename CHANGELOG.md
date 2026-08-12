@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- [done] PDF export: kill the font's coding ligatures and style inline code (v1.10.3) (2026-08-12).
+  Both artifacts were filed off the v1.10.2 screenshot capture. Jetendard inherits JetBrains Mono's
+  `calt`/`liga` sets, so `=>` reached the PDF's text layer as a single `⇒` glyph and did not survive
+  a copy out; pdfmake forwards `fontFeatures` untouched to fontkit, where only the object form can
+  turn a default-on feature *off*, so `defaultStyle` now carries `{calt: false, liga: false}` and the
+  test lays `=>` out against the embedded font itself rather than asserting on the doc definition.
+  Inline code was emitted as literal backticks with no styling to justify them; prose runs are now
+  split so the span drops its backticks and takes the fenced block's tint. Unpaired, empty and
+  line-straddling backticks stay literal.
+
 - [done] Store submission assets refreshed for v1.10.2 (2026-08-11) → docs/store-listing.md. The
   listing had drifted two releases behind the code and stated two things that were false: the
   manifest description still read "ChatGPT first" and named only Markdown/PDF, and the listing

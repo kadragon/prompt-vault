@@ -1,6 +1,22 @@
+import { createRequire } from 'node:module';
 import { describe, it, expect } from 'vitest';
 import type { Conversation } from '../../src/core/conversation';
-import { PDF_FONT, pdfFilename, toPdfDocDefinition } from '../../src/export/pdf';
+import { PDF_FONT, PDF_FONT_FEATURES, pdfFilename, toPdfDocDefinition } from '../../src/export/pdf';
+
+// fontkit ships no type declarations, so it is required untyped and narrowed here.
+// It is what pdfkit (and therefore pdfmake) uses to lay text out, so laying a string
+// out with the same font file and the same feature object the document definition
+// carries is the closest a unit test gets to the glyphs the reader ends up copying
+// out of the PDF — asserting on the doc definition alone would prove nothing.
+interface FontkitFont {
+  layout(text: string, features?: unknown): { glyphs: Array<{ name: string }> };
+}
+const fontkit = createRequire(import.meta.url)('fontkit') as {
+  openSync(path: string): FontkitFont;
+};
+const jetendard = fontkit.openSync(new URL('../../src/export/fonts/Jetendard-Regular.ttf', import.meta.url).pathname);
+const glyphNames = (text: string, features?: unknown): string[] =>
+  jetendard.layout(text, features).glyphs.map((g) => g.name);
 
 function conversation(overrides: Partial<Conversation> = {}): Conversation {
   return {
@@ -20,6 +36,13 @@ function conversation(overrides: Partial<Conversation> = {}): Conversation {
 function nodes(c: Conversation): Array<{ text?: unknown; style?: unknown; margin?: unknown }> {
   const content = toPdfDocDefinition(c).content;
   return content as Array<{ text?: unknown; style?: unknown; margin?: unknown }>;
+}
+
+// The inline runs of the first prose node of a single-message conversation.
+function proseRuns(body: string): Array<{ text: string; style?: string }> {
+  const all = nodes(conversation({ messages: [{ role: 'assistant', content: body }] }));
+  const prose = all.find((n) => n.style !== 'title' && n.style !== 'role' && n.style !== 'code');
+  return prose?.text as Array<{ text: string; style?: string }>;
 }
 
 describe('toPdfDocDefinition', () => {
@@ -81,6 +104,55 @@ describe('toPdfDocDefinition', () => {
     const all = nodes(conversation({ messages: [{ role: 'assistant', content }] }));
     expect(all.some((n) => n.style === 'code')).toBe(false);
     expect(all.some((n) => n.text === 'text')).toBe(true);
+  });
+
+  it('styles an inline-code run and drops its backticks', () => {
+    const runs = proseRuns('call `reduce()` on it');
+    expect(runs).toEqual([
+      { text: 'call ' },
+      { text: 'reduce()', style: 'inlineCode' },
+      { text: ' on it' },
+    ]);
+  });
+
+  it('gives the inline-code style the same tint as the fenced code block', () => {
+    const styles = toPdfDocDefinition(conversation()).styles as Record<
+      string,
+      { background?: string }
+    >;
+    expect(styles.inlineCode?.background).toBe(styles.code?.background);
+  });
+
+  it('leaves an unpaired backtick as literal text', () => {
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: 'a ` b' }] }));
+    expect(all.some((n) => n.text === 'a ` b')).toBe(true);
+  });
+
+  it('leaves an empty backtick pair as literal text', () => {
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: 'a `` b' }] }));
+    expect(all.some((n) => n.text === 'a `` b')).toBe(true);
+  });
+
+  it('does not treat a backtick pair spanning a newline as inline code', () => {
+    // Stays a plain string node rather than being split into runs.
+    expect(proseRuns('a `b\nc` d') as unknown).toBe('a `b\nc` d');
+  });
+
+  it('disables the font ligatures so `=>` stays two glyphs in the PDF', () => {
+    // Without the features the font substitutes a ligature glyph — matched by name
+    // rather than by the exact glyph run, which varies with the shaper version.
+    expect(glyphNames('=>').some((n) => n.endsWith('.liga'))).toBe(true);
+    expect(glyphNames('=>', PDF_FONT_FEATURES)).toEqual(['equal', 'greater']);
+  });
+
+  it('carries the ligature-disabling features on the default style', () => {
+    expect(toPdfDocDefinition(conversation()).defaultStyle).toMatchObject({
+      fontFeatures: PDF_FONT_FEATURES,
+    });
+  });
+
+  it('leaves CJK glyph output unchanged when ligatures are disabled', () => {
+    expect(glyphNames('안녕하세요', PDF_FONT_FEATURES)).toEqual(glyphNames('안녕하세요'));
   });
 
   it('carries CJK text through into the document definition', () => {
