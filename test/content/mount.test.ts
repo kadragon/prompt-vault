@@ -503,6 +503,24 @@ describe('syncButtons on Claude’s /recents history page', () => {
       'Download all conversations in this project',
     );
   });
+
+  it('re-mounts a legacy container without a track stamp for the current track', () => {
+    const doc = docWithClaudeRecentsTable();
+    syncButtons(doc, CLAUDE_RECENTS_URL);
+
+    const legacy = doc.getElementById(CONTAINER_ID)!;
+    legacy.removeAttribute(TRACK_ATTR);
+    expect(legacy.getAttribute(TRACK_ATTR)).toBeNull();
+
+    syncButtons(doc, CLAUDE_RECENTS_URL);
+
+    const current = doc.getElementById(CONTAINER_ID);
+    expect(current).not.toBe(legacy);
+    expect(current?.getAttribute(TRACK_ATTR)).toBe('recents');
+    expect(current?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'Download all recent conversations',
+    );
+  });
 });
 
 // Every bulk trigger is fail-loud (AGENTS.md #4): a click that cannot be serviced must say so
