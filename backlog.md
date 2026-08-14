@@ -39,7 +39,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
       moves it — see the capture notes in `docs/store-listing.md`. Re-capture once the browser can
       be launched in English, or drop shot 3 from the English set rather than ship mixed-language
       product chrome.
-- [ ] [FIX] Re-capture `screenshot-05-exported-pdf.png` (both locales) from a conversation that
+- [ ] [FIX] Re-capture `screenshot-05-exported-pdf.png` (both locales) from a conversation that *(deferred: needs an authenticated headed browser session and a non-sensitive demo conversation for real recapture)*
       contains `=>` and an inline-code run. The two PDF rendering items it waited on landed in
       v1.10.3 (ligatures disabled, inline code styled), so this is now unblocked. The
       shipped capture uses Python/shell only, which keeps the caption honest but means the shot no
@@ -78,19 +78,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
       [FIX] `/recents` on a brand-new account takes the loud branch, so a user with no
       conversations could be shown a markup-drift error instead of an empty state. Unlike the
       project track there is no measured shell marker for `/recents` to separate the two.
-
-### QA follow-ups on the track attribute + history rewind (2026-08-11)
-
-> Non-blocking observations from the independent QA of the sprint that closed five items in the
-> group above. Both are missing coverage for a branch that sprint added, not defects in it.
-
-- [ ] [TEST] The already-on-route path's "fires zero `back()` calls" guarantee is pinned only by
-      tests with a 200 ms timeout — below the 3000 ms `RETURN_BACK_RETRY_MS` threshold — so they
-      would stay green even if `rewind` were wrongly set on that path. The guarantee currently
-      rests on `rewind` staying `null`. Add a case that runs past the retry threshold.
-- [ ] [TEST] An unstamped legacy container (no `data-prompt-vault-track`) is treated as stale by
-      design, documented at `src/content/mount.ts:635-638`, but no test asserts it. One case
-      would pin the doc comment.
 
 ### PR #61 (Claude navigation/stream failure modes, 2026-08-10)
 
