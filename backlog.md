@@ -39,8 +39,8 @@ continuation line is invisible to it and the blocked item is offered as actionab
       moves it — see the capture notes in `docs/store-listing.md`. Re-capture once the browser can
       be launched in English, or drop shot 3 from the English set rather than ship mixed-language
       product chrome.
-- [ ] [FIX] Re-capture `screenshot-05-exported-pdf.png` (both locales) from a conversation that *(deferred: needs an authenticated headed browser session and a non-sensitive demo conversation for real recapture)*
-      contains `=>` and an inline-code run. The two PDF rendering items it waited on landed in
+- [ ] [FIX] Re-capture `screenshot-05-exported-pdf.png` (both locales) from a conversation containing `=>` and an inline-code run. *(deferred: authenticated headed browser + non-sensitive demo conversation required)*
+      The two PDF rendering items it waited on landed in
       v1.10.3 (ligatures disabled, inline code styled), so this is now unblocked. The
       shipped capture uses Python/shell only, which keeps the caption honest but means the shot no
       longer exercises the two cases most likely to regress.
