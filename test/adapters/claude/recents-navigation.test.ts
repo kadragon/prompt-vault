@@ -246,6 +246,61 @@ describe('Claude /recents navigation openers', () => {
     expect(state.pathname).toBe(RECENTS_PATH);
   });
 
+  it('waits past the rewind retry threshold for a slow /recents hydration without going back', async () => {
+    vi.useFakeTimers();
+    try {
+      const { doc, state, backs } = installRecentsPage('<body><main>still hydrating</main></body>');
+      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+        pollMs: 100,
+        timeoutMs: 10000,
+      });
+      // Four seconds is deliberately beyond RETURN_BACK_RETRY_MS (3000 ms): a retry that was
+      // incorrectly armed for an already-on-/recents page would have called history.back() here.
+      setTimeout(() => {
+        doc.body.innerHTML = RECENTS_TABLE;
+      }, 4000);
+      await vi.advanceTimersByTimeAsync(5000);
+
+      await settled;
+      expect(backs.count).toBe(0);
+      expect(state.pathname).toBe(RECENTS_PATH);
+      expect(doc.querySelector('table[data-cds="Table"]')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not retry after back() lands on /recents before a slow hydration completes', async () => {
+    vi.useFakeTimers();
+    try {
+      const { doc, state, backs } = installRecentsPage(
+        '<body><div data-index="0"><div class="standard-markdown">previous answer</div></div></body>',
+        '/chat/previous',
+      );
+      backs.onBack = () => {
+        setPathname(state, RECENTS_PATH);
+        setTimeout(() => {
+          doc.body.innerHTML = RECENTS_TABLE;
+        }, 4000);
+      };
+
+      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+        pollMs: 100,
+        timeoutMs: 10000,
+      });
+      await vi.advanceTimersByTimeAsync(5000);
+
+      await settled;
+      // The first back() landed on /recents, so waiting past RETURN_BACK_RETRY_MS must not
+      // rewind the user's own history while the table hydrates.
+      expect(backs.count).toBe(1);
+      expect(state.pathname).toBe(RECENTS_PATH);
+      expect(doc.querySelector('table[data-cds="Table"]')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('refuses to treat a non-recents URL as the recents home', async () => {
     // `openRecentsHome` is the bulk driver's "return the user where they started" hook. Accepting
     // any URL would silently send a `/recents` run somewhere else.
