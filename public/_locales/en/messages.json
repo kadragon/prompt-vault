@@ -183,6 +183,22 @@
       }
     }
   },
+  "coachMarkTitle": {
+    "message": "Find Prompt Vault in your toolbar",
+    "description": "Heading of the first-run coach mark that points at the browser toolbar."
+  },
+  "coachMarkBody": {
+    "message": "Click the puzzle-piece (Extensions) button in your browser toolbar, then pin Prompt Vault to keep it one click away.",
+    "description": "Body copy of the first-run coach mark, describing how to pin the extension."
+  },
+  "coachMarkCloseLabel": {
+    "message": "Got it",
+    "description": "Label of the button that dismisses the first-run coach mark."
+  },
+  "coachMarkAriaLabel": {
+    "message": "Prompt Vault setup tip",
+    "description": "Accessible name of the first-run coach mark dialog."
+  },
   "optionsTitle": {
     "message": "prompt-vault settings",
     "description": "Browser-tab title of the options page."

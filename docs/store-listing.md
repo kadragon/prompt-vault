@@ -104,7 +104,7 @@ data handling change.
 
 | Permission / practice | Justification |
 |-----------------------|---------------|
-| `storage` | Persists toolbar and bulk-export visibility preferences through `chrome.storage.sync`. No conversation content is stored. |
+| `storage` | Persists toolbar and bulk-export visibility preferences through `chrome.storage.sync`, and a single local flag recording that the one-time toolbar-pinning tip was dismissed through `chrome.storage.local`. No conversation content is stored. |
 | Host access `https://chatgpt.com/*`, `https://claude.ai/*`, `https://gemini.google.com/*` | Injects export controls into ChatGPT, Claude and Gemini, and reads conversations selected by the user for local export. These are the only sites on which the extension runs. Each host corresponds to one registered adapter in `src/adapters/`. The Gemini entry is scoped to the `gemini.google.com` subdomain, not `google.com`, so it grants no access to any other Google service. The access comes solely from `content_scripts.matches` — the manifest declares no `host_permissions`, so the extension holds no cross-origin fetch or cookie access on these hosts. |
 | Remote code | Not used. All executable code and the PDF font are bundled in the extension package. |
 | Conversation content | Processed locally only after an export action; not retained by the extension or transmitted to the developer or a third party. |
@@ -119,7 +119,8 @@ Data-use declarations:
   dashboard offers **User-generated content** as a separate category, select it as well.
 - The extension uses this data only to create the requested local download. It does not
   retain, transmit, sell, or share conversation content. `chrome.storage.sync` contains
-  only toolbar-visibility preferences, never conversation content.
+  only toolbar-visibility preferences and `chrome.storage.local` only the one-time
+  setup-tip dismissal flag, never conversation content.
 - Certify that data is not sold, used or transferred outside the single purpose, or used
   for creditworthiness or lending, and certify compliance with Chrome Web Store Limited
   Use requirements.

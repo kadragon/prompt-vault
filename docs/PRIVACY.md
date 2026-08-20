@@ -42,11 +42,20 @@ or allow humans to read it.
 
 - **Your toolbar preferences only.** Which export icons you choose to show are saved with
   Chrome's `storage.sync` API so the setting follows your Chrome profile. This contains no
-  conversation content — only your on/off UI choices. Nothing else is persisted. Note that
+  conversation content — only your on/off UI choices. Note that
   `storage.sync` is Chrome's own sync mechanism: if you are signed into Chrome with Sync
   enabled, Chrome (not this extension) propagates this preference across your devices via
   your Google account. The extension itself makes no network requests; it only asks Chrome
   to remember the setting.
+
+- **A one-time setup flag.** The first time the extension runs on a supported page it shows a
+  one-off tip explaining how to pin its toolbar icon. Dismissing the tip saves a single
+  true/false flag with Chrome's `storage.local` API so the tip never returns. `storage.local`
+  stays on this computer — unlike `storage.sync` it does not travel through Chrome Sync. It
+  records only that the tip was dismissed; no conversation content, and nothing about which
+  pages you visited.
+
+Nothing else is persisted.
 
 ## What the extension does NOT do
 
@@ -60,8 +69,8 @@ or allow humans to read it.
 
 ## Permissions and why they are needed
 
-- **`storage`** — to remember your toolbar icon preferences (see above). No conversation
-  data is stored.
+- **`storage`** — to remember your toolbar icon preferences and whether the one-time setup
+  tip has been dismissed (see above). No conversation data is stored.
 - **Host access to `chatgpt.com`, `claude.ai`, and `gemini.google.com`** — so the
   export buttons can appear on, and read the conversation from, ChatGPT, Claude and Gemini
   conversation pages. The extension runs on no other sites. The Gemini grant is scoped to the

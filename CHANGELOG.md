@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] First-run coach mark pointing at the toolbar icon (v1.11.0) (2026-08-20)
 - [done] Track rewind and legacy mount test coverage (1 units) (2026-08-14)
 - [done] PDF export: stop showing the Markdown escapes as visible backslashes (v1.10.4)
   (2026-08-12). `escapeMarkdownText` backslash-escapes `` ` ``, `\`, `[`, `]`, `|` and flanking

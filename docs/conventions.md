@@ -56,6 +56,21 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 - Markdown: deterministic output (stable ordering, escaped content). Same conversation → same bytes.
 - Filenames: `{provider}-{safe-title}-{yyyymmdd}.{ext}`. Sanitize the title (no `/`, control chars).
 
+## Injected page UI
+
+- Two shapes, and they do NOT share an accessibility recipe. A **modal** (`src/content/bulk-panel.ts`)
+  owns the page: backdrop, `aria-modal="true"`, focus moved into it. A **non-modal** overlay
+  (`src/content/coach-mark.ts`) must have none of those — the page stays fully usable behind it.
+  Copying a modal's `focus()`-on-show onto a non-modal is the specific mistake to avoid.
+- **Anything mounted by the poll tick, not by a user gesture, must not take focus and must not act
+  on an in-flight gesture.** `syncButtons` runs every 500 ms, so an element can appear mid-keystroke:
+  call `focus()` only when `doc.activeElement` is `null`/`body`, and dismiss on `pointerdown` rather
+  than `click`, since a `click` whose press predates the mount would fire into a just-bound listener.
+- Every element injected into the page needs its own stable id. `removeButtons()` wipes
+  `CONTAINER_ID` on every SPA href change, so anything reusing that id disappears mid-read.
+- Whatever binds listeners on `document` owns unbinding them on **every** teardown path, not just
+  the user-facing dismiss one — a detached node's listeners still fire and still write state.
+
 ## Naming & style
 
 - Files/dirs: kebab-case. Types/interfaces: PascalCase. Functions/vars: camelCase.
