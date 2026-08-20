@@ -24,6 +24,9 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      # Same check the tracked pre-commit hook runs; repeated here because a clone that
+      # never ran `npm run hooks:install` has no hook, and `--no-verify` bypasses one that does.
+      - run: npm run check:versions
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

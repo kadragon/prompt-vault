@@ -21,6 +21,8 @@
 | Lint | `npm run lint` (ESLint flat config + typescript-eslint) |
 | Type-check | `npm run typecheck` (`tsc --noEmit`) |
 | Unit tests (exporters, model) | `npm test` (Vitest, node env) |
+| Version sync check | `npm run check:versions` — asserts `package-lock.json` still carries `package.json`'s version. Fix drift with `npm install --package-lock-only` |
+| Enable git hooks | `npm run hooks:install` (once per clone) — points `core.hooksPath` at the tracked `.githooks/`, whose `pre-commit` runs the version check. CI runs the same check, so the hook is a fast local warning, not the only gate |
 | Package for store | `npm run package` → builds, then zips `dist/` → `prompt-vault-v<version>.zip` (repo root, gitignored). `--no-build` zips existing `dist/` as-is. Needs the system `zip` CLI. Upload the zip at the Web Store dashboard — see `docs/store-listing.md` |
 | Regenerate icons | Edit `assets/icon.svg`, then render `public/icons/icon{16,32,48,128}.png` (see below) |
 
