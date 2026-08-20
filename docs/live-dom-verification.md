@@ -1741,6 +1741,82 @@ markup are unmeasured". **The Gems half is resolved as not-applicable.** Same se
 Conversations belonging to a Gem are not separated in the sidebar in any way this session measured;
 whether they are distinguishable there at all is `[unknown — not measured 2026-08-10]`.
 
+### 2026-08-20 — the sidebar selectors as shipped, and what the collapsed sidebar is (and is not) evidence for
+
+Records what the bulk/sidebar implementation took from the 2026-08-10 session, so a later reader
+can tell shipped selectors from measured ones. **No new live session was run for this entry** — it
+adds no measurement, and every selector below traces to 2026-08-10 above.
+
+Shipped in `src/adapters/gemini/selectors.ts`:
+
+| Key | Selector | Evidence |
+|---|---|---|
+| `sidebarScroller` | `infinite-scroller` | Two exist; the sidebar's carries no `data-test-id`, so it is resolved by EXCLUDING `scrollContainer` and preferring the one containing rows |
+| `sidebarConversationRow` | `gem-nav-list-item[data-test-id="conversation"]` | 93 rows, 1 anchor each |
+| `sidebarConversationLink` | `a[href^="/app/"]` | 93 anchors, 93 distinct 16-hex ids, 0 outside a row |
+
+Nothing localized and no Angular scoping class (`_ngcontent-*`, `ng-star-inserted`) is matched, per
+the file's own rule — the measuring account was `ko-KR`, so the row labels are read as titles only.
+
+**The collapsed sidebar is resolved by a discriminator, not by measuring the toggle.** The
+2026-08-10 caveat (collapsed, a `/app` page renders 31 rows and **0** anchors) is acted on as
+`rows > 0 && anchors === 0` → a visible `ExtractionError` asking the user to open the sidebar.
+That inequality is exactly the measured shape and nothing more. Auto-expanding was rejected: the
+sidebar's toggle button was **never measured**, and selecting one would be an invented selector
+(AGENTS.md #5). So `[unknown — the sidebar toggle control was not measured 2026-08-10]` stands, and
+re-measuring it is the prerequisite for ever expanding the sidebar automatically.
+
+**The page-size oracle does NOT seed from the initial render**, unlike ChatGPT's. There the first
+render measured exactly one page; here it is 31 against a page size of 20, so the size is derived
+only from a settled batch the walk watched arrive. This asymmetry between the two providers is the
+kind that survives only if it is written down.
+
+**The SPA route flips before the exchange DOM swaps**, so a route match plus rendered exchanges is
+NOT evidence that the target opened. `openConversation` therefore accepts an unchanged message
+signature only once the rendered `div.conversation-container` nodes are different OBJECTS from the
+ones captured before the click — a browser guarantee about node replacement, which is why it needs
+no Gemini fact that has not been measured.
+
+Read the provenance precisely, because two of these three claims are not live measurements:
+
+- The route-before-DOM ordering is standard Angular router behaviour, **reproduced against the
+  adapter in a harness, not measured on the live page.** No session has timed the gap between
+  Gemini's URL update and its exchange swap, and none needs to: the fix reads whether a render
+  happened, not how long one takes.
+- **A minimum time dwell was shipped first and is what failed.** It moved the acceptance point
+  from ~450 ms to ~1520 ms without changing what was accepted — the outgoing conversation was
+  still resolved at 1521 ms, and an honest conversation whose swap landed at 2500 ms was resolved
+  at 1520 ms with the previous chat's content. Elapsed time cannot separate "swapped to an
+  identical-looking chat" from "has not swapped yet"; it only encodes an unmeasured prior about
+  swap latency. Do not reintroduce a dwell here, at any length.
+- Comparing the exchanges' id VALUES across the swap was rejected: whether Gemini's
+  `conversation-container` ids are stable per conversation or regenerated per render is
+  `[unknown — not measured 2026-08-10]`.
+
+**This guard scopes to the unchanged-signature branch only.** When the signature *does* change,
+`openConversation` resolves at once, with no settle counter and no node check — so it can still
+hand the caller a mid-render list: an old exchange still mounted with a new container appended
+beside it, or a target streaming its turns in one at a time. Both were reproduced against the
+adapter in a harness (`backlog.md` → *QA pass on the Gemini bulk/sidebar track*); neither has been
+observed on the live page, so whether Gemini produces those sequences is `[unknown — not
+measured]`. `collectPagedExchanges` re-reads the DOM hundreds of ms later, which masks a
+fast-completing swap, and `assertNotStreaming` covers the `aria-busy` case — but a reader should
+not take the paragraph above as saying `openConversation` never returns mid-render. It says the
+unchanged-signature branch does not.
+
+Known residual, and it is a false negative rather than a benign one: **if Angular ever reuses the
+exchange nodes in place** — rewriting their contents instead of replacing them — a conversation
+that genuinely opened, and whose rendered shape happens to match the outgoing one, is never
+accepted and the open times out. That conversation is skipped from the batch with a visible error.
+Whether Gemini re-renders by replacement or by mutation is `[unknown — not measured]`, and it is
+the first thing to measure if Gemini bulk runs start reporting skips. The direction is deliberate:
+the alternative failure is the wrong conversation's content saved under the right conversation's
+name with no error at all.
+
+Residual, unchanged from 2026-08-10 and untouched by shipping: one account, 93 conversations, one
+window size, one locale. Nothing here was exercised against a live logged-in Gemini session with
+the built extension loaded — a load-unpacked smoke test of the bulk panel on Gemini is still owed.
+
 ## Capturing a fixture
 
 - Fixtures are whole-page HTML (`document.documentElement.outerHTML`) in

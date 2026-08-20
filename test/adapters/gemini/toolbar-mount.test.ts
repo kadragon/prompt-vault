@@ -115,16 +115,20 @@ describe('geminiAdapter.toolbarButtonClass', () => {
 });
 
 describe('geminiAdapter shape', () => {
-  it('implements only the verified single-conversation members', () => {
-    // The bulk and Gems/project tracks each need their own live-DOM verification, so their
-    // members stay absent. The content layer reads that absence to hide the corresponding
-    // controls (see the bulk-icon gate in `src/content/mount.ts`). Asserting the member set
-    // whole catches a member added later without the live verification — and without the UI
-    // gate — that must come with it.
+  it('implements only the members its live verification covers', () => {
+    // The sidebar bulk track is verified (docs/live-dom-verification.md → 2026-08-10: the
+    // sidebar pages at 20, append-only, 1:1 anchor identity), so its three members are present.
+    // The Notebooks/project track is NOT — the measuring account had zero notebooks — so its
+    // members stay absent, and the content layer reads that absence to hide the project trigger
+    // (see `pickProjectAdapter` in `src/content/mount.ts`). Asserting the member set whole
+    // catches a member added later without the live verification that must come with it.
     expect(geminiAdapter.provider).toBe('gemini');
     expect(Object.keys(geminiAdapter).sort()).toEqual([
       'extract',
+      'listConversations',
+      'loadMoreConversations',
       'matches',
+      'openConversation',
       'provider',
       'toolbarAnchor',
       'toolbarButtonClass',

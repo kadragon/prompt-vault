@@ -85,16 +85,60 @@ continuation line is invisible to it and the blocked item is offered as actionab
 a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
 The larger hazard that measurement exposed is filed above.)*
 
+### QA pass on the Gemini bulk/sidebar track (2026-08-20)
+
+> Non-blocking findings from the independent QA of the sprint that shipped Gemini's
+> `listConversations` / `openConversation` / `loadMoreConversations`. The blocking finding — a
+> stale render resolving `openConversation`, which would export the outgoing conversation's
+> content under the target's name with no error — was fixed in that sprint, after a first
+> attempt (a minimum dwell since the click) was shown to move the window rather than close it.
+
+- [ ] [FIX] `pageParityGate` in `src/adapters/gemini/index.ts` grows `pageSize` monotonically, so
+      two 20-row pages landing inside one settled batch set it to 40 permanently and `onIncomplete`
+      never fires again. Measured by QA: pages `[20, 20, 40, 20]` → no warning, against a control
+      `[20, 20, 20]` → warning, for the same full-page terminal boundary. A lost "may be
+      incomplete" warning, not a wrong list — the walk still terminates on a clamped static port,
+      and the `onPageSize`-reports-only-a-matched-size rule keeps the bad size out of the cached
+      `knownPageSize`. Candidate fixes: take the `min` of observed full batches, or refuse to let a
+      batch redefine the size when it is an exact multiple of the current one.
+- [ ] *(blocked by: the row-vs-anchor hydration order was not measured on 2026-08-10, so whether
+      Gemini ever exposes the window is unknown)*
+      [FIX] A partially hydrated sidebar — rows attached, their inner `<a>` not yet — is
+      indistinguishable from a collapsed one, so `assertSidebarExpanded` tells the user to open a
+      sidebar that is already open. Wrong-but-recoverable (a retry succeeds) and never a silent
+      empty list, so it violates no golden principle. Angular renders a component template
+      atomically and the anchor lives inside the row template, so the window is likely sub-frame.
+      Cheapest hardening if it turns out real: one `requestAnimationFrame` re-check before throwing.
+- [ ] [FIX] `openConversation`'s **fast path** (`signature !== beforeSignature` → resolve) has no
+      settle counter and no node check, so it can resolve on a mid-render list and `extract()` then
+      reads a half-swapped or partly-streamed conversation. QA reproduced both at production
+      defaults: an old exchange still mounted with one new container appended alongside it resolved
+      at 153 ms with the outgoing content (full swap was scheduled for 3000 ms), and a target
+      rendering three turns 400 ms apart resolved at 459 ms on turn 1, which would export a
+      truncated conversation. Three mitigations exist and are all timing-dependent:
+      `collectPagedExchanges` re-reads the DOM hundreds of ms later so a fast swap self-heals,
+      `assertNotStreaming` fails loud on `aria-busy`, and the walk's append-only guard fails loud
+      when the final read is short of its high-water mark — but none can tell a truncated
+      conversation from a short one. Natural fix per QA: require the *changed* signature to repeat
+      once before accepting, mirroring the settle counter the unchanged-signature branch already
+      has. Both scenarios rest on unmeasured Gemini rendering behaviour (does it ever mount both
+      views at once? does it stream turns into a freshly opened conversation?), so a live session
+      would settle the frequency. Predates the sprint's fix — the fast path is unchanged.
+- [ ] *(deferred: inherent to the node-identity mechanism, and closing it would need the exchange
+      id-value stability that is unmeasured — see docs/live-dom-verification.md → 2026-08-20)*
+      [FIX] `openConversation` accepts an outgoing view that was destroyed and recreated as fresh
+      nodes with a byte-identical id and text (QA's PROBE4: resolves at 455 ms with the outgoing
+      content). Node identity proves a render *occurred*, not *which* conversation rendered.
+      Recorded so the limit is on the record rather than rediscovered.
+- [ ] [REFACTOR] Extract the scroll-walk helpers duplicated across all three adapters —
+      `findScrollableAncestor`, `delay`, the accumulate-`Map` dedupe and the clamped-port settle
+      loop — into `src/core/sidebar.ts`, which today holds only the `SidebarConversation`
+      interface. Gemini's arrival made it three copies rather than two. Provider-specific selectors
+      and page-size oracles stay in their adapters (Golden Principle #3); only the mechanics move.
+
+
 ## Next (roadmap — not v1)
 
-- [ ] Gemini adapter: bulk/sidebar export (`listConversations` / `openConversation` /
-      `loadMoreConversations`). Unblocked 2026-08-10 — the sidebar's paging shape, scroll port and
-      identity are now measured: page size **20**, append-only (no recycling), every page landing
-      within one 1500 ms round, and a 1:1 item↔anchor mapping (93 items, 93 distinct `/app/<16-hex>`
-      ids, 0 anchors outside a `[data-test-id="conversation"]`). Two implementation constraints
-      from that session: the sidebar's `infinite-scroller` carries **no** `data-test-id` (resolve it
-      by containment, as Claude's `aside` is), and with the sidebar **collapsed** the anchors are
-      absent from the document entirely. See docs/live-dom-verification.md → Gemini → 2026-08-10.
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*
       Gemini adapter: Notebooks track (`matchesProject` + the project bulk members). Narrowed
       2026-08-10: the **Gems half was dropped as not-applicable** — `/gem/<id>` is a Gem-scoped new

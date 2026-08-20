@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Gemini bulk/sidebar export (v1.12.0) (2026-08-20) → docs/live-dom-verification.md
 - [done] First-run coach mark pointing at the toolbar icon (v1.11.0) (2026-08-20)
 - [done] Track rewind and legacy mount test coverage (1 units) (2026-08-14)
 - [done] PDF export: stop showing the Markdown escapes as visible backslashes (v1.10.4)

@@ -147,6 +147,39 @@ export const selectors = {
   scrollContainer: 'infinite-scroller[data-test-id="chat-history-container"]',
 
   /**
+   * The conversation-history sidebar's own scroll viewport. Deliberately the BARE tag: the
+   * document holds two `infinite-scroller` elements and **the sidebar's carries no
+   * `data-test-id` at all** (verified live 2026-08-10), so it can only be identified by
+   * exclusion of `scrollContainer` plus containment of `sidebarConversationRow` — which is
+   * what `resolveSidebarScroller` does. Never query this selector without that filtering, or
+   * the walk scrolls the message list instead of the sidebar.
+   *
+   * Unlike Gemini's message list, this one is append-only server paging: 20 rows per page
+   * after an initial 31, nothing ever trimmed (31 + 20 x 3 + 2 = 93 on the measured account).
+   */
+  sidebarScroller: 'infinite-scroller',
+
+  /**
+   * One conversation row in the history sidebar. Verified live 2026-08-10 on a 93-conversation
+   * account: 93 rows, each wrapping exactly one `sidebarConversationLink`, and **zero**
+   * `a[href^="/app/"]` anywhere outside a row — so rows and anchors are 1:1 and either can be
+   * counted for the other.
+   *
+   * The row is what survives a COLLAPSED sidebar: collapsed, a `/app` page still rendered 31 of
+   * these while the document held 0 anchors. That asymmetry is the only signal separating a
+   * collapsed sidebar from an empty account (see `listConversations`).
+   */
+  sidebarConversationRow: 'gem-nav-list-item[data-test-id="conversation"]',
+
+  /**
+   * The navigation anchor inside a sidebar row. Its href is `/app/<16-hex>` — the same id shape
+   * `CONVERSATION_PATH` in `./matches.ts` matches. Verified live 2026-08-10: 93 anchors, 93
+   * distinct ids, all 16-hex, max one per row. The visible label is localized (`ko-KR` on the
+   * measuring account), so the anchor is matched by its href prefix and never by its text.
+   */
+  sidebarConversationLink: 'a[href^="/app/"]',
+
+  /**
    * A fenced code block inside `assistantMarkdown`. Verified against the live page
    * (2026-07-25): `code-block` > … > `div.code-block-decoration` + `pre > code`.
    */
