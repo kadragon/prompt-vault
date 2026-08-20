@@ -45,6 +45,16 @@ import an exporter. The `Conversation` model is the single contract between scra
 - `src/core/html-to-markdown.ts` — the shared DOM→GFM serializer every adapter feeds its own
   prose container to. It lives in core, not in an adapter, because adapter isolation forbids one
   adapter importing another's module; it must stay free of provider-specific selectors.
+- `src/core/sidebar.ts` — the `SidebarConversation` listing model plus the scroll-walk mechanics
+  every provider's conversation-list loader runs on (`findScrollableAncestor`, `delay`,
+  `hasScrollMetrics`, `isPortClamped`, `advanceScrollPort`). Same rationale as
+  `html-to-markdown.ts`: adapter isolation forbids one adapter importing another's module, so
+  shared mechanics live here. Deliberately mechanics ONLY — each adapter keeps its own settle
+  loop, because the three differ on policy (terminal behavior at the step cap, the count seed,
+  when `onIncomplete` fires, whether the page-parity verdict is two- or three-valued) and those
+  are measured decisions with their own tests, not duplication.
+- `src/core/dom.ts` — DOM primitives with no provider knowledge (`ownerDocument`). Exists so
+  `core/sidebar.ts` need not reach into an adapter for them.
 - `src/export/markdown.ts` / `pdf.ts` — pure functions `Conversation → Blob/string`. No DOM access.
 - `src/content/` — content-script entry: pick the adapter whose `matches()` is true, mount the
   download button, wire it to the exporters.

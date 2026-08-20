@@ -1,5 +1,12 @@
 import type { Conversation, Message, Role } from '../../core/conversation';
-import type { SidebarConversation } from '../../core/sidebar';
+import {
+  advanceScrollPort,
+  delay,
+  findScrollableAncestor,
+  isPortClamped,
+  type SidebarConversation,
+} from '../../core/sidebar';
+import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import type { ConversationAdapter, OpenConversationOptions } from '../types';
 import { htmlToMarkdown } from '../../core/html-to-markdown';
@@ -78,6 +85,12 @@ const SIDEBAR_SCROLL_DEFAULTS: AutoScrollOptions = {
  * overrides through `AutoScrollOptions` instead.
  */
 export const SIDEBAR_SCROLL_DEFAULTS_TEST: Readonly<AutoScrollOptions> = SIDEBAR_SCROLL_DEFAULTS;
+// Fraction of the viewport to advance per step during the conversation-list walk
+// (`loadMoreConversations` / `loadMoreProjectConversations`). A step, not a jump to
+// `scrollHeight`: the history sidebar is a recycling virtualizer whose spacer height is
+// restated as rows render, so a jump skips straight past windows that were never mounted.
+// The ~10% overlap guarantees consecutive windows abut with no gap.
+const SIDEBAR_STEP_FRACTION = 0.9;
 // Fraction of the viewport to advance per step during the content-collection pass
 // (see `collectVirtualizedTurns`). At 0.5 each region of the list falls inside two
 // consecutive windows, so every turn is seen at least twice — once to record it, again
@@ -592,15 +605,6 @@ function deriveUrl(root: ParentNode): string {
   return ownerDocument(root)?.defaultView?.location?.href ?? '';
 }
 
-const DOCUMENT_NODE = 9;
-
-function ownerDocument(root: ParentNode): Document | null {
-  // Detect a Document by nodeType rather than `instanceof Document` so this works
-  // under any DOM implementation (live browser or a parsed test fixture).
-  if ((root as Node).nodeType === DOCUMENT_NODE) return root as Document;
-  return (root as Element).ownerDocument ?? null;
-}
-
 /**
  * Scroll the message viewport to the top repeatedly to force ChatGPT to render
  * lazily-loaded older turns, stopping once the rendered-message count holds steady
@@ -750,7 +754,7 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
  * its scroll container) is absent. Fail-loud (AGENTS.md #4) only on the runaway cap —
  * new conversations never stop appearing — mirroring `autoScrollToLoad`.
  *
- * Scrolls one viewport per round (`stepDown`, not a jump to the bottom) so every window
+ * Scrolls one viewport per round (one `advanceScrollPort` step, not a jump to the bottom) so every window
  * of a recycling virtualizer is rendered in turn. Progress is judged by the count of
  * *distinct conversation ids* seen across rounds, not the raw rendered-node count: a
  * windowed virtualizer recycles a fixed-size node pool (holding the node count flat while
@@ -770,14 +774,13 @@ export async function loadMoreConversations(
   const history = root.querySelector(selectors.sidebarHistory);
   if (!history) return [];
   const container = findScrollableAncestor(history);
-  if (!container) return [];
 
   const origin = documentOrigin(root);
   const acc = new Map<string, SidebarConversation>();
   await scrollUntilStable(
     container,
     () => collectConversations(history.querySelectorAll(selectors.sidebarConversationLink), origin, historyTitle, acc),
-    stepDown,
+    () => advanceScrollPort(container, SIDEBAR_STEP_FRACTION),
     options,
     {
       timeoutMessage:
@@ -812,14 +815,13 @@ export async function loadMoreProjectConversations(
   const section = projectListSection(root);
   if (!section) return [];
   const container = findScrollableAncestor(section);
-  if (!container) return [];
 
   const origin = documentOrigin(root);
   const acc = new Map<string, SidebarConversation>();
   await scrollUntilStable(
     container,
     () => collectConversations(section.querySelectorAll(selectors.projectConversationLink), origin, projectTitle, acc),
-    stepDown,
+    () => advanceScrollPort(container, SIDEBAR_STEP_FRACTION),
     options,
     {
       timeoutMessage:
@@ -864,10 +866,10 @@ function pinTop(container: HTMLElement): void {
 }
 
 /**
- * A stateful end-of-list test for a downward walk: true once `stepDown` has stopped moving
- * the container, i.e. the browser is clamping `scrollTop` because there is nothing left to
- * scroll into. Each call compares against the position the previous round's `stepDown` left
- * behind, so it must be created fresh per walk.
+ * A stateful end-of-list test for a downward walk: true once the scroll step has stopped
+ * moving the container, i.e. the browser is clamping `scrollTop` because there is nothing
+ * left to scroll into. Each call compares against the position the previous round's step
+ * left behind, so it must be created fresh per walk.
  *
  * Deliberately a position *delta* rather than the `scrollTop + clientHeight >= scrollHeight`
  * arithmetic used for the message viewport: `findScrollableAncestor` resolves whichever
@@ -883,9 +885,8 @@ function pinTop(container: HTMLElement): void {
 function endOfListGate(): (container: HTMLElement) => boolean {
   let previousTop = -1;
   return (container) => {
-    const { scrollTop, clientHeight } = container;
-    const clamped = clientHeight === 0 || scrollTop <= previousTop;
-    previousTop = scrollTop;
+    const clamped = isPortClamped(container, previousTop);
+    previousTop = container.scrollTop;
     return clamped;
   };
 }
@@ -969,23 +970,6 @@ function pageParityGate(
     previousRows = rows;
     return pending;
   };
-}
-
-/**
- * Advance a virtualized scroll container downward by ~one viewport, clamped at the
- * bottom. Deliberately a step, not a jump to `scrollHeight`: a jump renders only the
- * final window, so a spacer-height recycling virtualizer (full height known up front,
- * only the window around the current offset kept in the DOM) would never render — and
- * `collectConversations` would never fold — the rows in between. Stepping visits each
- * window in turn so every row is captured. The ~10% viewport overlap guarantees
- * consecutive windows abut with no gap. Degrades gracefully for a lazy-load list whose
- * height grows as chunks load: each step nudges toward the receding bottom, pulling the
- * next chunk, exactly as a jump-to-bottom did.
- */
-function stepDown(container: HTMLElement): void {
-  const { scrollTop, clientHeight, scrollHeight } = container;
-  const advance = Math.max(1, Math.floor(clientHeight * 0.9));
-  container.scrollTop = Math.min(scrollTop + advance, scrollHeight);
 }
 
 /**
@@ -1078,32 +1062,3 @@ async function scrollUntilStable(
   throw new ExtractionError(timeoutMessage);
 }
 
-/**
- * The nearest vertically-scrollable ancestor of `el` (inclusive) — the element whose
- * own overflow scrolls the virtualized list. Walks up returning the first with
- * `scrollHeight > clientHeight` and a scrollable `overflow-y` (when `getComputedStyle`
- * is available), falling back to `el` itself. Deliberately generic rather than a
- * hardcoded selector: the sidebar's scroll wrapper is not a stable, verified selector
- * and ChatGPT's markup shifts (AGENTS.md #5).
- */
-function findScrollableAncestor(el: Element): HTMLElement | null {
-  const view = ownerDocument(el)?.defaultView ?? null;
-  let current: Element | null = el;
-  while (current) {
-    const node = current as HTMLElement;
-    if (node.scrollHeight > node.clientHeight) {
-      // `getComputedStyle` can return null for a disconnected element in some engines,
-      // so read `overflowY` optionally rather than crashing the whole load.
-      const overflowY = view?.getComputedStyle?.(node)?.overflowY;
-      if (!overflowY || overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
-        return node;
-      }
-    }
-    current = current.parentElement;
-  }
-  return el as HTMLElement;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

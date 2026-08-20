@@ -1,5 +1,12 @@
 import type { Conversation, Message, Role } from '../../core/conversation';
-import type { SidebarConversation } from '../../core/sidebar';
+import {
+  advanceScrollPort,
+  delay,
+  findScrollableAncestor,
+  hasScrollMetrics,
+  type SidebarConversation,
+} from '../../core/sidebar';
+import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import { blockToMarkdown, htmlToMarkdown } from '../../core/html-to-markdown';
 import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
@@ -891,8 +898,7 @@ async function loadMoreRecentsConversations(
     }
     previousTop = container.scrollTop;
     lastCount = acc.size;
-    const advance = Math.max(1, Math.floor(container.clientHeight * NAV_SCROLL_STEP_FRACTION));
-    container.scrollTop = Math.min(container.scrollTop + advance, container.scrollHeight);
+    advanceScrollPort(container, NAV_SCROLL_STEP_FRACTION);
     await delay(stepDelayMs);
   }
 
@@ -975,8 +981,7 @@ async function loadMoreConversations(
     }
     previousTop = container.scrollTop;
     lastCount = acc.size;
-    const advance = Math.max(1, Math.floor(container.clientHeight * NAV_SCROLL_STEP_FRACTION));
-    container.scrollTop = Math.min(container.scrollTop + advance, container.scrollHeight);
+    advanceScrollPort(container, NAV_SCROLL_STEP_FRACTION);
     await delay(stepDelayMs);
   }
 
@@ -986,26 +991,6 @@ async function loadMoreConversations(
   // error, so the accumulated set is returned alongside the signal instead.
   options.onIncomplete?.();
   return [...acc.values()];
-}
-
-/** Nearest vertically-scrollable ancestor of a measured navigation surface. */
-function findScrollableAncestor(el: Element): HTMLElement {
-  const view = ownerDocument(el)?.defaultView ?? null;
-  let current: Element | null = el;
-  while (current) {
-    const node = current as HTMLElement;
-    if (node.scrollHeight > node.clientHeight) {
-      const overflowY = view?.getComputedStyle?.(node)?.overflowY;
-      if (!overflowY || overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
-    }
-    current = current.parentElement;
-  }
-  return el as HTMLElement;
-}
-
-function hasScrollMetrics(el: Element): el is HTMLElement {
-  const node = el as HTMLElement;
-  return Number.isFinite(node.scrollHeight) && Number.isFinite(node.clientHeight);
 }
 
 /** Overridable knobs so the walk can be unit-tested without real timers. */
@@ -1877,17 +1862,4 @@ function deriveTitle(root: ParentNode): string {
 
 function deriveUrl(root: ParentNode): string {
   return ownerDocument(root)?.defaultView?.location?.href ?? '';
-}
-
-const DOCUMENT_NODE = 9;
-
-function ownerDocument(root: ParentNode): Document | null {
-  // Detect a Document by nodeType rather than `instanceof Document` so this works under
-  // any DOM implementation (live browser or a parsed test fixture).
-  if ((root as Node).nodeType === DOCUMENT_NODE) return root as Document;
-  return (root as Element).ownerDocument ?? null;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
