@@ -4,6 +4,7 @@ import {
   delay,
   findScrollableAncestor,
   hasScrollMetrics,
+  isPortClamped,
   type SidebarConversation,
 } from '../../core/sidebar';
 import { ownerDocument } from '../../core/dom';
@@ -890,7 +891,7 @@ async function loadMoreRecentsConversations(
     if (acc.size > lastCount) {
       options.onProgress?.(acc.size);
       stable = 0;
-    } else if (container.scrollTop <= previousTop) {
+    } else if (isPortClamped(container, previousTop)) {
       stable++;
       if (stable >= stableRounds) return [...acc.values()];
     } else {
@@ -973,7 +974,7 @@ async function loadMoreConversations(
     if (acc.size > lastCount) {
       options.onProgress?.(acc.size);
       stable = 0;
-    } else if (container.scrollTop <= previousTop) {
+    } else if (isPortClamped(container, previousTop)) {
       stable++;
       if (stable >= stableRounds) return [...acc.values()];
     } else {

@@ -217,6 +217,40 @@ describe('claudeAdapter.loadMoreRecentsConversations', () => {
     expect(list?.length).toBeGreaterThan(0);
   });
 
+  it('treats a zero-height list port as clamped instead of creeping to the step cap', async () => {
+    // Same zero-height port as the sidebar loader's pin: `clientHeight === 0` with a real
+    // `scrollHeight` survives the overflow check, the 1px advance never satisfies a delta-only
+    // clamp test, and the walk spins to `maxSteps` before calling a complete list partial.
+    const window = new Window({ url: RECENTS_URL });
+    window.document.write(RECENTS);
+    const table = window.document.querySelector('table')!;
+    let top = 0;
+    let scrollWrites = 0;
+    Object.defineProperties(table, {
+      clientHeight: { configurable: true, value: 0 },
+      scrollHeight: { configurable: true, value: 400 },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          scrollWrites++;
+          top = value;
+        },
+      },
+    });
+
+    const incomplete: boolean[] = [];
+    const list = await claudeAdapter.loadMoreRecentsConversations?.(window.document as unknown as Document, {
+      stepDelayMs: 0,
+      stableRounds: 3,
+      maxSteps: 400,
+      onIncomplete: () => incomplete.push(true),
+    });
+    expect(list?.map((conversation) => conversation.id)).toEqual(['aaa', 'bbb']);
+    expect(scrollWrites).toBeLessThanOrEqual(5);
+    expect(incomplete).toEqual([]);
+  });
+
   it('fails loud when the recents route renders no table at all', async () => {
     const doc = docAt(RECENTS_URL, '<body><main>still hydrating</main></body>');
     await expect(claudeAdapter.loadMoreRecentsConversations?.(doc, { stepDelayMs: 0 })).rejects.toThrow(
