@@ -20,8 +20,15 @@ export function isCoachMarkVisible(doc: Document): boolean {
   return doc.getElementById(COACH_MARK_ID) !== null;
 }
 
+// Unbinds the mounted card's document listeners, if a card is up. Held at module scope so
+// `removeCoachMark` can tear a card down completely: listeners left bound to a detached card would
+// keep answering Escape and outside presses, persisting the dismissal for a card nobody saw.
+let unbindActiveCard: (() => void) | null = null;
+
 /** Remove the coach mark if mounted (without persisting anything). */
 export function removeCoachMark(doc: Document): void {
+  unbindActiveCard?.();
+  unbindActiveCard = null;
   doc.getElementById(COACH_MARK_ID)?.remove();
 }
 
@@ -109,55 +116,40 @@ export function showCoachMark(doc: Document): HTMLDivElement {
   // Outside press. Bound on the document (bubble phase) rather than via a backdrop element,
   // because a backdrop would swallow the page's own clicks.
   //
-  // The card is mounted by a poll tick, not by a user gesture, so a press that was ALREADY in
-  // flight when it appeared would deliver its `click` straight into these listeners and dismiss
-  // a card the user never saw. So an outside dismissal requires a `pointerdown` observed after
-  // the mount: the pointerdown handler (which can only run post-mount) dismisses directly, and
-  // the `click` fallback fires only once such a pointerdown has been seen.
-  let outsidePressStarted = false;
+  // `pointerdown` and not `click`, deliberately: the card is mounted by a poll tick rather than by
+  // a user gesture, so a press ALREADY in flight when it appeared would deliver its trailing
+  // `click` into a freshly bound handler and dismiss a card the user never saw. A pointerdown can
+  // only be seen if it started after the listener was bound, which is exactly the press we want.
+  //
   // `contains`, not `instanceof Node`: the card lives in the host page's document, and a global
   // `Node` binding is not guaranteed in every realm the content script is bundled for.
-  const isInsideCard = (e: Event): boolean => {
-    const target = e.target as Node | null;
-    return target !== null && card.contains(target);
-  };
   const onPointerDown = (e: Event): void => {
-    if (isInsideCard(e)) {
-      outsidePressStarted = false;
-      return;
-    }
-    outsidePressStarted = true;
+    const target = e.target as Node | null;
+    if (target !== null && card.contains(target)) return;
     dismiss();
   };
-  const onClick = (e: Event): void => {
-    // No post-mount pointerdown: this click began before the card existed. Ignore it.
-    if (!outsidePressStarted) return;
-    if (isInsideCard(e)) return;
-    dismiss();
+
+  const unbind = (): void => {
+    doc.removeEventListener('keydown', onKeydown);
+    doc.removeEventListener('pointerdown', onPointerDown);
   };
 
   let dismissed = false;
   const dismiss = (): void => {
     if (dismissed) return;
     dismissed = true;
-    doc.removeEventListener('keydown', onKeydown);
-    doc.removeEventListener('pointerdown', onPointerDown);
-    doc.removeEventListener('click', onClick);
+    unbind();
+    unbindActiveCard = null;
     card.remove();
     // Fire-and-forget: `markCoachMarkDismissed` swallows its own failures, so the card is never
     // left on screen waiting for storage.
     void markCoachMarkDismissed();
   };
 
-  closeButton.addEventListener('click', (e) => {
-    // Keep this click from also reaching the document-level outside-press handler as a
-    // (already-detached) target; dismissal is idempotent either way.
-    e.stopPropagation();
-    dismiss();
-  });
+  closeButton.addEventListener('click', () => dismiss());
   doc.addEventListener('keydown', onKeydown);
   doc.addEventListener('pointerdown', onPointerDown);
-  doc.addEventListener('click', onClick);
+  unbindActiveCard = unbind;
 
   doc.body.appendChild(card);
   // Take focus ONLY when nothing in the page holds it. The card is mounted by a poll tick rather

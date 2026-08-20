@@ -220,7 +220,7 @@ describe('dismiss paths', () => {
     expect(store[STORAGE_KEY]).toBeUndefined();
   });
 
-  it('unbinds all three document listeners on dismissal', async () => {
+  it('unbinds both document listeners on dismissal', async () => {
     const window = bareWindow();
     const doc = docOf(window);
     const removeSpy = vi.spyOn(doc, 'removeEventListener');
@@ -232,8 +232,21 @@ describe('dismiss paths', () => {
     const removedTypes = removeSpy.mock.calls.map(([type]) => type);
     expect(removedTypes).toContain('keydown');
     expect(removedTypes).toContain('pointerdown');
-    expect(removedTypes).toContain('click');
     removeSpy.mockRestore();
+  });
+
+  it('unbinds the listeners when the card is removed without being dismissed', async () => {
+    const window = bareWindow();
+    const doc = docOf(window);
+    showCoachMark(doc);
+
+    // A silent teardown is not a dismissal: the user never saw the card, so a later Escape must
+    // not persist the flag on their behalf and burn the one showing they are owed.
+    removeCoachMark(doc);
+    doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }) as unknown as Event);
+    await flush();
+
+    expect(store[STORAGE_KEY]).toBeUndefined();
   });
 
   it('leaves a stale card\u2019s listeners unable to dismiss a later card', async () => {
