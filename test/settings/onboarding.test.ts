@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isCoachMarkDismissed, markCoachMarkDismissed, sanitizeDismissed } from '../../src/settings/onboarding';
+import {
+  isCoachMarkDismissed,
+  markCoachMarkDismissed,
+  sanitizeDismissed,
+  subscribeCoachMarkDismissed,
+} from '../../src/settings/onboarding';
 
 // Same shape as test/settings/store.test.ts's helper, pointed at the `local` area (the coach-mark
 // flag describes this browser's toolbar, so it does not roam).
@@ -30,6 +35,56 @@ function installFailingStorageMock(): void {
   const g = globalThis as unknown as { chrome: Record<string, unknown> };
   g.chrome = { ...g.chrome, storage: { local } };
 }
+
+type StorageListener = (changes: Record<string, { newValue?: unknown }>, area: string) => void;
+
+/** Storage mock that also records onChanged listeners, so cross-tab propagation can be driven. */
+function installStorageMockWithEvents(): StorageListener[] {
+  const listeners: StorageListener[] = [];
+  const g = globalThis as unknown as { chrome: Record<string, unknown> };
+  g.chrome = {
+    ...g.chrome,
+    storage: {
+      local: {
+        get: (): Promise<Record<string, unknown>> => Promise.resolve({}),
+        set: (): Promise<void> => Promise.resolve(),
+      },
+      onChanged: {
+        addListener(listener: StorageListener): void {
+          listeners.push(listener);
+        },
+      },
+    },
+  };
+  return listeners;
+}
+
+describe('subscribeCoachMarkDismissed', () => {
+  it('fires when another tab persists the dismissal', () => {
+    const listeners = installStorageMockWithEvents();
+    let fired = 0;
+    subscribeCoachMarkDismissed(() => {
+      fired += 1;
+    });
+
+    listeners.forEach((listener) => listener({ [STORAGE_KEY]: { newValue: true } }, 'local'));
+    expect(fired).toBe(1);
+  });
+
+  it('ignores the sync area, a different key, and a non-true value', () => {
+    const listeners = installStorageMockWithEvents();
+    let fired = 0;
+    subscribeCoachMarkDismissed(() => {
+      fired += 1;
+    });
+
+    // A sync-area write is the toolbar settings, not this flag.
+    listeners.forEach((listener) => listener({ [STORAGE_KEY]: { newValue: true } }, 'sync'));
+    listeners.forEach((listener) => listener({ toolbarSettings: { newValue: true } }, 'local'));
+    listeners.forEach((listener) => listener({ [STORAGE_KEY]: { newValue: 'true' } }, 'local'));
+    expect(fired).toBe(0);
+  });
+});
 
 describe('sanitizeDismissed', () => {
   it('treats an absent or non-boolean value as not-yet-dismissed', () => {

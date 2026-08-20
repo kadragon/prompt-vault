@@ -1,8 +1,8 @@
 import { isConversationPage, isProjectPage, isRecentsPage } from './page';
 import { removeButtons, setToolbarSettings, syncButtons } from './mount';
-import { armCoachMark, maybeShowCoachMark } from './coach-mark';
+import { armCoachMark, disarmCoachMark, removeCoachMark, maybeShowCoachMark } from './coach-mark';
 import { loadSettings, subscribeSettings, type ToolbarSettings } from '../settings/store';
-import { isCoachMarkDismissed } from '../settings/onboarding';
+import { isCoachMarkDismissed, subscribeCoachMarkDismissed } from '../settings/onboarding';
 
 // How often to re-check the page for SPA navigation and header re-renders (see
 // watchNavigation).
@@ -94,3 +94,12 @@ isCoachMarkDismissed()
     maybeShowCoachMark(document);
   })
   .catch(() => undefined);
+
+// Every supported tab runs its own copy of this script and reads the flag independently, so two
+// tabs opened before either card is dismissed each show one. Dismissing in either tab persists the
+// flag, which is what this listener picks up: drop this tab's card and disarm it, so the user
+// answers the tip once rather than once per open tab.
+subscribeCoachMarkDismissed(() => {
+  disarmCoachMark();
+  removeCoachMark(document);
+});

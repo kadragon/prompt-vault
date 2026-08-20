@@ -174,6 +174,14 @@ export function armCoachMark(): void {
 }
 
 /**
+ * Disarm the gate without showing anything. Used when another tab persists the dismissal while
+ * this tab is still armed — the user has answered the tip, so this tab must not raise it later.
+ */
+export function disarmCoachMark(): void {
+  coachMarkArmed = false;
+}
+
+/**
  * Show the coach mark if it is armed, the extension's toolbar has actually mounted, and no card
  * is up. Gating on the toolbar container — not on any page or provider signal — keeps this
  * provider-agnostic and means the card only appears when there is real extension UI to explain.

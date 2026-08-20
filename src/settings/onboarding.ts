@@ -45,3 +45,17 @@ export async function markCoachMarkDismissed(): Promise<void> {
     // Intentionally swallowed — see above.
   }
 }
+
+/**
+ * Call `onDismissed` when ANOTHER context — a second tab on a supported site, the same site in a
+ * second window — persists the dismissal. Each tab runs its own content script and reads the flag
+ * independently, so two tabs opened before either card is dismissed each arm and show one; without
+ * this, dismissing in one leaves the other's card up until the tab is reloaded. Storage failures
+ * are not this listener's problem: `chrome.storage.onChanged` only reports writes that succeeded.
+ */
+export function subscribeCoachMarkDismissed(onDismissed: () => void): void {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (sanitizeDismissed(changes[STORAGE_KEY]?.newValue)) onDismissed();
+  });
+}
