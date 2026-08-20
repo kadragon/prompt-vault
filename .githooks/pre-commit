@@ -1,0 +1,9 @@
+#!/bin/sh
+# Repo-tracked hooks; enable once per clone with `npm run hooks:install`.
+#
+# Only the version-sync check runs here: it is sub-100ms and catches drift that no other gate
+# sees, whereas lint/typecheck/test are slow enough to belong in CI, where they already run.
+node scripts/check-version-sync.mjs || {
+  echo "pre-commit: aborting. Fix the version drift above, or bypass with --no-verify." >&2
+  exit 1
+}
