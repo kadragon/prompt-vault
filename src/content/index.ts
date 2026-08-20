@@ -1,6 +1,8 @@
 import { isConversationPage, isProjectPage, isRecentsPage } from './page';
 import { removeButtons, setToolbarSettings, syncButtons } from './mount';
+import { armCoachMark, maybeShowCoachMark } from './coach-mark';
 import { loadSettings, subscribeSettings, type ToolbarSettings } from '../settings/store';
+import { isCoachMarkDismissed } from '../settings/onboarding';
 
 // How often to re-check the page for SPA navigation and header re-renders (see
 // watchNavigation).
@@ -34,6 +36,7 @@ function tick(): void {
     isConversationPage(location.href) || isProjectPage(location.href) || isRecentsPage(location.href);
   convTicks = mountable ? convTicks + 1 : 0;
   syncButtons(document, location.href, { allowOverlayFallback: convTicks >= MOUNT_GRACE_TICKS });
+  maybeShowCoachMark(document);
 }
 
 /**
@@ -79,5 +82,15 @@ subscribeSettings((settings) => {
 loadSettings()
   .then((settings) => {
     if (!liveUpdateApplied) applySettings(settings);
+  })
+  .catch(() => undefined);
+
+// Arm the first-run coach mark if it has never been dismissed; the next tick with a mounted
+// toolbar shows it. Independent of the settings read above so neither failure affects the other.
+isCoachMarkDismissed()
+  .then((dismissed) => {
+    if (dismissed) return;
+    armCoachMark();
+    maybeShowCoachMark(document);
   })
   .catch(() => undefined);

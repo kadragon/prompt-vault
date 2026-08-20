@@ -106,6 +106,15 @@ export function bulkSummaryMessage(succeeded: number, total: number, failedCount
   return failedCount > 0 ? `${saved} ${m('bulkSummaryFailed', [String(failedCount)])}` : saved;
 }
 
+// --- First-run coach mark (points at the browser toolbar's Extensions button) ---
+
+// Heading, explanation and dismiss-button label of the once-only card, plus its accessible
+// name (the card is a non-modal role="dialog").
+export const COACH_MARK_TITLE = m('coachMarkTitle');
+export const COACH_MARK_BODY = m('coachMarkBody');
+export const COACH_MARK_CLOSE_LABEL = m('coachMarkCloseLabel');
+export const COACH_MARK_ARIA_LABEL = m('coachMarkAriaLabel');
+
 // --- Options page (choose which toolbar icons to show) ---
 
 // Document title (browser tab) and the visible page heading of the options page.
