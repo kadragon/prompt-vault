@@ -1,7 +1,15 @@
 import type { Conversation, Message } from '../../core/conversation';
+import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import { htmlToMarkdown } from '../../core/html-to-markdown';
-import type { SidebarConversation } from '../../core/sidebar';
+import {
+  advanceScrollPort,
+  delay,
+  findScrollableAncestor,
+  hasScrollMetrics,
+  isPortClamped,
+  type SidebarConversation,
+} from '../../core/sidebar';
 import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
 import { matches } from './matches';
 import { LRM, selectors, TITLE_SUFFIX } from './selectors';
@@ -368,14 +376,8 @@ async function loadMoreConversations(
     if (acc.size > lastCount) {
       options.onProgress?.(acc.size);
       stable = 0;
-      // `clientHeight === 0` counts as clamped. A zero-height port — mid collapse/expand, a
-      // hidden ancestor, a background tab — can still report `scrollHeight > 0`, so it survives
-      // the overflow check above, and then `advance` degrades to 1 px per round: the position
-      // creeps, `scrollTop <= previousTop` never holds, and the walk spins to the step cap
-      // (200 s at the defaults) before reporting anything. Such a port cannot scroll at all, so
-      // it is at its end by definition. ChatGPT's twin guard reads the same way
-      // (`src/adapters/chatgpt/index.ts:887`).
-    } else if (container.clientHeight === 0 || container.scrollTop <= previousTop) {
+      // Zero-height ports count as clamped — see `isPortClamped` in `src/core/sidebar.ts`.
+    } else if (isPortClamped(container, previousTop)) {
       stable++;
       // A `grace` verdict buys the same extra dwell as `owed` but claims nothing: it is the
       // first-batch case, where the gate has a page size but no second batch to test it against.
@@ -388,8 +390,7 @@ async function loadMoreConversations(
     }
     previousTop = container.scrollTop;
     lastCount = acc.size;
-    const advance = Math.max(1, Math.floor(container.clientHeight * NAV_SCROLL_STEP_FRACTION));
-    container.scrollTop = Math.min(container.scrollTop + advance, container.scrollHeight);
+    advanceScrollPort(container, NAV_SCROLL_STEP_FRACTION);
     await delay(stepDelayMs);
   }
 
@@ -492,26 +493,6 @@ function pageParityGate(
  * honest reading of a batch that had to define the size it would be tested against.
  */
 type PageParity = 'no' | 'grace' | 'owed';
-
-/** Nearest vertically-scrollable ancestor of a sidebar node — the element that actually scrolls. */
-function findScrollableAncestor(el: Element): HTMLElement {
-  const view = ownerDocument(el)?.defaultView ?? null;
-  let current: Element | null = el;
-  while (current) {
-    const node = current as HTMLElement;
-    if (node.scrollHeight > node.clientHeight) {
-      const overflowY = view?.getComputedStyle?.(node)?.overflowY;
-      if (!overflowY || overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
-    }
-    current = current.parentElement;
-  }
-  return el as HTMLElement;
-}
-
-function hasScrollMetrics(el: Element): el is HTMLElement {
-  const node = el as HTMLElement;
-  return Number.isFinite(node.scrollHeight) && Number.isFinite(node.clientHeight);
-}
 
 /**
  * Open a selected sidebar conversation in place and wait for the target route to render its own
@@ -1219,15 +1200,3 @@ function deriveUrl(root: ParentNode): string {
   return ownerDocument(root)?.defaultView?.location?.href ?? '';
 }
 
-const DOCUMENT_NODE = 9;
-
-function ownerDocument(root: ParentNode): Document | null {
-  // Detect a Document by nodeType rather than `instanceof Document` so this works under
-  // any DOM implementation (live browser or a parsed test fixture).
-  if ((root as Node).nodeType === DOCUMENT_NODE) return root as Document;
-  return (root as Element).ownerDocument ?? null;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

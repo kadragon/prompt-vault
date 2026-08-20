@@ -115,11 +115,15 @@ The larger hazard that measurement exposed is filed above.)*
       nodes with a byte-identical id and text (QA's PROBE4: resolves at 455 ms with the outgoing
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
-- [ ] [REFACTOR] Extract the scroll-walk helpers duplicated across all three adapters —
-      `findScrollableAncestor`, `delay`, the accumulate-`Map` dedupe and the clamped-port settle
-      loop — into `src/core/sidebar.ts`, which today holds only the `SidebarConversation`
-      interface. Gemini's arrival made it three copies rather than two. Provider-specific selectors
-      and page-size oracles stay in their adapters (Golden Principle #3); only the mechanics move.
+- [ ] [FIX] Claude's conversation-list settle loop clamps on `container.scrollTop <= previousTop`
+      alone (`src/adapters/claude/index.ts:893`, `:976`), without the `clientHeight === 0` arm its
+      ChatGPT and Gemini twins now take from `isPortClamped` (`src/core/sidebar.ts`). A zero-height
+      port — a background tab — never satisfies the delta test, so the walk creeps 1px per round to
+      `NAV_ABSOLUTE_MAX_STEPS` (400 x 150 ms = 60 s) and then fires a spurious `onIncomplete`.
+      Wrong-but-recoverable, never a silent empty list. Fix is to adopt `isPortClamped` at both
+      sites, with a regression test pinning the zero-height port (mirror
+      `test/adapters/gemini/load-more.test.ts:219`). Deliberately not folded into the extraction
+      sprint that surfaced it: that commit had to carry zero behavior change.
 
 
 ## Next (roadmap — not v1)
