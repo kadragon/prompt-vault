@@ -24,6 +24,7 @@
 | Version sync check | `npm run check:versions` — asserts `package-lock.json` still carries `package.json`'s version. Fix drift with `npm install --package-lock-only` |
 | Enable git hooks | `npm run hooks:install` (once per clone) — points `core.hooksPath` at the tracked `.githooks/`, whose `pre-commit` runs the version check. CI runs the same check, so the hook is a fast local warning, not the only gate |
 | Package for store | `npm run package` → builds, then zips `dist/` → `prompt-vault-v<version>.zip` (repo root, gitignored). `--no-build` zips existing `dist/` as-is. Needs the system `zip` CLI. Upload the zip at the Web Store dashboard — see `docs/store-listing.md` |
+| Release a build | Bump `package.json` (+ `npm install --package-lock-only`, `manifest.config.ts` reads the same version) on a branch and merge to `main`. `.github/workflows/release.yml` sees the changed version, runs `npm run package`, and publishes the zip as GitHub Release `v<version>` with generated notes. Merges that leave the version alone publish nothing; an existing tag/release for that version is a no-op. Web Store upload stays manual — download the release asset |
 | Regenerate icons | Edit `assets/icon.svg`, then render `public/icons/icon{16,32,48,128}.png` (see below) |
 
 ## Regenerate toolbar icons
