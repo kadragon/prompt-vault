@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Manual workflow_dispatch republish for a release the push gate skips (2026-08-20) → docs/runbook.md
 - [done] GitHub Release published automatically when a merge to main bumps the version (2026-08-20) → docs/runbook.md
 - [done] Pre-commit hook and CI step guarding package.json/package-lock.json version drift (2026-08-20) → docs/runbook.md
 - [done] Claude conversation-list walks treat a zero-height port as clamped (v1.12.1) (2026-08-20)
