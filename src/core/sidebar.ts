@@ -35,8 +35,10 @@ export function delay(ms: number): Promise<void> {
  * to `el`. Deliberately generic rather than a hardcoded selector: a sidebar's scroll
  * wrapper is not a stable, verified selector and provider markup shifts (AGENTS.md #5).
  *
- * Never null — an unscrollable subtree resolves to `el`, which callers then reject via
- * their own `scrollHeight <= clientHeight` guard rather than a null check.
+ * Never null — an unscrollable subtree resolves to `el`. Callers that need to reject such a
+ * port do so with their own `scrollHeight > clientHeight` test (Claude and Gemini's loaders);
+ * ChatGPT's walk instead lets `isPortClamped` settle it, since an unscrollable port cannot
+ * move and so reads as clamped from the second round on. Neither path wants a null check.
  */
 export function findScrollableAncestor(el: Element): HTMLElement {
   const view = ownerDocument(el)?.defaultView ?? null;

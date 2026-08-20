@@ -85,6 +85,12 @@ const SIDEBAR_SCROLL_DEFAULTS: AutoScrollOptions = {
  * overrides through `AutoScrollOptions` instead.
  */
 export const SIDEBAR_SCROLL_DEFAULTS_TEST: Readonly<AutoScrollOptions> = SIDEBAR_SCROLL_DEFAULTS;
+// Fraction of the viewport to advance per step during the conversation-list walk
+// (`loadMoreConversations` / `loadMoreProjectConversations`). A step, not a jump to
+// `scrollHeight`: the history sidebar is a recycling virtualizer whose spacer height is
+// restated as rows render, so a jump skips straight past windows that were never mounted.
+// The ~10% overlap guarantees consecutive windows abut with no gap.
+const SIDEBAR_STEP_FRACTION = 0.9;
 // Fraction of the viewport to advance per step during the content-collection pass
 // (see `collectVirtualizedTurns`). At 0.5 each region of the list falls inside two
 // consecutive windows, so every turn is seen at least twice — once to record it, again
@@ -774,7 +780,7 @@ export async function loadMoreConversations(
   await scrollUntilStable(
     container,
     () => collectConversations(history.querySelectorAll(selectors.sidebarConversationLink), origin, historyTitle, acc),
-    (container) => advanceScrollPort(container, 0.9),
+    () => advanceScrollPort(container, SIDEBAR_STEP_FRACTION),
     options,
     {
       timeoutMessage:
@@ -815,7 +821,7 @@ export async function loadMoreProjectConversations(
   await scrollUntilStable(
     container,
     () => collectConversations(section.querySelectorAll(selectors.projectConversationLink), origin, projectTitle, acc),
-    (container) => advanceScrollPort(container, 0.9),
+    () => advanceScrollPort(container, SIDEBAR_STEP_FRACTION),
     options,
     {
       timeoutMessage:
