@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] GitHub Release published automatically when a merge to main bumps the version (2026-08-20) → docs/runbook.md
 - [done] Pre-commit hook and CI step guarding package.json/package-lock.json version drift (2026-08-20) → docs/runbook.md
 - [done] Claude conversation-list walks treat a zero-height port as clamped (v1.12.1) (2026-08-20)
 - [done] Extract the shared sidebar scroll-walk helpers into src/core (2026-08-20) → docs/architecture.md

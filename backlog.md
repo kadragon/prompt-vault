@@ -30,6 +30,14 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### Release workflow follow-ups (PR #73 review, 2026-08-20)
+
+- [ ] [HARNESS] Add a `workflow_dispatch` escape hatch to `.github/workflows/release.yml`. The gate
+      skips publication when a `v<version>` tag or release already exists, so a hand-cut tag
+      permanently suppresses that version's release: the next merge compares against an
+      already-bumped pre-push tip and also skips, and the only signal is a green job. A dispatch
+      input naming the version would let a maintainer re-run publication without a fake bump.
+
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*

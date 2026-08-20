@@ -1,0 +1,137 @@
+name: Release
+
+# Packages the extension and publishes it as a GitHub Release when a push to main
+# carries a new package.json version. Ordinary merges (docs, refactors) leave the
+# version untouched and this workflow exits without building.
+
+on:
+  push:
+    branches: [main]
+
+# Never cancel a release mid-publish; queue instead.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create the tag + release and upload the zip asset
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # HEAD^ is the fallback comparison point when the pre-push tip is unreachable.
+          fetch-depth: 2
+
+      - id: gate
+        name: Decide whether this merge publishes a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # Compare against the pre-push tip, not HEAD^: a push can land several commits
+          # (rebase merge, direct multi-commit push), and HEAD^ would then be a sibling of
+          # the same series — a bump in an earlier commit would compare equal and the
+          # release would be skipped with a green, silent run.
+          base=''
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+            && git fetch --depth=1 origin "$BEFORE" >/dev/null 2>&1; then
+            base="$BEFORE"
+          else
+            # Unreachable pre-push tip (force-push, expired object, branch recreate): fall back to
+            # HEAD^, which is the previous main tip for the merge and squash shapes this repo uses.
+            base=$(git rev-parse -q --verify 'HEAD^' || true)
+            [ -n "$base" ] && echo "warning: pre-push tip unavailable — comparing against HEAD^."
+          fi
+
+          # A parent without package.json, or with an unparseable one, leaves prev empty and the
+          # version reads as changed; the tag/release guards below still prevent a double publish.
+          prev=''
+          if [ -n "$base" ]; then
+            prev=$(git show "$base:package.json" 2>/dev/null \
+              | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null) || prev=''
+          fi
+
+          if [ "$version" = "$prev" ]; then
+            echo "package.json version unchanged ($version) — nothing to release."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Re-runs and hand-cut tags must not fail the job or clobber a published release.
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "release v$version already exists — skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "tag v$version already exists on origin — skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The gate fires on inequality, so a revert that restores an older version still
+          # publishes — correct, but it must not displace the newer release as "Latest".
+          # A non-numeric tag (v-next, vBeta) would sort above every number under `sort -V` and
+          # steal the marker, so only plain version tags are considered. An ls-remote hiccup
+          # leaves `highest` empty, which errs toward marking this release Latest rather than
+          # failing the job one step before packaging.
+          highest=$(git ls-remote --tags origin 'refs/tags/v*' \
+            | sed 's#.*refs/tags/##; s/\^{}$//; s/^v//' \
+            | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -1) || highest=''
+          if [ -z "$highest" ] || [ "$(printf '%s\n%s\n' "$highest" "$version" | sort -V | tail -1)" = "$version" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is older than v$highest — publishing without the Latest marker."
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "version ${prev:-<none>} -> $version — will publish."
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.gate.outputs.publish == 'true'
+        uses: actions/setup-node@v7
+        with:
+          # Matches the CI workflow and the docs/runbook.md support floor (>=24).
+          node-version: '24'
+          cache: npm
+
+      - if: steps.gate.outputs.publish == 'true'
+        run: npm ci
+
+      # ci.yml runs on this same push but as an independent workflow, so nothing stops a
+      # red commit from being packaged. Re-run its gates here: a published release is
+      # public and cannot be quietly withdrawn.
+      - if: steps.gate.outputs.publish == 'true'
+        run: npm run check:versions
+      - if: steps.gate.outputs.publish == 'true'
+        run: npm run lint
+      - if: steps.gate.outputs.publish == 'true'
+        run: npm run typecheck
+      - if: steps.gate.outputs.publish == 'true'
+        run: npm test
+
+      # Builds from source and zips dist/ -> prompt-vault-v<version>.zip at the repo root.
+      # The script itself fails loud if dist/manifest.json disagrees with package.json.
+      - if: steps.gate.outputs.publish == 'true'
+        run: npm run package
+
+      - if: steps.gate.outputs.publish == 'true'
+        name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.gate.outputs.version }}
+          LATEST: ${{ steps.gate.outputs.latest }}
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" "prompt-vault-v$VERSION.zip" \
+            --title "v$VERSION" \
+            --generate-notes \
+            --latest="$LATEST" \
+            --target "$GITHUB_SHA"
