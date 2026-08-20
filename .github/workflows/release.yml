@@ -7,6 +7,15 @@ name: Release
 on:
   push:
     branches: [main]
+  # Escape hatch: the push gate skips a version whose tag already exists, and a
+  # hand-cut tag therefore suppresses that version's release for good — the next
+  # merge compares against an already-bumped tip and skips too, with a green job as
+  # the only signal. A dispatch republishes that version without a fake bump.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish — must equal package.json at the selected ref (e.g. 1.12.1)'
+        required: true
 
 # Never cancel a release mid-publish; queue instead.
 concurrency:
@@ -30,50 +39,83 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.version }}
         run: |
           set -euo pipefail
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          # Compare against the pre-push tip, not HEAD^: a push can land several commits
-          # (rebase merge, direct multi-commit push), and HEAD^ would then be a sibling of
-          # the same series — a bump in an earlier commit would compare equal and the
-          # release would be skipped with a green, silent run.
-          base=''
-          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
-            && git fetch --depth=1 origin "$BEFORE" >/dev/null 2>&1; then
-            base="$BEFORE"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # A dispatch is an explicit request, so every refusal below fails the job instead
+            # of exiting green: the silent skip is the failure mode this hatch exists to escape.
+            # The operator names the version because packaging derives the zip name from
+            # package.json — a mismatch would upload an asset that was never built — and naming
+            # it catches a dispatch from the wrong ref before anything is published.
+            if [ "$REQUESTED" != "$version" ]; then
+              echo "::error::requested v$REQUESTED but package.json at this ref is $version; dispatch from the ref carrying that version."
+              exit 1
+            fi
+            # An existing tag is exactly the state this hatch unblocks: gh release create reuses
+            # the tag and ignores --target ("Unused if the Git tag already exists"). That makes a
+            # tag pointing elsewhere dangerous rather than harmless — the release would be cut
+            # from the tagged commit while the zip is built from this ref. Refuse instead.
+            # Both refs are queried so an annotated tag matches on its peeled commit.
+            tag_shas=$(git ls-remote --tags origin "refs/tags/v$version" "refs/tags/v$version^{}" | cut -f1) || tag_shas=''
+            if [ -n "$tag_shas" ] && ! printf '%s\n' "$tag_shas" | grep -qx "$GITHUB_SHA"; then
+              echo "::error::tag v$version exists but does not point at this commit ($GITHUB_SHA); the release would be cut from the tagged commit — dispatch from that commit instead."
+              exit 1
+            fi
+            # An existing *release* is public and is never replaced.
+            if gh release view "v$version" >/dev/null 2>&1; then
+              echo "::error::release v$version already exists — refusing to replace a published release."
+              exit 1
+            fi
+            echo "manual dispatch — will publish v$version."
           else
-            # Unreachable pre-push tip (force-push, expired object, branch recreate): fall back to
-            # HEAD^, which is the previous main tip for the merge and squash shapes this repo uses.
-            base=$(git rev-parse -q --verify 'HEAD^' || true)
-            [ -n "$base" ] && echo "warning: pre-push tip unavailable — comparing against HEAD^."
-          fi
+            # Compare against the pre-push tip, not HEAD^: a push can land several commits
+            # (rebase merge, direct multi-commit push), and HEAD^ would then be a sibling of
+            # the same series — a bump in an earlier commit would compare equal and the
+            # release would be skipped with a green, silent run.
+            base=''
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+              && git fetch --depth=1 origin "$BEFORE" >/dev/null 2>&1; then
+              base="$BEFORE"
+            else
+              # Unreachable pre-push tip (force-push, expired object, branch recreate): fall back to
+              # HEAD^, which is the previous main tip for the merge and squash shapes this repo uses.
+              base=$(git rev-parse -q --verify 'HEAD^' || true)
+              [ -n "$base" ] && echo "warning: pre-push tip unavailable — comparing against HEAD^."
+            fi
 
-          # A parent without package.json, or with an unparseable one, leaves prev empty and the
-          # version reads as changed; the tag/release guards below still prevent a double publish.
-          prev=''
-          if [ -n "$base" ]; then
-            prev=$(git show "$base:package.json" 2>/dev/null \
-              | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null) || prev=''
-          fi
+            # A parent without package.json, or with an unparseable one, leaves prev empty and the
+            # version reads as changed; the tag/release guards below still prevent a double publish.
+            prev=''
+            if [ -n "$base" ]; then
+              prev=$(git show "$base:package.json" 2>/dev/null \
+                | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null) || prev=''
+            fi
 
-          if [ "$version" = "$prev" ]; then
-            echo "package.json version unchanged ($version) — nothing to release."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+            if [ "$version" = "$prev" ]; then
+              echo "package.json version unchanged ($version) — nothing to release."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
 
-          # Re-runs and hand-cut tags must not fail the job or clobber a published release.
-          if gh release view "v$version" >/dev/null 2>&1; then
-            echo "release v$version already exists — skipping."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
-            echo "tag v$version already exists on origin — skipping."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            # Re-runs and hand-cut tags must not fail the job or clobber a published release.
+            # A tag that suppresses the release permanently is recoverable via workflow_dispatch.
+            if gh release view "v$version" >/dev/null 2>&1; then
+              echo "release v$version already exists — skipping."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+              echo "tag v$version already exists on origin — skipping; re-run this workflow manually with version=$version to publish it."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "version ${prev:-<none>} -> $version — will publish."
           fi
 
           # The gate fires on inequality, so a revert that restores an older version still
@@ -92,7 +134,6 @@ jobs:
             echo "latest=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "version ${prev:-<none>} -> $version — will publish."
           echo "publish=true" >> "$GITHUB_OUTPUT"
 
       - if: steps.gate.outputs.publish == 'true'

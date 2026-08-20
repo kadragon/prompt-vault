@@ -32,11 +32,22 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ### Release workflow follow-ups (PR #73 review, 2026-08-20)
 
-- [ ] [HARNESS] Add a `workflow_dispatch` escape hatch to `.github/workflows/release.yml`. The gate
-      skips publication when a `v<version>` tag or release already exists, so a hand-cut tag
-      permanently suppresses that version's release: the next merge compares against an
-      already-bumped pre-push tip and also skips, and the only signal is a green job. A dispatch
-      input naming the version would let a maintainer re-run publication without a fake bump.
+- [ ] [HARNESS] Restrict the `release.yml` `workflow_dispatch` path to `main`. Any ref whose
+      `package.json` matches the input can currently publish a release; the version and
+      tag-commit guards pin the version string and the tag, not the branch. Decide whether
+      publishing from a non-`main` ref is intended and add
+      `github.ref == 'refs/heads/main'` to the job condition, or document the assumption.
+
+- [ ] [HARNESS] `gh release view` in `release.yml` conflates a 404 with a transient or auth
+      failure, so a rate-limited call reads as "no release exists" on both the push and the
+      dispatch path. Pre-existing; distinguish the exit statuses (or the stderr) so a flaky
+      API call cannot turn into a publish attempt over an existing release.
+
+- [ ] [HARNESS] Make the dispatch tag-divergence guard in `release.yml` fail closed. The
+      `git ls-remote` that reads the tag's commit falls back to an empty result on any transient
+      failure, so an unreadable origin silently skips the guard and a divergent tag republishes
+      from the wrong commit. Not a regression (it degrades to the pre-guard behavior), but the
+      dispatch path otherwise fails the job on every refusal.
 
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
