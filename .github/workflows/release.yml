@@ -43,17 +43,43 @@ jobs:
           REQUESTED: ${{ inputs.version }}
         run: |
           set -euo pipefail
+
+          # `gh release view` exits 1 for a missing release *and* for auth, rate-limit and
+          # transport failures. Treating every non-zero exit as "no release exists" turns a
+          # flaky API call into a publish attempt over a release that is already public, so
+          # the 404 (gh prints `release not found`) is the only failure allowed to answer no.
+          release_exists() {
+            local out rc=0
+            out=$(gh release view "$1" 2>&1 >/dev/null) || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              return 0
+            fi
+            if printf '%s\n' "$out" | grep -qi 'release not found'; then
+              return 1
+            fi
+            echo "::error::could not determine whether release $1 exists — gh release view exited $rc: $out"
+            exit 1
+          }
+
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
           if [ "$EVENT" = "workflow_dispatch" ]; then
+            # The version and tag guards below pin the version string and the tag commit, not the
+            # branch, so without this any ref carrying a bumped package.json could publish a
+            # release. Refused here rather than in the job `if:` so the run is red, not a green
+            # skip — the silent skip is the failure mode this hatch exists to escape.
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::dispatched from $GITHUB_REF; releases publish from main only — re-run this workflow with main selected."
+              exit 1
+            fi
             # A dispatch is an explicit request, so every refusal below fails the job instead
             # of exiting green: the silent skip is the failure mode this hatch exists to escape.
             # The operator names the version because packaging derives the zip name from
             # package.json — a mismatch would upload an asset that was never built — and naming
             # it catches a dispatch from the wrong ref before anything is published.
             if [ "$REQUESTED" != "$version" ]; then
-              echo "::error::requested v$REQUESTED but package.json at this ref is $version; dispatch from the ref carrying that version."
+              echo "::error::requested v$REQUESTED but package.json at this ref is $version; dispatch from main once it carries that version."
               exit 1
             fi
             # An existing tag is exactly the state this hatch unblocks: gh release create reuses
@@ -61,13 +87,18 @@ jobs:
             # tag pointing elsewhere dangerous rather than harmless — the release would be cut
             # from the tagged commit while the zip is built from this ref. Refuse instead.
             # Both refs are queried so an annotated tag matches on its peeled commit.
-            tag_shas=$(git ls-remote --tags origin "refs/tags/v$version" "refs/tags/v$version^{}" | cut -f1) || tag_shas=''
+            # Fail closed: an ls-remote that cannot reach origin leaves the divergence unverified,
+            # and an empty fallback would skip the guard and republish from the wrong commit.
+            if ! tag_shas=$(git ls-remote --tags origin "refs/tags/v$version" "refs/tags/v$version^{}" | cut -f1); then
+              echo "::error::could not read tag v$version from origin — refusing to publish with the tag-divergence guard unverified."
+              exit 1
+            fi
             if [ -n "$tag_shas" ] && ! printf '%s\n' "$tag_shas" | grep -qx "$GITHUB_SHA"; then
-              echo "::error::tag v$version exists but does not point at this commit ($GITHUB_SHA); the release would be cut from the tagged commit — dispatch from that commit instead."
+              echo "::error::tag v$version exists but does not point at this commit ($GITHUB_SHA); the release would be cut from the tagged commit — repoint or delete the tag before dispatching."
               exit 1
             fi
             # An existing *release* is public and is never replaced.
-            if gh release view "v$version" >/dev/null 2>&1; then
+            if release_exists "v$version"; then
               echo "::error::release v$version already exists — refusing to replace a published release."
               exit 1
             fi
@@ -104,7 +135,7 @@ jobs:
 
             # Re-runs and hand-cut tags must not fail the job or clobber a published release.
             # A tag that suppresses the release permanently is recoverable via workflow_dispatch.
-            if gh release view "v$version" >/dev/null 2>&1; then
+            if release_exists "v$version"; then
               echo "release v$version already exists — skipping."
               echo "publish=false" >> "$GITHUB_OUTPUT"
               exit 0
