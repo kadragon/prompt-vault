@@ -118,6 +118,47 @@ describe('claudeAdapter.loadMoreConversations', () => {
     expect(list?.length).toBeGreaterThan(0);
   });
 
+  it('treats a zero-height sidebar port as clamped instead of creeping to the step cap', async () => {
+    // A port under a hidden ancestor or in a background tab reports `clientHeight === 0` with
+    // `scrollHeight > 0`, so it survives the overflow check. `advanceScrollPort` then degrades to
+    // a 1px advance, `scrollTop <= previousTop` never holds, and the walk burns the whole step cap
+    // before firing a spurious `onIncomplete`. Mirrors the Gemini twin's pin.
+    const window = new Window();
+    window.document.write(
+      '<body><aside aria-label="Sidebar"><div id="recent" style="overflow-y:auto">' +
+        '<a href="/chat/aaa" aria-label="First">First</a>' +
+        '</div></aside></body>',
+    );
+    const port = window.document.getElementById('recent')!;
+    let top = 0;
+    let scrollWrites = 0;
+    Object.defineProperties(port, {
+      clientHeight: { configurable: true, value: 0 },
+      scrollHeight: { configurable: true, value: 400 },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          scrollWrites++;
+          top = value;
+        },
+      },
+    });
+
+    const incomplete: boolean[] = [];
+    const list = await claudeAdapter.loadMoreConversations?.(window.document as unknown as Document, {
+      stepDelayMs: 0,
+      stableRounds: 3,
+      maxSteps: 400,
+      onIncomplete: () => incomplete.push(true),
+    });
+    expect(list?.map((conversation) => conversation.id)).toEqual(['aaa']);
+    // Settles in `stableRounds` rounds rather than burning the 400-step cap, and so never
+    // reports a complete list as partial.
+    expect(scrollWrites).toBeLessThanOrEqual(5);
+    expect(incomplete).toEqual([]);
+  });
+
   it('finds the recent-chat aside without depending on its localized label', async () => {
     const window = new Window();
     window.document.write(
