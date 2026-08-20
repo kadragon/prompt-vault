@@ -28,6 +28,13 @@ interface SidebarOptions {
   lastPageRows?: number;
   /** Scroll rounds between the port reaching its bottom and the page landing. */
   fetchRounds?: number;
+  /** `fetchRounds` for every page after the first — a list whose later pages are slower. */
+  laterFetchRounds?: number;
+  /**
+   * From this page index on, two pages land together in one round — the shape a walk slower than
+   * the server produces, and what the parity oracle must not read as a 40-item page size.
+   */
+  coalesceFrom?: number;
   /** A port that does not overflow — the sidebar is shorter than one viewport. */
   scrollable?: boolean;
   /** A list that appends forever, so only the step cap can end the walk. */
@@ -48,6 +55,8 @@ function makeSidebar(options: SidebarOptions): { root: ParentNode; rendered: () 
     pages = 0,
     lastPageRows,
     fetchRounds = 1,
+    laterFetchRounds,
+    coalesceFrom,
     scrollable = true,
     runaway = false,
   } = options;
@@ -63,9 +72,10 @@ function makeSidebar(options: SidebarOptions): { root: ParentNode; rendered: () 
   const scrollHeight = (): number => PORT_CHROME_PX + rendered * ROW_HEIGHT;
   const maxTop = (): number => Math.max(0, scrollHeight() - clientHeight);
   const land = (): void => {
+    const coalesced = coalesceFrom !== undefined && served >= coalesceFrom && served + 1 < pages;
     const size = served < pages ? pageSize : (lastPageRows ?? 0);
-    rendered += size;
-    served++;
+    rendered += coalesced ? size * 2 : size;
+    served += coalesced ? 2 : 1;
   };
   const pagesLeft = (): boolean => served < pages + (lastPageRows === undefined ? 0 : 1);
 
@@ -109,7 +119,7 @@ function makeSidebar(options: SidebarOptions): { root: ParentNode; rendered: () 
         return;
       }
       // A page is requested only once the walk has actually reached the bottom of the port.
-      if (top >= maxTop() && pagesLeft()) countdown = fetchRounds;
+      if (top >= maxTop() && pagesLeft()) countdown = served === 0 ? fetchRounds : (laterFetchRounds ?? fetchRounds);
     },
   };
 
@@ -206,9 +216,61 @@ describe('geminiAdapter.loadMoreConversations', () => {
     expect(progress).toEqual([]);
   });
 
+  it('treats a zero-height port as clamped instead of creeping to the step cap', async () => {
+    // A port mid collapse/expand, under a hidden ancestor, or in a background tab reports
+    // `clientHeight === 0` with `scrollHeight > 0`, so it survives the overflow check. `advance`
+    // then degrades to `Math.max(1, 0)` = 1 px per round, the position creeps, the clamped test
+    // never holds, and the walk spins the full step cap (200 s at the shipped defaults) before
+    // returning anything. Such a port cannot scroll at all, so it is at its end by definition.
+    const window = new Window();
+    window.document.write(
+      `<body><infinite-scroller id="port">${
+        `<gem-nav-list-item data-test-id="conversation"><a href="/app/${idFor(1)}" aria-label="First">First</a></gem-nav-list-item>`
+      }</infinite-scroller></body>`,
+    );
+    const port = window.document.getElementById('port')!;
+    let top = 0;
+    let scrollWrites = 0;
+    Object.defineProperties(port, {
+      clientHeight: { configurable: true, value: 0 },
+      scrollHeight: { configurable: true, value: 400 },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          scrollWrites++;
+          top = value;
+        },
+      },
+    });
+
+    const list = await geminiAdapter.loadMoreConversations?.(window.document as unknown as Document, {
+      stepDelayMs: 0,
+      stableRounds: 3,
+      maxSteps: 400,
+    });
+    expect(list?.map((conversation) => conversation.id)).toEqual([idFor(1)]);
+    // Settles in `stableRounds` rounds rather than burning the 400-step cap.
+    expect(scrollWrites).toBeLessThanOrEqual(5);
+  });
+
   it('fails loud when no sidebar scroller resolves', async () => {
     const root = { querySelectorAll: () => [] } as unknown as ParentNode;
     await expect(geminiAdapter.loadMoreConversations?.(root, { stepDelayMs: 0 })).rejects.toThrow(ExtractionError);
+  });
+
+  it('folds in the rows the final scroll revealed before giving up', async () => {
+    // The loop collects at the TOP of each round, so it exits after a scroll whose rows were
+    // never read. Without a closing fold the returned list is one round short of what the walk
+    // actually surfaced — on the very path that already admits to being partial.
+    const { root, rendered } = makeSidebar({ initial: 40, runaway: true });
+    const list = await geminiAdapter.loadMoreConversations?.(root, {
+      stepDelayMs: 0,
+      stableRounds: 3,
+      maxSteps: 6,
+      onIncomplete: () => {},
+    });
+    expect(list).toHaveLength(rendered());
   });
 
   it('reports the step cap as incomplete while still returning what it loaded', async () => {
@@ -275,6 +337,67 @@ describe('geminiAdapter.loadMoreConversations', () => {
       });
       expect(list).toHaveLength(51);
       expect(sizes).toEqual([]);
+      expect(incomplete).toEqual([]);
+    });
+
+    it('still warns when two pages coalesce into one settled batch', async () => {
+      // A walk slower than the fetch sees 40 arrive as ONE batch. Letting that batch redefine the
+      // page size to 40 silenced the oracle for the rest of the walk — nothing matched 40 again,
+      // so `onIncomplete` never fired on exactly the chunky walks that need it. An established
+      // size is never redefined, and a whole MULTIPLE of it is what a coalesced page looks like.
+      const incomplete: boolean[] = [];
+      const sizes: number[] = [];
+      // Batches of 20, 20, 40, 20 — QA's measured shape. The 40 has to leave the size at 20, or
+      // the FINAL 20 stops matching and the walk reports a boundary-cut list as complete.
+      const { root } = makeSidebar({ initial: 31, pageSize: 20, pages: 5, coalesceFrom: 2 });
+      await geminiAdapter.loadMoreConversations?.(root, {
+        ...fast,
+        onIncomplete: () => incomplete.push(true),
+        onPageSize: (size) => sizes.push(size),
+      });
+      expect(incomplete).toEqual([true]);
+      // 40 is a multiple, not a match, so it is never handed back for a later walk to cache.
+      expect(sizes).toEqual([20, 20]);
+    });
+
+    it('warns on a list cut at a page boundary even though the first batch could not be tested', async () => {
+      // 31 + 20 + 20. The first batch defines the size, so only the second can be tested against
+      // it — and it matches, so a page may still be owed.
+      const incomplete: boolean[] = [];
+      const { root } = makeSidebar({ initial: 31, pageSize: 20, pages: 2 });
+      const list = await geminiAdapter.loadMoreConversations?.(root, {
+        ...fast,
+        onIncomplete: () => incomplete.push(true),
+      });
+      expect(list).toHaveLength(71);
+      expect(incomplete).toEqual([true]);
+    });
+
+    it('keeps waiting through an untestable first batch for a page slower than the plain dwell', async () => {
+      // 31 + 20 + 20, with the second page landing 8 rounds after it is asked for — past the
+      // plain `stableRounds` dwell and inside the grace window. This is the truncation the grace
+      // verdict exists for: without it the walk settles on the first batch's verdict of "nothing
+      // concluded" and reports 51 of 71 as the whole account.
+      const { root } = makeSidebar({ initial: 31, pageSize: 20, pages: 2, laterFetchRounds: 8 });
+      const list = await geminiAdapter.loadMoreConversations?.(root, {
+        ...fast,
+        onIncomplete: () => {},
+      });
+      expect(list).toHaveLength(71);
+    });
+
+    it('grants the longer dwell for an untestable first batch without warning about it', async () => {
+      // 31 + 2: the only batch there is defines the size, so nothing can be concluded from it
+      // matching. Warning here would call a complete 33-conversation account incomplete; refusing
+      // the extra dwell would cut off a 71-conversation account whose second page is slow. The
+      // dwell is granted, the warning is not.
+      const incomplete: boolean[] = [];
+      const { root } = makeSidebar({ initial: 31, pageSize: 20, pages: 0, lastPageRows: 2 });
+      const list = await geminiAdapter.loadMoreConversations?.(root, {
+        ...fast,
+        onIncomplete: () => incomplete.push(true),
+      });
+      expect(list).toHaveLength(33);
       expect(incomplete).toEqual([]);
     });
 

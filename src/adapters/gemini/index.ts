@@ -99,6 +99,19 @@ const OPEN_TIMEOUT_MS = 15000;
 // Needed because the signature carries no per-conversation identity (see `messageSignature`), so
 // two similarly shaped chats produce the same string and the change can never be observed.
 const OPEN_SETTLE_ROUNDS = 2;
+// Consecutive polls a CHANGED signature must hold before the fast path accepts it. Sized, not
+// mirrored: `OPEN_SETTLE_ROUNDS` polls span only 300 ms at the production `pollMs` of 150, and QA
+// measured a target rendering its turns 400 ms apart — so the mirrored count resolves mid-render,
+// two turns into a three-turn conversation. Three polls span 450 ms, past that gap.
+//
+// Be clear about what this can and cannot do. A stability window is evidence that the render has
+// stopped moving, which is a real observation (unlike elapsed time since the click, which the
+// unchanged-signature branch was wrongly built on once) — but it bounds only the inter-turn gaps
+// it exceeds, and 400 ms is one measurement on one account. A slower progressive render can still
+// be sampled mid-flight. That residual is a different and lesser class than the one the node
+// check guards: the content is the RIGHT conversation's, and `extract` runs its own paged walk
+// over the exchange list afterwards rather than trusting this snapshot.
+const OPEN_RENDER_SETTLE_ROUNDS = 3;
 
 
 // Gemini's own icon-button classes, taken verbatim from the native header text-to-speech
@@ -338,23 +351,36 @@ async function loadMoreConversations(
   let lastCount = 0;
   let stable = 0;
 
-  for (let step = 0; step < maxSteps; step++) {
+  const collectRound = (): void => {
     for (const conversation of collectSidebarConversations(
       scroller.querySelectorAll(selectors.sidebarConversationLink),
       origin,
     )) {
       if (!acc.has(conversation.id)) acc.set(conversation.id, conversation);
     }
+  };
+
+  for (let step = 0; step < maxSteps; step++) {
+    collectRound();
     // Stateful (it diffs against the count it saw last round), so it is consulted every round
     // rather than only on the rounds where its answer is used.
-    const owed = morePagesOwed();
+    const parity = morePagesOwed();
     if (acc.size > lastCount) {
       options.onProgress?.(acc.size);
       stable = 0;
-    } else if (container.scrollTop <= previousTop) {
+      // `clientHeight === 0` counts as clamped. A zero-height port — mid collapse/expand, a
+      // hidden ancestor, a background tab — can still report `scrollHeight > 0`, so it survives
+      // the overflow check above, and then `advance` degrades to 1 px per round: the position
+      // creeps, `scrollTop <= previousTop` never holds, and the walk spins to the step cap
+      // (200 s at the defaults) before reporting anything. Such a port cannot scroll at all, so
+      // it is at its end by definition. ChatGPT's twin guard reads the same way
+      // (`src/adapters/chatgpt/index.ts:887`).
+    } else if (container.clientHeight === 0 || container.scrollTop <= previousTop) {
       stable++;
-      if (stable >= stableRounds + (owed ? NAV_PENDING_EXTRA_ROUNDS : 0)) {
-        if (owed) options.onIncomplete?.();
+      // A `grace` verdict buys the same extra dwell as `owed` but claims nothing: it is the
+      // first-batch case, where the gate has a page size but no second batch to test it against.
+      if (stable >= stableRounds + (parity === 'no' ? 0 : NAV_PENDING_EXTRA_ROUNDS)) {
+        if (parity === 'owed') options.onIncomplete?.();
         return [...acc.values()];
       }
     } else {
@@ -367,6 +393,10 @@ async function loadMoreConversations(
     await delay(stepDelayMs);
   }
 
+  // One last fold before giving up. The loop collects at the TOP of each round, so whatever the
+  // final scroll revealed has never been read — without this the returned list is a round short
+  // of what the walk actually surfaced, on the exact path that already admits to being partial.
+  collectRound();
   options.onIncomplete?.();
   return [...acc.values()];
 }
@@ -397,14 +427,29 @@ async function loadMoreConversations(
  * Read the evidence for what it is: ASYMMETRIC. A short batch proves the end; a full-size one
  * does not prove more is coming. Callers must bound how long they act on it — see
  * `NAV_PENDING_EXTRA_ROUNDS`.
+ *
+ * The verdict is three-valued because "keep waiting" and "warn the user" are different claims and
+ * conflating them is wrong in both directions:
+ *
+ *  - `'owed'` — an established page size, and the batch is a whole multiple of it. Worth waiting
+ *    for AND worth warning about.
+ *  - `'grace'` — the FIRST settled batch, which had to define the size and so cannot be tested
+ *    against it. Worth waiting for, not worth warning about. Without this a 71-conversation
+ *    account (31 + 20 + 20) whose second page is slower than the plain dwell reports 51 of 71 as
+ *    complete; with the older "a first batch may mark a page owed" rule, a 33-conversation
+ *    account (31 + 2) instead warns on a complete list, because an unestablished batch trivially
+ *    equals the size it just set. Granting the dwell without the warning is the only branch that
+ *    is wrong in neither direction.
+ *  - `'no'` — an established size and a batch that is not a multiple of it: a short page, which
+ *    can only be the end of the list.
  */
 function pageParityGate(
   count: () => number,
   { knownPageSize = 0, onPageSize }: { knownPageSize?: number; onPageSize?: (size: number) => void } = {},
-): () => boolean {
+): () => PageParity {
   let previous = -1;
   let pageSize = knownPageSize;
-  let pending = false;
+  let verdict: PageParity = 'no';
   let batch = 0;
   return () => {
     const current = count();
@@ -418,21 +463,35 @@ function pageParityGate(
       batch += current - previous;
     } else if (batch > 0) {
       // Growth stopped, so the batch is whole and can finally be classified.
-      const known = pageSize; // the size in force BEFORE this batch can redefine it, below
-      const established = known > 0;
-      if (batch > pageSize) pageSize = batch;
-      pending = established && batch === pageSize;
-      // Report only a size this batch MATCHED, never one it defined. A batch that grew the size
-      // is the gate's own guess — two pages coalescing into one settled batch reads as double —
-      // and the caller caches what lands here for the page's whole lifetime, where
-      // `knownPageSize` outranks everything and a cached guess could never self-heal.
-      if (established && batch === known) onPageSize?.(known);
+      if (pageSize === 0) {
+        // Nothing to test against: this batch is the only page size evidence there is.
+        pageSize = batch;
+        verdict = 'grace';
+      } else {
+        // An established size is NEVER redefined. Letting a larger batch overwrite it meant two
+        // pages coalescing into one settled batch set the size to 40 permanently, after which no
+        // real page could match and `onIncomplete` never fired again — the warning went silent
+        // exactly on the slow, chunky walks that need it. A multiple is what a coalesced batch
+        // looks like, so a multiple is what counts as a page boundary.
+        verdict = batch % pageSize === 0 ? 'owed' : 'no';
+        // Report only a size this batch MATCHED, never one it defined or a multiple it implies.
+        // The caller caches what lands here for the page's whole lifetime, where `knownPageSize`
+        // outranks everything and a guess could never self-heal.
+        if (batch === pageSize) onPageSize?.(pageSize);
+      }
       batch = 0;
     }
     previous = current;
-    return pending;
+    return verdict;
   };
 }
+
+/**
+ * What the page-size oracle can say about a settled batch. `'grace'` is deliberately not a weaker
+ * `'owed'`: it grants the extra dwell without claiming the list is short, which is the only
+ * honest reading of a batch that had to define the size it would be tested against.
+ */
+type PageParity = 'no' | 'grace' | 'owed';
 
 /** Nearest vertically-scrollable ancestor of a sidebar node — the element that actually scrolls. */
 function findScrollableAncestor(el: Element): HTMLElement {
@@ -472,7 +531,7 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   // and the sidebar pages at 20 (2026-08-10) — so on any account past the first page the target
   // is simply not in the DOM yet. Stepping the measured port is the same walk the panel's own
   // "Load more" performs. One pass, not a loop: the walk already runs to the end of the port.
-  const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, pollMs, timeoutMs));
+  const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, timeoutMs));
   if (!anchor) {
     throw new ExtractionError(
       'Could not open a selected Gemini conversation: its sidebar link was not found, ' +
@@ -494,7 +553,8 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
  * Wait for the clicked route to render its own exchanges.
  *
  * A changed `messageSignature()` is the primary proof that the outgoing conversation was
- * replaced, and it is the fast path: it resolves the moment the swap is observed.
+ * replaced, and it is the fast path: it resolves as soon as the swap is observed to have SETTLED
+ * (see the branch itself for why "observed" is not enough on its own).
  *
  * The signature carries no per-conversation identity, though, so two similarly shaped chats
  * produce the same string and the change can never be observed — for that collision the wait also
@@ -529,9 +589,20 @@ async function waitForOpenedConversation(
       continue;
     }
     const signature = messageSignature();
-    if (signature !== beforeSignature) return true;
     stable = signature === previous ? stable + 1 : 0;
     previous = signature;
+    if (signature !== beforeSignature) {
+      // Fast path — but a CHANGED signature still has to hold still. A page that has begun
+      // rendering the target is already "changed" while it is one appended container or one
+      // streamed turn into the render, and resolving there hands the bulk driver a partially
+      // rendered conversation to export (QA measured both shapes at production defaults: 153 ms
+      // with the outgoing exchange still mounted beside one new container, and 459 ms on turn 1
+      // of 3). No node check is needed here — a changed signature already proves this is not the
+      // outgoing conversation — so stability is the whole test, and it is sized in
+      // `OPEN_RENDER_SETTLE_ROUNDS` rather than borrowed from the branch below.
+      if (stable >= OPEN_RENDER_SETTLE_ROUNDS) return true;
+      continue;
+    }
     if (stable >= OPEN_SETTLE_ROUNDS && exchangeNodesReplaced(beforeExchanges)) return true;
   }
   return false;
@@ -572,15 +643,23 @@ function renderedExchanges(): Element[] {
  * missing, so "link was not found" is the accurate report either way, and letting a scroll
  * problem replace it would blame the wrong thing.
  */
-async function revealSidebarAnchor(id: string, stepDelayMs: number, timeoutMs: number): Promise<HTMLElement | null> {
+async function revealSidebarAnchor(id: string, timeoutMs: number): Promise<HTMLElement | null> {
   try {
-    // The step budget is derived from the CALLER's timeout rather than left at the loader's
-    // default. That default is sized for a user-initiated "Load more" click; here the walk runs
-    // BEFORE `waitForOpenedConversation` starts its clock, so an unsettled sidebar could spend
+    // The caller's budget is spent through `maxSteps` ALONE. `stepDelayMs` stays at the measured
+    // `NAV_STEP_DELAY_MS`, because it is not a free parameter: `NAV_STABLE_ROUNDS` was sized
+    // against it, so substituting the caller's render-poll interval (150 ms in production)
+    // silently collapses the settle window to 900 ms — under the ~1500 ms a sidebar page takes to
+    // land. The walk would then settle before the page arrives, `findSidebarAnchor` would return
+    // null, and the conversation would be skipped with "its sidebar link was not found". A poll
+    // interval and a server page latency are unrelated quantities.
+    //
+    // The step CAP is still derived from the caller's timeout rather than left at the loader's
+    // default, which is sized for a user-initiated "Load more" click; this walk runs BEFORE
+    // `waitForOpenedConversation` starts its clock, so an unsettled sidebar could otherwise spend
     // far longer than the caller asked for — once per conversation across a bulk export.
     await loadMoreConversations(document, {
-      stepDelayMs,
-      maxSteps: Math.max(1, Math.floor(timeoutMs / Math.max(1, stepDelayMs))),
+      stepDelayMs: NAV_STEP_DELAY_MS,
+      maxSteps: Math.max(1, Math.floor(timeoutMs / NAV_STEP_DELAY_MS)),
     });
   } catch {
     return null;

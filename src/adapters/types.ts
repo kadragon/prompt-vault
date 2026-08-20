@@ -52,10 +52,17 @@ export interface ConversationAdapter {
    * Enumerate the conversations listed in the provider's history sidebar into the
    * lightweight `SidebarConversation` model, in display order. Pure DOM read — no
    * messages are scraped here (that is `extract`'s job, after `openConversation`
-   * navigates to each). Returns `[]` when the sidebar is not in the DOM. Powers the
-   * bulk-export selection UI. Defaults to the live `document`; tests pass a parsed
-   * fixture root. Optional: a provider without a known sidebar omits it, and the bulk
-   * feature is simply unavailable there.
+   * navigates to each). Powers the bulk-export selection UI. Defaults to the live
+   * `document`; tests pass a parsed fixture root. Optional: a provider without a known
+   * sidebar omits it, and the bulk feature is simply unavailable there.
+   *
+   * An absent sidebar MAY be reported either way, and implementations differ on purpose.
+   * `[]` is right where absence is distinguishable from an empty account; where it is not,
+   * an implementation MUST throw `ExtractionError` instead, because `[]` reaches the user
+   * as "this account has no conversations" and a whole history reported as empty is the
+   * silent failure AGENTS.md #4 forbids (Gemini does this — a collapsed sidebar renders
+   * rows with no links, and a missing scroller is a markup change, not an empty account).
+   * **Callers must therefore handle a throw**, not only an empty array.
    */
   listConversations?(root?: ParentNode): SidebarConversation[];
 
@@ -77,11 +84,14 @@ export interface ConversationAdapter {
    * surfaced across scroll rounds and resolving with the full `SidebarConversation`
    * list — including rows a windowed/recycling virtualizer trims off the top, which a
    * single post-scroll DOM scan would miss. Powers the bulk panel's "Load more" button.
-   * Best-effort — resolves with `[]` when the sidebar is absent; fail-loud
-   * (`ExtractionError`, AGENTS.md #4) only on a runaway that never settles. Inherently
-   * live-DOM; `opts` exposes the scroll knobs so the loop is unit-testable. Optional
-   * and paired with `listConversations` — a provider whose sidebar is not virtualized
-   * omits it and the panel simply shows no "Load more" button.
+   * Inherently live-DOM; `opts` exposes the scroll knobs so the loop is unit-testable.
+   * Optional and paired with `listConversations` — a provider whose sidebar is not
+   * virtualized omits it and the panel simply shows no "Load more" button.
+   *
+   * Fail-loud (`ExtractionError`, AGENTS.md #4) on a runaway that never settles. An absent
+   * sidebar follows `listConversations`' rule and for the same reason: best-effort `[]`
+   * where absence is distinguishable from an empty account, and a rejection where it is
+   * not. **Callers must handle a rejection**, not only an empty array.
    */
   loadMoreConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<SidebarConversation[]>;
 
