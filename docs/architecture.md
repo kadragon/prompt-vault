@@ -34,7 +34,8 @@ import an exporter. The `Conversation` model is the single contract between scra
   parts? }`. This is the ONLY type exporters and adapters share.
 - `src/adapters/{provider}/` — one directory per provider. Must export a `ConversationAdapter`:
   `matches(url): boolean`, `extract(): Conversation`, plus centralized `selectors`. ChatGPT and
-  Claude ship today; Gemini is added as a sibling directory with zero changes to core/export.
+  Claude and Gemini ship today, each added as a sibling directory with zero changes to
+  core/export.
   Only `provider`/`matches`/`extract` are required — a provider implements as much of the rest
   (toolbar mount, sidebar bulk, projects) as its DOM has been *verified* to support. An optional
   member being absent does NOT by itself hide the feature: the content layer must check for it.

@@ -28,9 +28,9 @@ click saves the open conversation to your computer in the format you choose:
 • HTML (.html) — a self-contained document you can open in any browser
 
 Need more than one conversation? Open the bulk-export panel, tick the conversations you
-want, and save the whole set in one format and one run. On ChatGPT and Claude you can do
-this from the sidebar, from a project's conversation list, or — on Claude — from the full
-history page at claude.ai/recents.
+want, and save the whole set in one format and one run. This works from the sidebar on
+ChatGPT, Claude and Gemini, from a project's conversation list on ChatGPT and Claude, and
+— on Claude — from the full history page at claude.ai/recents.
 
 Key points:
 • 100% local. The extension makes no network requests and sends nothing to any server.
@@ -43,8 +43,8 @@ Key points:
   and the bulk-export icon.
 • English and Korean UI follows your browser language.
 
-Supported providers: ChatGPT, Claude and Gemini. Bulk export is available on ChatGPT and
-Claude; Gemini supports single-conversation export.
+Supported providers: ChatGPT, Claude and Gemini. Bulk export is available on all three;
+project export is available on ChatGPT and Claude.
 ```
 
 ### Description (Korean, optional listing)
@@ -62,8 +62,8 @@ ChatGPT, Claude, Gemini 대화창 위쪽에 내보내기 버튼이 생깁니다.
 • HTML (.html) — 브라우저만 있으면 바로 열리는 한 장짜리 문서
 
 여러 개를 한꺼번에 챙기고 싶다면 일괄 내보내기 창을 열고 원하는 대화만 골라 담으세요.
-ChatGPT와 Claude는 사이드바에서도, 프로젝트 대화 목록에서도 되고, Claude는 전체 기록
-페이지(claude.ai/recents)에서도 됩니다.
+ChatGPT, Claude, Gemini 모두 사이드바에서 되고, ChatGPT와 Claude는 프로젝트 대화
+목록에서도, Claude는 전체 기록 페이지(claude.ai/recents)에서도 됩니다.
 
 이런 점을 신경 썼습니다.
 • 전부 기기 안에서 처리합니다. 확장 프로그램은 어디로도 요청을 보내지 않습니다.
@@ -74,8 +74,8 @@ ChatGPT와 Claude는 사이드바에서도, 프로젝트 대화 목록에서도 
 • 툴바가 번잡하면 팝업에서 필요 없는 형식 아이콘과 일괄 내보내기 아이콘을 꺼 두세요.
 • 브라우저 언어에 맞춰 한국어나 영어로 나옵니다.
 
-지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 ChatGPT와 Claude에서
-쓸 수 있고, Gemini는 대화를 하나씩 내보냅니다.
+지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 세 곳 모두에서 쓸 수
+있고, 프로젝트 단위 내보내기는 ChatGPT와 Claude에서 쓸 수 있습니다.
 ```
 
 ### Single-purpose statement (Privacy tab)

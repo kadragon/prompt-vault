@@ -6,7 +6,7 @@
 
 Browser extension (Manifest V3) that backs up AI chat conversations to local files
 (Markdown / PDF / JSON / HTML). Supports ChatGPT, Claude and Gemini via per-site adapters;
-bulk and project export work on ChatGPT and Claude, Gemini is single-conversation only.
+bulk export works on all three; project export is ChatGPT and Claude only.
 All processing is local — conversation data never leaves the browser.
 
 ## Docs Index (read on demand)

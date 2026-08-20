@@ -1,7 +1,8 @@
 import type { Conversation, Message } from '../../core/conversation';
 import { ExtractionError } from '../../core/errors';
 import { htmlToMarkdown } from '../../core/html-to-markdown';
-import type { ConversationAdapter } from '../types';
+import type { SidebarConversation } from '../../core/sidebar';
+import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
 import { matches } from './matches';
 import { LRM, selectors, TITLE_SUFFIX } from './selectors';
 
@@ -65,6 +66,54 @@ const AT_TOP_EPSILON_PX = 1;
 // that any drift is harmless.
 const INITIAL_PAGE_SIZE = 10;
 
+// --- History-sidebar walk tuning. Separate from the exchange-list walk above: the sidebar is
+// append-only SERVER paging (20 rows per page after an initial 31, nothing ever trimmed —
+// verified live 2026-08-10), while the message list pages older turns in on scroll-UP.
+
+// Advance ~one viewport per round. Nothing is recycled off the top of this list, so a round that
+// overshoots cannot lose a row — but stepping (rather than jumping to `scrollHeight`) is what
+// keeps the collection correct if Gemini ever windows the sidebar.
+const NAV_SCROLL_STEP_FRACTION = 0.9;
+// Milliseconds to dwell after each scroll round. A sidebar page is a server fetch, not a
+// re-layout, so this matches the exchange walk's data-load delay rather than a render frame.
+const NAV_STEP_DELAY_MS = 500;
+// Consecutive quiet rounds at a clamped port before the list counts as fully loaded. Every one of
+// the four pages measured on 2026-08-10 landed inside a single 1500 ms round, but four samples
+// bound nothing about the tail, so this is sized against the slowest comparable page load this
+// repo has measured (ChatGPT's `#history` at 2830 ms): 6 x 500 ms = 3 s.
+const NAV_STABLE_ROUNDS = 6;
+// Extra quiet rounds granted while `pageParityGate` still says a page is owed — 6 s more, 9 s
+// total. Bounded rather than open-ended because parity is ASYMMETRIC evidence: a list whose
+// length is an exact multiple of the page size ends on a full-size page and is indistinguishable
+// from one page short, so an unbounded wait would burn the step cap on a complete account.
+const NAV_PENDING_EXTRA_ROUNDS = 12;
+// Anti-runaway ceiling only. The measured 93-conversation sidebar needs ~6 stepping rounds plus
+// the dwell; this leaves room for an account orders of magnitude larger before the walk gives up
+// (and giving up returns the accumulation, it does not discard it).
+const NAV_ABSOLUTE_MAX_STEPS = 400;
+// Polling knobs for `openConversation`'s wait-for-render loop. The timeout is the per-conversation
+// budget a bulk run spends before recording a miss and moving on.
+const OPEN_POLL_MS = 150;
+const OPEN_TIMEOUT_MS = 15000;
+// Consecutive polls on an IDENTICAL signature that count as "the incoming conversation rendered".
+// Needed because the signature carries no per-conversation identity (see `messageSignature`), so
+// two similarly shaped chats produce the same string and the change can never be observed.
+const OPEN_SETTLE_ROUNDS = 2;
+// Consecutive polls a CHANGED signature must hold before the fast path accepts it. Sized, not
+// mirrored: `OPEN_SETTLE_ROUNDS` polls span only 300 ms at the production `pollMs` of 150, and QA
+// measured a target rendering its turns 400 ms apart — so the mirrored count resolves mid-render,
+// two turns into a three-turn conversation. Three polls span 450 ms, past that gap.
+//
+// Be clear about what this can and cannot do. A stability window is evidence that the render has
+// stopped moving, which is a real observation (unlike elapsed time since the click, which the
+// unchanged-signature branch was wrongly built on once) — but it bounds only the inter-turn gaps
+// it exceeds, and 400 ms is one measurement on one account. A slower progressive render can still
+// be sampled mid-flight. That residual is a different and lesser class than the one the node
+// check guards: the content is the RIGHT conversation's, and `extract` runs its own paged walk
+// over the exchange list afterwards rather than trusting this snapshot.
+const OPEN_RENDER_SETTLE_ROUNDS = 3;
+
+
 // Gemini's own icon-button classes, taken verbatim from the native header text-to-speech
 // button (verified live 2026-07-25). Three tokens are dropped, each because it is wrong for
 // THESE buttons rather than merely unused:
@@ -84,15 +133,20 @@ const TOOLBAR_BUTTON_CLASS =
   'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-unthemed';
 
 /**
- * Gemini adapter — single-conversation export only. Every other `ConversationAdapter`
- * member is optional and deliberately unimplemented: the sidebar bulk track and the Gems /
- * projects track would each need their own live-DOM verification, and an unverified
- * implementation is worse than an absent one (AGENTS.md #5).
+ * Gemini adapter — single-conversation export plus the history-sidebar bulk track. Each member
+ * is present only because its DOM was verified live, and an unverified implementation is worse
+ * than an absent one (AGENTS.md #5):
  *
- * Absence alone is not enough to hide a feature, though — the content layer has to *read*
- * it. `syncConversationButtons` gates the bulk icon on `listConversations` +
- * `openConversation` being present, and `pickProjectAdapter` gates the project trigger on
- * `matchesProject`.
+ *  - The sidebar track (`listConversations` / `openConversation` / `loadMoreConversations`) rests
+ *    on the 2026-08-10 measurement — the sidebar pages at 20, append-only with no recycling, and
+ *    identity is 1:1 (93 rows ↔ 93 anchors ↔ 93 distinct `/app/<16-hex>` ids, none outside a row).
+ *  - The **Notebooks / project track stays unimplemented**, and its justification is unchanged:
+ *    Gemini's project analogue is Notebooks (Gems were measured and are not a project home), and
+ *    the measuring account had zero notebooks, so its list markup has never been seen.
+ *
+ * Absence alone is not enough to hide a feature, though — the content layer has to *read* it.
+ * `syncConversationButtons` gates the bulk icon on `listConversations` + `openConversation` being
+ * present, and `pickProjectAdapter` gates the project trigger on `matchesProject`.
  */
 export const geminiAdapter: ConversationAdapter = {
   provider: PROVIDER,
@@ -101,6 +155,9 @@ export const geminiAdapter: ConversationAdapter = {
   toolbarMount,
   toolbarButtonClass: TOOLBAR_BUTTON_CLASS,
   toolbarAnchor,
+  listConversations,
+  openConversation,
+  loadMoreConversations,
 };
 
 /**
@@ -122,6 +179,523 @@ function toolbarMount(root: ParentNode = document): Element | null {
  */
 function toolbarAnchor(root: ParentNode = document): Element | null {
   return root.querySelector(selectors.ttsControl);
+}
+
+/**
+ * The history sidebar's scroll viewport, resolved by CONTAINMENT rather than by an id — the
+ * sidebar's `infinite-scroller` carries no `data-test-id` at all, while the message list's
+ * carries `chat-history-container` (verified live 2026-08-10). So: drop the message list, then
+ * prefer a scroller that actually holds conversation rows.
+ *
+ * The last remaining candidate is returned when none holds a row, because an expanded sidebar
+ * with no conversations is a legitimately empty account — the caller enumerates nothing from it.
+ * `null` only when the document holds no non-message scroller at all, which is a markup change.
+ */
+function resolveSidebarScroller(root: ParentNode = document): Element | null {
+  const candidates = Array.from(root.querySelectorAll(selectors.sidebarScroller)).filter(
+    (scroller) => !scroller.matches(selectors.scrollContainer),
+  );
+  return candidates.find((scroller) => scroller.querySelector(selectors.sidebarConversationRow)) ?? candidates.at(-1) ?? null;
+}
+
+/**
+ * `resolveSidebarScroller`, but a missing sidebar fails loud instead of resolving to an empty
+ * list. A total absence is a markup change, not an empty account, and the bulk panel renders the
+ * same "nothing to export" state for both — so only the adapter can tell them apart
+ * (AGENTS.md #4). `findSidebarAnchor` keeps the nullable form: `openConversation` owns its own
+ * per-conversation wording for that case.
+ */
+function requireSidebarScroller(root: ParentNode = document): Element {
+  const scroller = resolveSidebarScroller(root);
+  if (!scroller) {
+    throw new ExtractionError(
+      'Could not find Gemini’s conversation sidebar. Gemini’s markup may have changed — please report this.',
+    );
+  }
+  return scroller;
+}
+
+/**
+ * The COLLAPSED sidebar, which is the one shape that would otherwise export as an empty account.
+ * Measured 2026-08-10: collapsed, a `/app` page still renders 31 conversation rows while the
+ * document holds **0** `a[href^="/app/"]`, so `rows > 0 && anchors === 0` is positive evidence of
+ * a collapsed sidebar rather than a guess. Left unchecked it returns `[]`, which the bulk panel
+ * shows as "no conversations" — indistinguishable from a real empty account (AGENTS.md #4).
+ *
+ * The fix is asked of the USER rather than performed: Gemini's sidebar toggle button was never
+ * measured, and inventing a selector for it is exactly what AGENTS.md #5 forbids.
+ */
+function assertSidebarExpanded(scroller: Element): void {
+  const rows = scroller.querySelectorAll(selectors.sidebarConversationRow).length;
+  if (rows === 0) return;
+  if (scroller.querySelector(selectors.sidebarConversationLink)) return;
+  throw new ExtractionError(
+    'Gemini’s conversation sidebar is collapsed, so its conversation links cannot be read. ' +
+      'Open the sidebar (the menu button at the top left) and try again.',
+  );
+}
+
+/**
+ * Enumerate the history sidebar into the lightweight listing model, in DOM order. Pure DOM
+ * read — no messages are scraped here. Anchors are read from the resolved scroller, which the
+ * 2026-08-10 measurement showed holds every `/app/` anchor in the document (0 outside a row).
+ */
+function listConversations(root: ParentNode = document): SidebarConversation[] {
+  const scroller = requireSidebarScroller(root);
+  assertSidebarExpanded(scroller);
+  return collectSidebarConversations(scroller.querySelectorAll(selectors.sidebarConversationLink), documentOrigin(root));
+}
+
+/**
+ * Fold sidebar anchors into an insertion-ordered id map, deduped by conversation id.
+ *
+ * One anchor that cannot be read — a deeper `/app/<id>/something` route, an id that is not the
+ * measured 16-hex shape — is SKIPPED rather than failing the whole list: ordinary UI churn must
+ * not cost the user every other conversation. What is kept is the half that matters: a sidebar
+ * that rendered anchors and resolved NONE of them fails loud, so the panel can never show an
+ * empty list where conversations exist (AGENTS.md #4). Zero anchors is not that case — the
+ * caller has already proved the scroller is there and the sidebar is expanded.
+ */
+function collectSidebarConversations(anchors: Iterable<Element>, origin: string): SidebarConversation[] {
+  const acc = new Map<string, SidebarConversation>();
+  let seen = 0;
+  for (const anchor of anchors) {
+    seen++;
+    const href = anchor.getAttribute('href');
+    const resolved = href ? resolveConversationHref(href, origin) : null;
+    if (!resolved) continue;
+    if (!acc.has(resolved.id)) acc.set(resolved.id, { id: resolved.id, title: sidebarTitle(anchor), url: resolved.url });
+  }
+  if (seen > 0 && acc.size === 0) {
+    throw new ExtractionError(
+      'Could not read any Gemini sidebar conversation link: their URLs are not the expected ' +
+        '/app/<id> shape. Gemini’s markup may have changed — please report this.',
+    );
+  }
+  return [...acc.values()];
+}
+
+/**
+ * The row's human label. Gemini localizes it, so it is only ever read as a title and never
+ * matched on. An untitled anchor keeps its conversation with a generic label rather than being
+ * dropped: the title is the checklist caption, not the identity — the id is.
+ */
+function sidebarTitle(anchor: Element): string {
+  const label = (anchor.getAttribute('aria-label') ?? anchor.textContent ?? '').trim();
+  return label || 'Gemini conversation';
+}
+
+/**
+ * Split a sidebar href into its stable conversation id and canonical absolute URL. The id shape
+ * is pinned to the measured 16-hex (2026-08-10: 93/93 anchors matched), which also rejects the
+ * `/app` new-chat route and any deeper route this adapter was never verified against — those are
+ * skipped by the caller rather than exported as conversations.
+ */
+function resolveConversationHref(href: string, origin: string): { id: string; url: string } | null {
+  try {
+    const parsed = new URL(href, origin);
+    const match = parsed.pathname.match(/^\/app\/([0-9a-f]{16})\/?$/);
+    if (!match) return null;
+    return { id: match[1], url: `${origin}/app/${match[1]}` };
+  } catch {
+    return null;
+  }
+}
+
+/** The document's own origin, falling back to the measured host (happy-dom reports `'null'`). */
+function documentOrigin(root: ParentNode): string {
+  const origin = ownerDocument(root)?.defaultView?.location?.origin;
+  return origin && origin !== 'null' ? origin : 'https://gemini.google.com';
+}
+
+/**
+ * Load every not-yet-rendered sidebar conversation by stepping the measured scroll port, folding
+ * each round's anchors into an id map and resolving with the whole accumulation.
+ *
+ * Settles only on a port that is both STATIC and CLAMPED: a round that added nothing while the
+ * port still scrolled further is a page in flight, not the end of the list. On step-cap
+ * exhaustion the accumulation is returned alongside `onIncomplete` rather than thrown away —
+ * `onIncomplete` is the shared partial-list signal (src/adapters/types.ts) and the panel reads it
+ * only after the promise resolves, so throwing would replace a partial list with a bare error.
+ */
+async function loadMoreConversations(
+  root: ParentNode = document,
+  options: LoadMoreOptions = {},
+): Promise<SidebarConversation[]> {
+  const scroller = requireSidebarScroller(root);
+  assertSidebarExpanded(scroller);
+
+  // Start from a row, not the scroller element: the scroller is the list's own shell and the
+  // element that actually overflows may be an ancestor of it (Claude's aside behaves the same
+  // way). Fall back to the scroller's scrolling ancestor when no row has rendered yet.
+  const firstRow = scroller.querySelectorAll(selectors.sidebarConversationRow)[0] ?? null;
+  const rowPort = firstRow ? findScrollableAncestor(firstRow) : null;
+  const container =
+    rowPort && hasScrollMetrics(rowPort) && rowPort.scrollHeight > rowPort.clientHeight
+      ? rowPort
+      : findScrollableAncestor(scroller);
+  if (container.scrollHeight <= container.clientHeight) return listConversations(root);
+
+  const origin = documentOrigin(root);
+  const acc = new Map<string, SidebarConversation>();
+  const stepDelayMs = options.stepDelayMs ?? NAV_STEP_DELAY_MS;
+  const stableRounds = options.stableRounds ?? NAV_STABLE_ROUNDS;
+  const maxSteps = options.maxSteps ?? NAV_ABSOLUTE_MAX_STEPS;
+  const morePagesOwed = pageParityGate(() => acc.size, {
+    knownPageSize: options.knownPageSize,
+    onPageSize: options.onPageSize,
+  });
+  let previousTop = -1;
+  // Zero, not -1: an empty-but-scrollable sidebar would otherwise satisfy `acc.size > lastCount`
+  // on the first round and report progress of 0 conversations to the panel.
+  let lastCount = 0;
+  let stable = 0;
+
+  const collectRound = (): void => {
+    for (const conversation of collectSidebarConversations(
+      scroller.querySelectorAll(selectors.sidebarConversationLink),
+      origin,
+    )) {
+      if (!acc.has(conversation.id)) acc.set(conversation.id, conversation);
+    }
+  };
+
+  for (let step = 0; step < maxSteps; step++) {
+    collectRound();
+    // Stateful (it diffs against the count it saw last round), so it is consulted every round
+    // rather than only on the rounds where its answer is used.
+    const parity = morePagesOwed();
+    if (acc.size > lastCount) {
+      options.onProgress?.(acc.size);
+      stable = 0;
+      // `clientHeight === 0` counts as clamped. A zero-height port — mid collapse/expand, a
+      // hidden ancestor, a background tab — can still report `scrollHeight > 0`, so it survives
+      // the overflow check above, and then `advance` degrades to 1 px per round: the position
+      // creeps, `scrollTop <= previousTop` never holds, and the walk spins to the step cap
+      // (200 s at the defaults) before reporting anything. Such a port cannot scroll at all, so
+      // it is at its end by definition. ChatGPT's twin guard reads the same way
+      // (`src/adapters/chatgpt/index.ts:887`).
+    } else if (container.clientHeight === 0 || container.scrollTop <= previousTop) {
+      stable++;
+      // A `grace` verdict buys the same extra dwell as `owed` but claims nothing: it is the
+      // first-batch case, where the gate has a page size but no second batch to test it against.
+      if (stable >= stableRounds + (parity === 'no' ? 0 : NAV_PENDING_EXTRA_ROUNDS)) {
+        if (parity === 'owed') options.onIncomplete?.();
+        return [...acc.values()];
+      }
+    } else {
+      stable = 0;
+    }
+    previousTop = container.scrollTop;
+    lastCount = acc.size;
+    const advance = Math.max(1, Math.floor(container.clientHeight * NAV_SCROLL_STEP_FRACTION));
+    container.scrollTop = Math.min(container.scrollTop + advance, container.scrollHeight);
+    await delay(stepDelayMs);
+  }
+
+  // One last fold before giving up. The loop collects at the TOP of each round, so whatever the
+  // final scroll revealed has never been read — without this the returned list is a round short
+  // of what the walk actually surfaced, on the exact path that already admits to being partial.
+  collectRound();
+  options.onIncomplete?.();
+  return [...acc.values()];
+}
+
+/**
+ * A stateful "is another page still owed?" test, built on the one regularity the 2026-08-10
+ * measurement found: the sidebar appends a FIXED number of conversations per page — 20, three
+ * times over, then a terminal page of 2 (31 + 20 x 3 + 2 = 93), each page also adding exactly
+ * 20 x 32 px of scroll height. So a full-size last batch means the list was cut on a page
+ * boundary and another page may follow, while a short one can only be the end.
+ *
+ * Counted off the accumulated conversation ids rather than raw rows, which the ChatGPT twin
+ * cannot do: there, a page's rows split between `/c/` and project-scoped conversations in a
+ * ratio that varies per page. Gemini's identity is 1:1 (93 rows ↔ 93 anchors ↔ 93 distinct ids,
+ * 0 anchors outside a row), so the two counts cannot diverge.
+ *
+ * A batch is judged only once it has SETTLED — growth is accumulated and classified on the first
+ * round that adds nothing. Judging each round's delta alone would misread a page that arrives
+ * across two rounds as two short batches, and "short ⇒ exhausted" would then end the walk early.
+ *
+ * **The initial render must not seed the page size**, which is where this departs from ChatGPT's
+ * gate. There the first render measured exactly one page, so seeding from it is evidence; here it
+ * is 31 against a page size of 20, so the same seed would be simply wrong — no batch could ever
+ * match it and the oracle would go silent. The size is therefore derived only from a settled
+ * batch, and the gate stays `false` until one has established it (so a history shorter than one
+ * page, where no batch is ever seen, never claims a page is owed).
+ *
+ * Read the evidence for what it is: ASYMMETRIC. A short batch proves the end; a full-size one
+ * does not prove more is coming. Callers must bound how long they act on it — see
+ * `NAV_PENDING_EXTRA_ROUNDS`.
+ *
+ * The verdict is three-valued because "keep waiting" and "warn the user" are different claims and
+ * conflating them is wrong in both directions:
+ *
+ *  - `'owed'` — an established page size, and the batch is a whole multiple of it. Worth waiting
+ *    for AND worth warning about.
+ *  - `'grace'` — the FIRST settled batch, which had to define the size and so cannot be tested
+ *    against it. Worth waiting for, not worth warning about. Without this a 71-conversation
+ *    account (31 + 20 + 20) whose second page is slower than the plain dwell reports 51 of 71 as
+ *    complete; with the older "a first batch may mark a page owed" rule, a 33-conversation
+ *    account (31 + 2) instead warns on a complete list, because an unestablished batch trivially
+ *    equals the size it just set. Granting the dwell without the warning is the only branch that
+ *    is wrong in neither direction.
+ *  - `'no'` — an established size and a batch that is not a multiple of it: a short page, which
+ *    can only be the end of the list.
+ */
+function pageParityGate(
+  count: () => number,
+  { knownPageSize = 0, onPageSize }: { knownPageSize?: number; onPageSize?: (size: number) => void } = {},
+): () => PageParity {
+  let previous = -1;
+  let pageSize = knownPageSize;
+  let verdict: PageParity = 'no';
+  let batch = 0;
+  return () => {
+    const current = count();
+    if (previous < 0) {
+      // Deliberately no seed — see the doc comment. The first render is 31 against a 20-item
+      // page, so everything the walk knows about page size has to come from a batch it watched
+      // arrive. `knownPageSize` (a size an earlier walk REPORTED) is the one exception, and it is
+      // already in `pageSize`.
+    } else if (current > previous) {
+      // Still arriving — accumulate, do not judge yet.
+      batch += current - previous;
+    } else if (batch > 0) {
+      // Growth stopped, so the batch is whole and can finally be classified.
+      if (pageSize === 0) {
+        // Nothing to test against: this batch is the only page size evidence there is.
+        pageSize = batch;
+        verdict = 'grace';
+      } else {
+        // An established size is NEVER redefined. Letting a larger batch overwrite it meant two
+        // pages coalescing into one settled batch set the size to 40 permanently, after which no
+        // real page could match and `onIncomplete` never fired again — the warning went silent
+        // exactly on the slow, chunky walks that need it. A multiple is what a coalesced batch
+        // looks like, so a multiple is what counts as a page boundary.
+        verdict = batch % pageSize === 0 ? 'owed' : 'no';
+        // Report only a size this batch MATCHED, never one it defined or a multiple it implies.
+        // The caller caches what lands here for the page's whole lifetime, where `knownPageSize`
+        // outranks everything and a guess could never self-heal.
+        if (batch === pageSize) onPageSize?.(pageSize);
+      }
+      batch = 0;
+    }
+    previous = current;
+    return verdict;
+  };
+}
+
+/**
+ * What the page-size oracle can say about a settled batch. `'grace'` is deliberately not a weaker
+ * `'owed'`: it grants the extra dwell without claiming the list is short, which is the only
+ * honest reading of a batch that had to define the size it would be tested against.
+ */
+type PageParity = 'no' | 'grace' | 'owed';
+
+/** Nearest vertically-scrollable ancestor of a sidebar node — the element that actually scrolls. */
+function findScrollableAncestor(el: Element): HTMLElement {
+  const view = ownerDocument(el)?.defaultView ?? null;
+  let current: Element | null = el;
+  while (current) {
+    const node = current as HTMLElement;
+    if (node.scrollHeight > node.clientHeight) {
+      const overflowY = view?.getComputedStyle?.(node)?.overflowY;
+      if (!overflowY || overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
+    }
+    current = current.parentElement;
+  }
+  return el as HTMLElement;
+}
+
+function hasScrollMetrics(el: Element): el is HTMLElement {
+  const node = el as HTMLElement;
+  return Number.isFinite(node.scrollHeight) && Number.isFinite(node.clientHeight);
+}
+
+/**
+ * Open a selected sidebar conversation in place and wait for the target route to render its own
+ * exchanges. The verified anchor is CLICKED rather than `location` being assigned: Gemini is an
+ * SPA, and a reload would tear down the content script and the in-flight bulk run with it.
+ */
+async function openConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const target = resolveConversationHref(url, location.origin);
+  if (!target) {
+    throw new ExtractionError('Could not open a selected Gemini conversation: its URL is malformed. It was skipped.');
+  }
+
+  if (location.pathname === `/app/${target.id}` && hasRenderedMessages()) return;
+
+  // Reveal before reporting a miss. `findSidebarAnchor` only ever sees anchors already rendered,
+  // and the sidebar pages at 20 (2026-08-10) — so on any account past the first page the target
+  // is simply not in the DOM yet. Stepping the measured port is the same walk the panel's own
+  // "Load more" performs. One pass, not a loop: the walk already runs to the end of the port.
+  const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, timeoutMs));
+  if (!anchor) {
+    throw new ExtractionError(
+      'Could not open a selected Gemini conversation: its sidebar link was not found, ' +
+        'even after scrolling the conversation list. It was skipped.',
+    );
+  }
+
+  const beforeSignature = messageSignature();
+  // The NODES, not a description of them — see `exchangeNodesReplaced`.
+  const beforeExchanges = new Set(renderedExchanges());
+  anchor.click();
+  if (await waitForOpenedConversation(target.id, beforeSignature, beforeExchanges, pollMs, timeoutMs)) return;
+  throw new ExtractionError(
+    'Timed out opening a selected Gemini conversation. It may be loading slowly; it was skipped.',
+  );
+}
+
+/**
+ * Wait for the clicked route to render its own exchanges.
+ *
+ * A changed `messageSignature()` is the primary proof that the outgoing conversation was
+ * replaced, and it is the fast path: it resolves as soon as the swap is observed to have SETTLED
+ * (see the branch itself for why "observed" is not enough on its own).
+ *
+ * The signature carries no per-conversation identity, though, so two similarly shaped chats
+ * produce the same string and the change can never be observed — for that collision the wait also
+ * accepts a signature that stayed IDENTICAL across `OPEN_SETTLE_ROUNDS` polls, but ONLY once
+ * `exchangeNodesReplaced` shows a render actually happened. That second condition is not
+ * optional: "unchanged signature" is equally consistent with "swapped to a chat that renders
+ * identically" and "has not swapped yet", and Gemini's router flips the route before Angular
+ * swaps the exchange DOM — so on the settle rounds alone this branch fires while the OUTGOING
+ * conversation is still on screen, and the bulk driver then extracts and saves the previous chat
+ * under this one's name (AGENTS.md #4).
+ *
+ * Node identity is what separates the two states; elapsed time is not. A minimum dwell was tried
+ * first and rejected on evidence: it only moves the acceptance point (~450 ms → ~1520 ms) while
+ * accepting the same thing, because time carries no information about whether a render occurred,
+ * only an unmeasured prior about how long one takes.
+ */
+async function waitForOpenedConversation(
+  id: string,
+  beforeSignature: string,
+  beforeExchanges: ReadonlySet<Element>,
+  pollMs: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  let previous: string | null = null;
+  let stable = 0;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (location.pathname !== `/app/${id}` || !hasRenderedMessages()) {
+      previous = null;
+      stable = 0;
+      continue;
+    }
+    const signature = messageSignature();
+    stable = signature === previous ? stable + 1 : 0;
+    previous = signature;
+    if (signature !== beforeSignature) {
+      // Fast path — but a CHANGED signature still has to hold still. A page that has begun
+      // rendering the target is already "changed" while it is one appended container or one
+      // streamed turn into the render, and resolving there hands the bulk driver a partially
+      // rendered conversation to export (QA measured both shapes at production defaults: 153 ms
+      // with the outgoing exchange still mounted beside one new container, and 459 ms on turn 1
+      // of 3). No node check is needed here — a changed signature already proves this is not the
+      // outgoing conversation — so stability is the whole test, and it is sized in
+      // `OPEN_RENDER_SETTLE_ROUNDS` rather than borrowed from the branch below.
+      if (stable >= OPEN_RENDER_SETTLE_ROUNDS) return true;
+      continue;
+    }
+    if (stable >= OPEN_SETTLE_ROUNDS && exchangeNodesReplaced(beforeExchanges)) return true;
+  }
+  return false;
+}
+
+/**
+ * True once every rendered exchange is a DIFFERENT object from the ones captured before the
+ * click — i.e. the page tore down the outgoing conversation's nodes and built new ones. This is a
+ * browser guarantee about node replacement, not a claim about Gemini's markup, so unlike a
+ * comparison of the exchanges' id VALUES it rests on nothing unmeasured (whether those ids are
+ * stable per conversation or regenerated per render has never been measured — AGENTS.md #5).
+ *
+ * Deliberately `every`, not `some`: a mixed list still holds nodes from the outgoing chat, so
+ * accepting it would be accepting a half-swapped page.
+ *
+ * **The residual is a false NEGATIVE, and it is not the harmless case.** If Angular ever reuses
+ * the exchange nodes in place — rewriting their contents rather than replacing them — a
+ * conversation that genuinely opened, and whose shape happens to match the outgoing one, is never
+ * accepted here and `openConversation` times out. That conversation is then skipped from the
+ * batch with a visible error. It is the deliberately chosen direction, because the alternative
+ * failure is exporting the wrong conversation's content under the right conversation's name with
+ * no error at all, and a visible skip is recoverable where a silently wrong file is not.
+ */
+function exchangeNodesReplaced(beforeExchanges: ReadonlySet<Element>): boolean {
+  const current = renderedExchanges();
+  return current.length > 0 && current.every((exchange) => !beforeExchanges.has(exchange));
+}
+
+/** The exchange containers currently in the document, as object references. */
+function renderedExchanges(): Element[] {
+  return Array.from(document.querySelectorAll(selectors.exchange));
+}
+
+/**
+ * Walk the sidebar's scroll port once so a target below the fold renders, then look again.
+ * Returns null when the walk surfaced nothing — the caller turns that into its own skip error. A
+ * failure inside the walk is swallowed on purpose: this runs only when the anchor was already
+ * missing, so "link was not found" is the accurate report either way, and letting a scroll
+ * problem replace it would blame the wrong thing.
+ */
+async function revealSidebarAnchor(id: string, timeoutMs: number): Promise<HTMLElement | null> {
+  try {
+    // The caller's budget is spent through `maxSteps` ALONE. `stepDelayMs` stays at the measured
+    // `NAV_STEP_DELAY_MS`, because it is not a free parameter: `NAV_STABLE_ROUNDS` was sized
+    // against it, so substituting the caller's render-poll interval (150 ms in production)
+    // silently collapses the settle window to 900 ms — under the ~1500 ms a sidebar page takes to
+    // land. The walk would then settle before the page arrives, `findSidebarAnchor` would return
+    // null, and the conversation would be skipped with "its sidebar link was not found". A poll
+    // interval and a server page latency are unrelated quantities.
+    //
+    // The step CAP is still derived from the caller's timeout rather than left at the loader's
+    // default, which is sized for a user-initiated "Load more" click; this walk runs BEFORE
+    // `waitForOpenedConversation` starts its clock, so an unsettled sidebar could otherwise spend
+    // far longer than the caller asked for — once per conversation across a bulk export.
+    await loadMoreConversations(document, {
+      stepDelayMs: NAV_STEP_DELAY_MS,
+      maxSteps: Math.max(1, Math.floor(timeoutMs / NAV_STEP_DELAY_MS)),
+    });
+  } catch {
+    return null;
+  }
+  return findSidebarAnchor(id);
+}
+
+/** The rendered sidebar anchor for a conversation id, or null when it has not rendered. */
+function findSidebarAnchor(id: string): HTMLElement | null {
+  const scroller = resolveSidebarScroller(document);
+  if (!scroller) return null;
+  for (const anchor of scroller.querySelectorAll<HTMLElement>(selectors.sidebarConversationLink)) {
+    const href = anchor.getAttribute('href');
+    const resolved = href ? resolveConversationHref(href, location.origin) : null;
+    if (resolved?.id === id) return anchor;
+  }
+  return null;
+}
+
+function hasRenderedMessages(): boolean {
+  return document.querySelector(selectors.exchange) !== null;
+}
+
+/**
+ * A compact internal fingerprint used only to distinguish outgoing from incoming SPA content.
+ * Gemini exposes no `data-index`/`aria-setsize` analogue, so this is built from the exchange
+ * containers' opaque ids plus the exchange count and two text LENGTHS — enough to notice a
+ * replaced conversation, and deliberately not treated as an identity (see
+ * `waitForOpenedConversation`).
+ */
+function messageSignature(): string {
+  const exchanges = renderedExchanges();
+  const ids = exchanges.map((exchange) => exchange.getAttribute('id') ?? '').join(',');
+  const first = exchanges[0]?.textContent?.trim() ?? '';
+  const last = exchanges.at(-1)?.textContent?.trim() ?? '';
+  return `${ids}:${exchanges.length}:${first.length}:${last.length}`;
 }
 
 /** Overridable knobs so the walk can be unit-tested without real timers. */

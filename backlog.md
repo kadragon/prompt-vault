@@ -85,16 +85,45 @@ continuation line is invisible to it and the blocked item is offered as actionab
 a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
 The larger hazard that measurement exposed is filed above.)*
 
+### QA pass on the Gemini bulk/sidebar track (2026-08-20)
+
+> Non-blocking findings from the independent QA of the sprint that shipped Gemini's
+> `listConversations` / `openConversation` / `loadMoreConversations`. The blocking finding — a
+> stale render resolving `openConversation`, which would export the outgoing conversation's
+> content under the target's name with no error — was fixed in that sprint, after a first
+> attempt (a minimum dwell since the click) was shown to move the window rather than close it.
+>
+> Two items from this group are gone because the PR #71 review round fixed them rather than
+> deferring them: the `pageParityGate` monotonic-growth item (an established page size is now
+> never redefined, and a whole multiple of it counts as a page boundary) and the fast-path item
+> (a changed signature must now hold still before it is accepted). That same round also split the
+> parity verdict three ways — a first settled batch, which must define the size it would be tested
+> against, now buys the longer dwell WITHOUT claiming the list is short, so `onIncomplete` is a
+> narrower signal than the one those items describe.
+
+- [ ] *(blocked by: the row-vs-anchor hydration order was not measured on 2026-08-10, so whether
+      Gemini ever exposes the window is unknown)*
+      [FIX] A partially hydrated sidebar — rows attached, their inner `<a>` not yet — is
+      indistinguishable from a collapsed one, so `assertSidebarExpanded` tells the user to open a
+      sidebar that is already open. Wrong-but-recoverable (a retry succeeds) and never a silent
+      empty list, so it violates no golden principle. Angular renders a component template
+      atomically and the anchor lives inside the row template, so the window is likely sub-frame.
+      Cheapest hardening if it turns out real: one `requestAnimationFrame` re-check before throwing.
+- [ ] *(deferred: inherent to the node-identity mechanism, and closing it would need the exchange
+      id-value stability that is unmeasured — see docs/live-dom-verification.md → 2026-08-20)*
+      [FIX] `openConversation` accepts an outgoing view that was destroyed and recreated as fresh
+      nodes with a byte-identical id and text (QA's PROBE4: resolves at 455 ms with the outgoing
+      content). Node identity proves a render *occurred*, not *which* conversation rendered.
+      Recorded so the limit is on the record rather than rediscovered.
+- [ ] [REFACTOR] Extract the scroll-walk helpers duplicated across all three adapters —
+      `findScrollableAncestor`, `delay`, the accumulate-`Map` dedupe and the clamped-port settle
+      loop — into `src/core/sidebar.ts`, which today holds only the `SidebarConversation`
+      interface. Gemini's arrival made it three copies rather than two. Provider-specific selectors
+      and page-size oracles stay in their adapters (Golden Principle #3); only the mechanics move.
+
+
 ## Next (roadmap — not v1)
 
-- [ ] Gemini adapter: bulk/sidebar export (`listConversations` / `openConversation` /
-      `loadMoreConversations`). Unblocked 2026-08-10 — the sidebar's paging shape, scroll port and
-      identity are now measured: page size **20**, append-only (no recycling), every page landing
-      within one 1500 ms round, and a 1:1 item↔anchor mapping (93 items, 93 distinct `/app/<16-hex>`
-      ids, 0 anchors outside a `[data-test-id="conversation"]`). Two implementation constraints
-      from that session: the sidebar's `infinite-scroller` carries **no** `data-test-id` (resolve it
-      by containment, as Claude's `aside` is), and with the sidebar **collapsed** the anchors are
-      absent from the document entirely. See docs/live-dom-verification.md → Gemini → 2026-08-10.
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*
       Gemini adapter: Notebooks track (`matchesProject` + the project bulk members). Narrowed
       2026-08-10: the **Gems half was dropped as not-applicable** — `/gem/<id>` is a Gem-scoped new
