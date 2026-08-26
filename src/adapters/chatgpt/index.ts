@@ -219,7 +219,12 @@ function toolbarAnchor(root: ParentNode = document): Element | null {
  * (docs/conventions.md).
  */
 function suppressOverlay(root: ParentNode = document): boolean {
-  return root.querySelector(selectors.expandedReportFrame) !== null;
+  // Outside a conversation turn is what separates the page-covering expanded view from an
+  // inline embed of the same connector rendered inside a message. An inline one leaves the
+  // header in place and must not cost the user the toolbar.
+  return [...root.querySelectorAll(selectors.expandedReportFrame)].some(
+    (frame) => frame.closest(selectors.message) === null,
+  );
 }
 
 /**

@@ -46,13 +46,24 @@ export const selectors = {
 
   /**
    * The expanded deep-research report view. ChatGPT renders it as a cross-origin sandbox
-   * iframe (`*.web-sandbox.oaiusercontent.com`) that covers the page and carries its own
-   * export control, while the conversation header — and with it `headerActions` — is gone
-   * from the top document. Matched only to suppress the fallback overlay, which would
-   * otherwise float over that view's own chrome; nothing is ever injected into the frame
-   * (it is another origin). Verified against the live page (2026-08-26).
+   * iframe that covers the page and carries its own export control, while the conversation
+   * header — and with it `headerActions` — is gone from the top document. Matched only to
+   * suppress the fallback overlay, which would otherwise float over that view's own chrome;
+   * nothing is ever injected into the frame (it is another origin).
+   *
+   * Scoped to the `deep-research.` connector subdomain, NOT the whole
+   * `web-sandbox.oaiusercontent.com` sandbox host: that host serves connector/app embeds
+   * generally, and matching it wholesale would suppress the fallback on any conversation
+   * carrying such an embed — deleting the toolbar outright exactly when the header selector
+   * has drifted and the fallback is the only thing left (see the fallback's contract in
+   * `syncButtons`). The adapter additionally requires the frame to sit outside a conversation
+   * turn, since an inline embed of the same kind renders inside one.
+   *
+   * Host observed live as `connector-openai-deep-research.web-sandbox.oaiusercontent.com`
+   * (2026-08-26). The inline-embed case is reasoned from that host's naming, not captured in
+   * a fixture — re-verify when a fixture with an inline connector embed exists.
    */
-  expandedReportFrame: 'iframe[src*="web-sandbox.oaiusercontent.com"]',
+  expandedReportFrame: 'iframe[src*="deep-research.web-sandbox.oaiusercontent.com"]',
 
   /**
    * ChatGPT's native Share button inside the header action bar. It is the anchor the

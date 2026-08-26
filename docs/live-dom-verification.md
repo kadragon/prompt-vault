@@ -539,6 +539,33 @@ window size (`clientHeight` 747). The page size is established at ~1047 rows, no
 Incidentally, the totals moved from the 2026-07-24 session's 1042 rows / 852 `/c/` to **1047 / 857** —
 five conversations added in the interval, not a contradiction between sessions.
 
+### 2026-08-26 — the expanded deep-research report is a cross-origin sandbox iframe, not page markup
+
+Measured from the user's own logged-in Chrome (console dump in the frame, then in `top`), not the
+MCP browser. Opening a deep-research report's expand control replaces the visible page with an
+iframe on **another origin**:
+
+`https://connector-openai-deep-research.web-sandbox.oaiusercontent.com/?app=chatgpt&darkModeType=…&locale=ko-KR&deviceType=desktop`
+
+Three consequences, in descending confidence:
+
+- **Nothing of ours can be injected into it.** Different origin, and the content script has no
+  host permission there — adding one would mean asking for a generic user-content sandbox host
+  (AGENTS.md #2). The frame carries its own `내보내기` (Export) control in its top-right, so it
+  needs nothing from us.
+- **`#conversation-header-actions` is gone from the top document while it is open**, so the
+  toolbar fell through to the fixed bottom-right fallback overlay and floated over the report.
+  What was directly observed is the overlay's own styling in a screenshot; the header's absence is
+  inferred from the fallback firing at all (`src/content/mount.ts` mounts it only when
+  `toolbarMount()` is null). `suppressOverlay` in the ChatGPT adapter now stands the toolbar down
+  instead.
+- **The host is the connector sandbox generally, not the report.** `deep-research` is the
+  connector's own subdomain label, so `web-sandbox.oaiusercontent.com` alone matches unrelated
+  app/connector embeds too — which is why the selector pins the `deep-research.` label and the
+  adapter additionally requires the frame to sit outside a `[data-message-author-role]` turn.
+  `[unknown — no fixture with an inline connector embed exists]`: the inline case is reasoned from
+  the host's naming, not captured. Re-verify when one can be captured.
+
 ### 2026-07-24 — project home scroll port is taller than the list it contains
 
 On `/g/g-p-…/project`, `projectListSection` resolved the `<main>` `<section>` correctly (the
