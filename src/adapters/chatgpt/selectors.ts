@@ -45,6 +45,16 @@ export const selectors = {
   headerActions: '#conversation-header-actions',
 
   /**
+   * The expanded deep-research report view. ChatGPT renders it as a cross-origin sandbox
+   * iframe (`*.web-sandbox.oaiusercontent.com`) that covers the page and carries its own
+   * export control, while the conversation header — and with it `headerActions` — is gone
+   * from the top document. Matched only to suppress the fallback overlay, which would
+   * otherwise float over that view's own chrome; nothing is ever injected into the frame
+   * (it is another origin). Verified against the live page (2026-08-26).
+   */
+  expandedReportFrame: 'iframe[src*="web-sandbox.oaiusercontent.com"]',
+
+  /**
    * ChatGPT's native Share button inside the header action bar. It is the anchor the
    * export buttons are placed to the left of (beside it, not replacing it). Matched
    * by its stable `data-testid`; verified against the captured fixtures (2026-07-17).
