@@ -646,6 +646,16 @@ function syncConversationButtons(doc: Document, href: string, allowOverlayFallba
   const mount = adapter?.toolbarMount?.(doc) ?? null;
   const anchor = mount ? adapter?.toolbarAnchor?.(mount) ?? null : null;
 
+  // A provider view that owns its own export control (ChatGPT's expanded deep-research
+  // report) hides the native header bar, so the fallback would strand a floating pill on
+  // top of it. Stand down entirely there — including removing a pill mounted before the
+  // view opened. Only the overlay path is affected: with a mount resolved the buttons
+  // still go natively into the header.
+  if (!mount && (adapter?.suppressOverlay?.(doc) ?? false)) {
+    removeButtons(doc);
+    return;
+  }
+
   const existing = doc.getElementById(CONTAINER_ID);
   if (existing) {
     const isOverlay = existing.getAttribute(PLACEMENT_ATTR) === 'overlay';

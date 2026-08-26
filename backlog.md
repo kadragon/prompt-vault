@@ -117,6 +117,17 @@ The larger hazard that measurement exposed is filed above.)*
       Recorded so the limit is on the record rather than rediscovered.
 
 
+- [ ] *(out of scope for PR #76 — pre-existing, and the fix belongs one level up in the tick)*
+      [FIX] The coach mark outlives the toolbar it explains. `maybeShowCoachMark` gates on
+      `CONTAINER_ID`, but nothing removes an already-shown card when `removeButtons` fires — on a
+      route change, on a non-conversation page, or (new in #76) when ChatGPT's expanded
+      deep-research report opens over the page. The card is `position: fixed`, `z-index`
+      2147483647 (`src/content/coach-mark.ts:47-58`), so it floats over whatever replaced the
+      toolbar and swallows the first outside `pointerdown`. Fix altitude: have the tick in
+      `src/content/index.ts` call `removeCoachMark(document)` whenever the container is absent,
+      rather than patching each removal site. Found by the PR #76 review panel (code-review).
+
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*

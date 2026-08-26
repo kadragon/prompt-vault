@@ -53,6 +53,10 @@ function bareDoc(): Document {
   return window.document as unknown as Document;
 }
 
+// The expanded deep-research report frame, as observed live (2026-08-26).
+const EXPANDED_REPORT_SRC =
+  'https://connector-openai-deep-research.web-sandbox.oaiusercontent.com/?app=chatgpt';
+
 const CLAUDE_CONV_URL = 'https://claude.ai/chat/abc-123';
 const CLAUDE_PROJECT_URL = 'https://claude.ai/project/abc-123';
 const CLAUDE_RECENTS_URL = 'https://claude.ai/recents';
@@ -244,6 +248,71 @@ describe('syncButtons', () => {
     // Anchored to the bottom, never the top, so it cannot cover the Share button.
     expect(container?.style.bottom).toBe('12px');
     expect(container?.style.top).toBe('');
+  });
+
+  it('stands down instead of overlaying ChatGPT\'s expanded deep-research report', () => {
+    // The expanded report is a cross-origin sandbox iframe covering the page; it carries its
+    // own export control and takes the conversation header with it.
+    const doc = bareDoc();
+    const frame = doc.createElement('iframe');
+    frame.setAttribute('src', EXPANDED_REPORT_SRC);
+    doc.body.appendChild(frame);
+
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+  });
+
+  it('removes an already-mounted overlay when the expanded report opens over it', () => {
+    const doc = bareDoc();
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+
+    const frame = doc.createElement('iframe');
+    frame.setAttribute('src', EXPANDED_REPORT_SRC);
+    doc.body.appendChild(frame);
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+  });
+
+  it('still mounts natively when the header is present alongside a sandbox frame', () => {
+    // Guard against over-suppression: an inline (non-expanded) sandbox embed leaves the
+    // header in place, and the toolbar must keep mounting there.
+    const doc = docWithHeader();
+    const frame = doc.createElement('iframe');
+    frame.setAttribute('src', EXPANDED_REPORT_SRC);
+    doc.body.appendChild(frame);
+
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+    expect(doc.getElementById(CONTAINER_ID)?.parentElement?.id).toBe(HEADER_ID);
+  });
+
+  it('keeps the overlay when the sandbox frame is an inline embed inside a message turn', () => {
+    // Same connector, rendered inline in a turn rather than as the page-covering report. The
+    // header may still be missing for unrelated reasons, and the fallback is then the only
+    // toolbar the user has — suppressing it here would remove the UI outright.
+    const doc = bareDoc();
+    const turn = doc.createElement('div');
+    turn.setAttribute('data-message-author-role', 'assistant');
+    const frame = doc.createElement('iframe');
+    frame.setAttribute('src', EXPANDED_REPORT_SRC);
+    turn.appendChild(frame);
+    doc.body.appendChild(turn);
+
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+  });
+
+  it('keeps the overlay for a non-report sandbox embed on the same host', () => {
+    // `web-sandbox.oaiusercontent.com` serves connector/app embeds generally; only the
+    // deep-research connector is the expanded report.
+    const doc = bareDoc();
+    const frame = doc.createElement('iframe');
+    frame.setAttribute('src', 'https://connector-openai-other-app.web-sandbox.oaiusercontent.com/?app=chatgpt');
+    doc.body.appendChild(frame);
+
+    syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
   });
 
   it('upgrades an already-mounted overlay to the native header once it renders', () => {

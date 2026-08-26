@@ -176,6 +176,7 @@ export const chatgptAdapter: ConversationAdapter = {
   toolbarMount,
   toolbarButtonClass: TOOLBAR_BUTTON_CLASS,
   toolbarAnchor,
+  suppressOverlay,
   listConversations,
   openConversation,
   loadMoreConversations,
@@ -207,6 +208,23 @@ function toolbarMount(root: ParentNode = document): Element | null {
  */
 function toolbarAnchor(root: ParentNode = document): Element | null {
   return root.querySelector(selectors.shareButton);
+}
+
+/**
+ * True while the expanded deep-research report is open. It is a cross-origin sandbox iframe
+ * covering the page, with its own export control, and it takes the conversation header with
+ * it — so the toolbar would otherwise fall back to a floating overlay stranded on top of the
+ * report. Nothing can be injected into the frame itself (another origin), so the toolbar
+ * stands down and lets the report's own control serve. DOM knowledge stays in the adapter
+ * (docs/conventions.md).
+ */
+function suppressOverlay(root: ParentNode = document): boolean {
+  // Outside a conversation turn is what separates the page-covering expanded view from an
+  // inline embed of the same connector rendered inside a message. An inline one leaves the
+  // header in place and must not cost the user the toolbar.
+  return [...root.querySelectorAll(selectors.expandedReportFrame)].some(
+    (frame) => frame.closest(selectors.message) === null,
+  );
 }
 
 /**

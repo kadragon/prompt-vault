@@ -49,6 +49,16 @@ export interface ConversationAdapter {
   toolbarAnchor?(root?: ParentNode): Element | null;
 
   /**
+   * Whether the provider is currently showing a full-screen view that owns its own export
+   * control (ChatGPT's expanded deep-research report). Such a view hides the native header
+   * bar, so the fallback overlay would otherwise drop a floating pill on top of it. Only the
+   * overlay is suppressed — when `toolbarMount` still resolves, the buttons mount natively as
+   * usual. Defaults to the live `document`; tests pass a parsed fixture root. Optional: a
+   * provider with no such view omits it.
+   */
+  suppressOverlay?(root?: ParentNode): boolean;
+
+  /**
    * Enumerate the conversations listed in the provider's history sidebar into the
    * lightweight `SidebarConversation` model, in display order. Pure DOM read — no
    * messages are scraped here (that is `extract`'s job, after `openConversation`
