@@ -111,7 +111,16 @@ function renderBlocks(lines: string[]): Content[] {
       while (end < lines.length && TABLE_ROW.test(lines[end])) end++;
       const rows = [lines[i], ...lines.slice(i + 2, end)].map(splitCells);
       const table = tableNode(rows);
-      if (table) nodes.push(table);
+      if (table) {
+        nodes.push(table);
+        i = end;
+        continue;
+      }
+      // Every cell was empty, so there is no grid to draw — but dropping the block
+      // is the silent empty output Golden Principle #4 rules out. Fall through to
+      // prose so the reader still sees the rows the page held.
+      const fallback = renderInline(lines.slice(i, end).join('\n').trim(), {});
+      if (!isEmptyInline(fallback)) nodes.push({ text: fallback, margin: [0, 2, 0, 2] });
       i = end;
       continue;
     }
@@ -286,7 +295,16 @@ function splitCells(line: string): string[] {
   cells.push(cur);
   if (cells.length > 0 && cells[0].trim() === '') cells.shift();
   if (cells.length > 0 && cells[cells.length - 1].trim() === '') cells.pop();
-  return cells.map((c) => c.trim());
+  return cells.map((c) => unescapeCellPipes(c).trim());
+}
+
+// Inside a cell every surviving `|` is an escaped one — an unescaped pipe was a
+// delimiter and is already gone — so the backslash is table syntax, not content, and
+// GFM strips it before inline parsing. Do it here rather than leaving it to the prose
+// unescaper: a pipe inside a code span (`` `a\|b` ``) never reaches that pass, since
+// code bodies are deliberately never unescaped, and would print its backslash.
+function unescapeCellPipes(cell: string): string {
+  return cell.replace(/\\(?=\|)/g, '');
 }
 
 function tableNode(rows: string[][]): Content | null {
@@ -608,9 +626,10 @@ function matchLink(text: string, at: number): Link | null {
   const close = matchBracket(text, at, '[', ']');
   if (close === -1 || text[close + 1] !== '(') return null;
   const label = text.slice(at + 1, close);
-  const hrefEnd = matchBracket(text, close + 1, '(', ')');
+  const angle = matchAngleDestination(text, close + 2);
+  const hrefEnd = angle ? angle.end : matchBracket(text, close + 1, '(', ')');
   if (hrefEnd === -1) return null;
-  const href = text.slice(close + 2, hrefEnd).trim();
+  const href = angle ? angle.href : text.slice(close + 2, hrefEnd).trim();
   if (href.length === 0) return null;
   // A label that renders to nothing — an image-only citation label, an empty pair —
   // would leave an invisible link, so the href itself becomes the visible text.
@@ -622,6 +641,19 @@ function matchLink(text: string, at: number): Link | null {
   // The href is displayed text now, not Markdown: re-parsing it would italicize a
   // URL that happens to contain `*` and drop the characters from what is shown.
   return { text: href, href, end: hrefEnd + 1, literal: true };
+}
+
+// The CommonMark angle-bracket destination `[label](<url>)`, which the serializer
+// emits for a URL holding whitespace or unbalanced parens — the shapes the bare
+// paren-depth scan would truncate. Returns null unless `at` opens a wrapper that is
+// closed and immediately followed by the link's `)`, so a literal `<` in an ordinary
+// destination still falls through to the bare scan. `end` is the index of that `)`,
+// matching what `matchBracket` returns.
+function matchAngleDestination(text: string, at: number): { href: string; end: number } | null {
+  if (text[at] !== '<') return null;
+  const close = text.indexOf('>', at + 1);
+  if (close === -1 || text[close + 1] !== ')') return null;
+  return { href: text.slice(at + 1, close).trim(), end: close + 1 };
 }
 
 interface Image {

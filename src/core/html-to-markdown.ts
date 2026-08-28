@@ -252,12 +252,31 @@ function serializeTable(table: Element): string {
   return lines.join('\n');
 }
 
-// A table cell is inline-only in Markdown: flatten to a single line. A literal
-// `|` from a text node is already escaped at the source by escapeMarkdownText
-// (backslash-first), so no cell-level pipe escaping — which could not see a
-// preceding backslash — is needed here.
+// A table cell is inline-only in Markdown: flatten to a single line. A literal `|`
+// from a text node is already escaped at the source by escapeMarkdownText, but a code
+// body is deliberately never escaped, so `<td><code>a|b</code></td>` still reaches
+// here holding a bare delimiter that would split the row. GFM requires the pipe
+// escaped even inside code when the code is inside a table, so the cell-level pass
+// below finishes the job — backslash-aware, so an already-escaped pipe is left alone.
 function serializeTableCell(cell: Element): string {
-  return serializeInline(cell).replace(/\n+/g, ' ').trim();
+  return escapeBarePipes(serializeInline(cell).replace(/\n+/g, ' ').trim());
+}
+
+// Backslash-escape every `|` that is not already escaped. The scan consumes
+// backslash pairs the way the reader will, so `\|` (escaped pipe) and `\\` (escaped
+// backslash) both survive a second pass unchanged.
+function escapeBarePipes(text: string): string {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\\' && i + 1 < text.length) {
+      out += ch + text[i + 1];
+      i++;
+      continue;
+    }
+    out += ch === '|' ? '\\|' : ch;
+  }
+  return out;
 }
 
 function serializeCodeBlock(pre: Element): string {
@@ -351,9 +370,43 @@ function serializeInlineNodes(nodes: Node[], skip?: Set<Element>): string {
     if (node.nodeType !== NODE_ELEMENT) continue;
     const child = node as Element;
     if (skip?.has(child)) continue;
+    if (child.tagName.toLowerCase() === 'code') {
+      // Two `<code>` siblings with nothing between them have no two-span spelling in
+      // Markdown: `` `k` `` followed by `` `k` `` reads back as ONE span whose body is
+      // ``k``, and no fence length repairs it (CommonMark pairs backtick runs of equal
+      // length, so a longer fence on either side fails to close at all). On the page
+      // they are one continuous run of code text, so emit one span holding both bodies.
+      const merged = mergeAdjacentCode(nodes, idx, skip);
+      out += inlineCode(merged.body);
+      idx = merged.last;
+      continue;
+    }
     out += serializeInlineElement(child);
   }
   return out;
+}
+
+// Concatenate the run of `<code>` siblings starting at `from`, returning the joined
+// body and the index of the last one consumed. Only siblings with nothing visible
+// between them merge: an empty text node is transparent, but real text (`<code>a</code>
+// <code>b</code>`) separates the spans and ends the run.
+function mergeAdjacentCode(
+  nodes: Node[],
+  from: number,
+  skip?: Set<Element>,
+): { body: string; last: number } {
+  let body = (nodes[from] as Element).textContent ?? '';
+  let last = from;
+  for (let k = from + 1; k < nodes.length; k++) {
+    const next = nodes[k];
+    if (next.nodeType === NODE_TEXT && (next.textContent ?? '') === '') continue;
+    if (next.nodeType !== NODE_ELEMENT) break;
+    const el = next as Element;
+    if (skip?.has(el) || el.tagName.toLowerCase() !== 'code') break;
+    body += el.textContent ?? '';
+    last = k;
+  }
+  return { body, last };
 }
 
 // First visible flow character at or after index `from` in `nodes`, skipping
@@ -400,7 +453,7 @@ function serializeInlineElement(el: Element): string {
     case 'a': {
       const href = el.getAttribute('href') ?? '';
       const text = serializeInline(el).trim() || href;
-      return href ? `[${text}](${href})` : text;
+      return href ? `[${text}](${linkDestination(href)})` : text;
     }
     case 'img': {
       const src = el.getAttribute('src') ?? '';
@@ -416,14 +469,40 @@ function serializeInlineElement(el: Element): string {
   }
 }
 
+// A bare link destination is read up to the first unbalanced `)`, so a URL holding
+// one (`…/a)b`) is silently truncated by any CommonMark parser, this project's PDF
+// renderer included. Whitespace has the same problem. CommonMark provides the
+// angle-bracket form for exactly these, so wrap when the destination needs it.
+function linkDestination(href: string): string {
+  const needsWrap = /\s/.test(href) || !hasBalancedParens(href);
+  // A `<` or `>` inside the destination would close the wrapper early — such a URL
+  // has no valid spelling either way, so leave it bare rather than corrupt it.
+  if (!needsWrap || /[<>]/.test(href)) return href;
+  return `<${href}>`;
+}
+
+function hasBalancedParens(href: string): boolean {
+  let depth = 0;
+  for (const ch of href) {
+    if (ch === '(') depth++;
+    else if (ch === ')' && --depth < 0) return false;
+  }
+  return depth === 0;
+}
+
 // Wrap inline code, choosing a backtick fence longer than any run inside the text
 // and padding with a space when the content starts/ends with a backtick, per
 // CommonMark — so code containing backticks stays valid Markdown.
 function inlineCode(text: string): string {
-  const longestRun = longestBacktickRun(text);
+  // A code span occupies one line: a newline in the body would leave the closing
+  // fence on a later line, where nothing pairs it (the PDF renderer deliberately
+  // refuses to — test/export/pdf.test.ts) and the backticks survive as literal text.
+  // Collapse the way every other inline path already does, at the source.
+  const body = collapseWs(text);
+  const longestRun = longestBacktickRun(body);
   const fence = '`'.repeat(longestRun + 1);
   const pad = longestRun > 0 ? ' ' : '';
-  return `${fence}${pad}${text}${pad}${fence}`;
+  return `${fence}${pad}${body}${pad}${fence}`;
 }
 
 // Longest run of consecutive backticks in `text`. Uses reduce (not a spread into

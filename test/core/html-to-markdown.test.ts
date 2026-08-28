@@ -276,3 +276,60 @@ describe('blockToMarkdown', () => {
     expect(block('<p>plain <strong>text</strong></p>')).toBe('plain **text**');
   });
 });
+
+// Four fidelity defects the PR #77/#78 review panels found: source the serializer
+// emitted that no longer means what the page showed. Each is fixed here, at the
+// serializer, because the Markdown export carries the same corruption the PDF
+// renderer does.
+describe('serialization fidelity', () => {
+  it('collapses a newline inside inline code so the span stays on one line', () => {
+    // A code span is single-line in Markdown: left as-is, the closing fence lands on
+    // another line where nothing pairs it and the backticks print as literal text.
+    expect(md('<p>x <code>a\nb</code> y</p>')).toBe('x `a b` y');
+  });
+
+  it('merges two touching code spans into one', () => {
+    // `` `k` `` + `` `k` `` reads back as a single span holding ``k``, and no fence
+    // length repairs it — CommonMark pairs runs of equal length.
+    expect(md('<p><code>k</code><code>k</code></p>')).toBe('`kk`');
+  });
+
+  it('merges a run of three touching code spans', () => {
+    expect(md('<p><code>a</code><code>b</code><code>c</code></p>')).toBe('`abc`');
+  });
+
+  it('keeps code spans separate when visible text sits between them', () => {
+    expect(md('<p><code>k</code> <code>k</code></p>')).toBe('`k` `k`');
+  });
+
+  it('escapes a pipe inside inline code inside a table cell', () => {
+    // The code body is deliberately never escaped, so without a cell-level pass this
+    // bare `|` splits the row and tears the code span in two.
+    expect(md('<table><tr><td><code>a|b</code></td><td>c</td></tr></table>')).toBe(
+      '| `a\\|b` | c |\n| --- | --- |',
+    );
+  });
+
+  it('does not double-escape a pipe a text node already escaped', () => {
+    expect(md('<table><tr><td>x | y</td></tr></table>')).toBe('| x \\| y |\n| --- |');
+  });
+
+  it('wraps a link destination holding an unbalanced paren in angle brackets', () => {
+    // Bare, the destination is read up to the first unbalanced `)` and the URL is
+    // silently truncated.
+    expect(md('<p><a href="https://e.com/a)b">t</a></p>')).toBe('[t](<https://e.com/a)b>)');
+  });
+
+  it('wraps a link destination holding whitespace', () => {
+    expect(md('<p><a href="https://e.com/a b">t</a></p>')).toBe('[t](<https://e.com/a b>)');
+  });
+
+  it('leaves a destination with balanced parens bare', () => {
+    expect(md('<p><a href="https://e.com/a(b)c">t</a></p>')).toBe('[t](https://e.com/a(b)c)');
+  });
+
+  it('leaves a destination containing an angle bracket bare rather than corrupting it', () => {
+    // `>` would close the wrapper early; the URL has no valid spelling either way.
+    expect(md('<p><a href="https://e.com/a>b c">t</a></p>')).toBe('[t](https://e.com/a>b c)');
+  });
+});

@@ -10,6 +10,7 @@ import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import type { ConversationAdapter, OpenConversationOptions } from '../types';
 import { htmlToMarkdown } from '../../core/html-to-markdown';
+import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import { matches, matchesProject } from './matches';
 import { selectors } from './selectors';
 
@@ -579,18 +580,21 @@ function readTurn(el: Element): TurnRead {
     // Fall back to plain text if the prose container is missing so a markup change
     // degrades to readable text rather than an empty message (but mark it unreliable).
     if (markdownEl) return { content: htmlToMarkdown(markdownEl), reliable: true };
-    return { content: (el.textContent ?? '').trim(), reliable: false };
+    return { content: escapeMarkdownBlock((el.textContent ?? '').trim()), reliable: false };
   }
-  // User turns are plain (already markdown-ish) text in a pre-wrap block.
+  // User turns are LITERAL text in a pre-wrap block — ChatGPT renders them verbatim,
+  // it does not parse them as Markdown. `Message.content` is Markdown by contract, so
+  // escape at the source: a turn typed as `**literal**` or `- item` must export and
+  // render as the characters the user typed, not as bold text or a bullet list.
   const textEl = el.querySelector(selectors.userText);
-  const base = (textEl?.textContent ?? '').trim();
+  const base = escapeMarkdownBlock((textEl?.textContent ?? '').trim());
   const files = fileMarkers(el);
   const combined = [base, files].filter(Boolean).join('\n\n');
   if (combined) return { content: combined, reliable: true };
   // A turn with only an uploaded file or a lone image has no readable text node; describe
   // it rather than dropping it (which would fail the whole export — AGENTS.md #4).
   if (el.querySelector('img')) return { content: '[Image]', reliable: true };
-  return { content: (el.textContent ?? '').trim(), reliable: false };
+  return { content: escapeMarkdownBlock((el.textContent ?? '').trim()), reliable: false };
 }
 
 /** Map one message DOM node to a normalized Message, or null if it has no content. */

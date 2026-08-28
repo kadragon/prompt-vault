@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- [done] Markdown serialization fidelity: four defects that made the exported source mean
+  something the page never showed (v1.13.3) (2026-08-28). Found by the PR #77 and #78 review
+  panels. An inline-code span whose body held a newline left its closing fence on another line,
+  where nothing pairs it and the backticks printed as text — `inlineCode` now collapses
+  whitespace at the source, the way every other inline path already did. Two touching `<code>`
+  elements produced `` `k``k` ``, which every reader takes as one span holding two backticks;
+  CommonMark has no spelling for two abutting code spans, so adjacent `<code>` siblings now
+  serialize as one span. A `|` inside inline code inside a table cell split the row and tore the
+  code span, because a code body is deliberately never escaped — `serializeTableCell` now escapes
+  the bare delimiter, as GFM requires, and the PDF renderer strips that table-syntax backslash
+  from the cell. A link destination holding an unbalanced `)` was silently truncated by every
+  paren-depth scan, so such a URL is now emitted in CommonMark's angle-bracket form and the PDF
+  renderer reads it back. Two of the four sat against Golden Principle #4, along with a fifth fix
+  on the same principle: a table whose every cell was empty was dropped with no output, and now
+  falls through to prose. Separately, plain page text an adapter reads with `textContent` — user
+  turns on all three providers, and every unreliable fallback — is escaped at the source, so a
+  turn typed as `**literal**` or `- item` exports and renders as the characters the user typed
+  rather than as formatting; `Message.content` is Markdown by contract and was carrying raw text.
+
 - [done] PDF export: characters the embedded font cannot draw are substituted instead of printed
   as tofu boxes (v1.13.2) (2026-08-28). Reported from a real Korean export, where every `℃` in an
   LG fridge conversation came out as `-1.0□`: Jetendard covers Latin, Hangul and common

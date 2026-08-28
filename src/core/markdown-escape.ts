@@ -57,6 +57,25 @@ export function escapeMarkdownText(
   return out;
 }
 
+/**
+ * Escape a block of *plain page text* — text an adapter read straight off the page
+ * with `textContent`, never markup it serialized — so it survives export as the
+ * literal text the reader saw. `Message.content` is documented as Markdown, so an
+ * unescaped `**literal**` or `- item` from a pre-wrap block would otherwise be
+ * re-read as formatting by every exporter downstream.
+ *
+ * Every non-blank line is escaped as a line start, because each one genuinely begins
+ * a line in the emitted document — unlike inline serialization, where only the first
+ * text node of a run is. Blank lines pass through untouched so paragraph breaks
+ * survive.
+ */
+export function escapeMarkdownBlock(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => (line.trim() ? escapeMarkdownText(line, true) : line))
+    .join('\n');
+}
+
 // Single left-to-right scan over the ORIGINAL text so the backslashes we add
 // never perturb the neighbor lookups used for flanking classification. Escapes
 // `\`, `` ` ``, `[`, `]`, `|` unconditionally and `*`/`_`/`~` runs when flanking.

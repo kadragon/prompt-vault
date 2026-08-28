@@ -139,46 +139,6 @@ The larger hazard that measurement exposed is filed above.)*
       untouched). Worth settling before the next Web Store submission. Found by the PR #77 review
       panel (code-review).
 
-- [ ] *(out of scope for PR #77 — three narrow renderer edges, none reachable from a normal chat)*
-      [FIX] `src/export/markdown-pdf.ts` fidelity edges left standing by the Markdown renderer.
-      (a) An inline-code span whose body contains a newline (`<code>a\nb</code>` — `inlineCode()`
-      uses raw `textContent`, so the newline is not collapsed) fails to pair and leaves its
-      backticks as text; `test/export/pdf.test.ts` currently pins that non-pairing, so fixing it
-      means narrowing that test or collapsing whitespace in the serializer instead. (b) An `href`
-      containing an unbalanced `)` truncates at the paren-depth scan in `matchLink` (CommonMark
-      behaves the same way, so this is fidelity, not correctness). (c) `tableNode` returns `null`
-      when every cell of a table is empty, dropping the block silently — the shape Golden
-      Principle #4 rules out. Found by the PR #77 review panel (contract QA).
-
-
-- [ ] *(out of scope for PR #77 — the fix is a model-contract change across adapters)*
-      [FIX] Plain-text message bodies are interpreted as Markdown by the PDF renderer. The
-      `Conversation` model documents `Message.content` as Markdown, but the ChatGPT adapter's
-      fallback paths put raw page text into it (`src/adapters/chatgpt/index.ts:582,586,593` use
-      `el.textContent`, including the user-turn path). Since PR #77 the PDF exporter parses that
-      text as Markdown, so a user turn typed as `**literal**` renders bold with the asterisks gone,
-      and `- item` becomes a real bullet list. The Markdown export has the same latent corruption —
-      the unescaped text is not valid Markdown source. Fix at the source: escape a plain-text
-      fallback with `escapeMarkdownText` (or carry a rich/plain flag on `Message`) so every
-      exporter can trust the contract. Found by the PR #77 review panel (Codex).
-
-- [ ] *(out of scope for PR #77 — the escape belongs in the serializer, not the renderer)*
-      [FIX] A `|` inside inline code inside a table cell splits the row. `serializeTableCell` →
-      `inlineCode()` emits the code body verbatim (code is deliberately never escaped), so
-      `<code>a|b</code>` in a `<td>` yields ``| `a|b` |``; the PDF renderer's `splitCells` skips
-      only backslash-escaped pipes and gains a column, tearing the code span. GFM requires the pipe
-      to be escaped even inside code when it is inside a table, so the Markdown export is wrong
-      here too. Fix in `serializeTableCell` (escape `|` after inline serialization), not in the PDF
-      splitter. Found by the PR #77 review panel (Codex).
-
-- [ ] *(out of scope for PR #78 — pre-existing in the serializer, not a renderer bug)*
-      [FIX] Two touching `<code>` elements serialize to one unreadable span.
-      `<p><code>k</code><code>k</code></p>` → `` `k``k` ``, which every reader (the PDF renderer
-      included) sees as a single code span containing two backticks: `k``k`. Byte-identical at PR
-      #77 and PR #78, so nothing recent caused it. Fix belongs in `serializeInlineNodes` — two
-      adjacent code spans need separating, the way CommonMark requires. Same family as the
-      pipe-in-code-in-a-table-cell item above. Found by the PR #78 review panel (contract QA).
-
 
 - [ ] [FIX] PDF export still draws tofu boxes for characters no NFKC form can rescue.
       `src/export/pdf-charmap.ts` substitutes every missing character whose NFKC form the embedded

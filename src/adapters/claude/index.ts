@@ -10,6 +10,7 @@ import {
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import { blockToMarkdown, htmlToMarkdown } from '../../core/html-to-markdown';
+import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
 import { matches, matchesProject, matchesRecents } from './matches';
 import { selectors, TITLE_SUFFIX } from './selectors';
@@ -1681,13 +1682,20 @@ function readUserContent(el: Element): string {
     const tag = child.tagName.toLowerCase();
     // `blockToMarkdown`, not `htmlToMarkdown`: the list IS the block here, and treating it
     // as a container would serialize its `<li>`s as separate blocks and drop the markers.
-    const text = tag === 'ul' || tag === 'ol' ? blockToMarkdown(child) : (child.textContent ?? '');
+    // A non-list block is read as literal text, so it is escaped at the source: the
+    // `Message.content` contract is Markdown, and a paragraph the user typed as
+    // `- item` must not become a real bullet in the export.
+    const text =
+      tag === 'ul' || tag === 'ol'
+        ? blockToMarkdown(child)
+        : escapeMarkdownBlock((child.textContent ?? '').trim());
     if (text.trim()) blocks.push(text.trim());
   }
   if (blocks.length > 0) return blocks.join('\n\n');
   // No block children (or all empty): fall back to the container's own text so a markup
-  // change degrades to readable content rather than an empty turn.
-  const text = (el.textContent ?? '').trim();
+  // change degrades to readable content rather than an empty turn. Literal text again,
+  // so escaped at the source.
+  const text = escapeMarkdownBlock((el.textContent ?? '').trim());
   if (text) return text;
   // A turn holding only a pasted image has no readable text node. Describe it rather than
   // yielding empty — an empty turn fails the WHOLE export (AGENTS.md #4), so one

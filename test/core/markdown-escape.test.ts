@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeMarkdownText } from '../../src/core/markdown-escape';
+import { escapeMarkdownBlock, escapeMarkdownText } from '../../src/core/markdown-escape';
 
 describe('escapeMarkdownText', () => {
   describe('backslash', () => {
@@ -102,5 +102,31 @@ describe('escapeMarkdownText', () => {
     it('leaves a decimal alone', () => {
       expect(escapeMarkdownText('1.23 is a float', true)).toBe('1.23 is a float');
     });
+  });
+});
+
+// Plain page text an adapter read with `textContent`. `Message.content` is Markdown by
+// contract, so this text has to survive as the literal characters the reader saw.
+describe('escapeMarkdownBlock', () => {
+  it('escapes emphasis a user typed literally', () => {
+    expect(escapeMarkdownBlock('**literal**')).toBe('\\*\\*literal\\*\\*');
+  });
+
+  it('escapes a block marker on every line, not just the first', () => {
+    // The single-call form treats only the first line as a line start, which is right
+    // for inline serialization and wrong for a multi-line pre-wrap block.
+    expect(escapeMarkdownBlock('- one\n- two')).toBe('\\- one\n\\- two');
+  });
+
+  it('escapes a heading marker and an ordered-list marker per line', () => {
+    expect(escapeMarkdownBlock('# note\n1. first')).toBe('\\# note\n1\\. first');
+  });
+
+  it('preserves blank lines so paragraph breaks survive', () => {
+    expect(escapeMarkdownBlock('one\n\ntwo')).toBe('one\n\ntwo');
+  });
+
+  it('leaves text with nothing significant unchanged', () => {
+    expect(escapeMarkdownBlock('just words\nand more')).toBe('just words\nand more');
   });
 });
