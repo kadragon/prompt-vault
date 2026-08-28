@@ -24,6 +24,9 @@ const FACES = ['Jetendard-Regular.ttf', 'Jetendard-Bold.ttf'].map((name) =>
 );
 // Both faces, not just Regular: a bold Markdown run is laid out with the Bold file,
 // so a glyph only one face carries still exports as a tofu box in `**strong**` text.
+// No assertion below can currently fail on this alone — the two shipped faces have
+// identical coverage over the scanned range, so narrowing this to one face leaves the
+// suite green. The clause guards the NEXT font swap, not this one.
 const hasGlyph = (codePoint: number): boolean =>
   FACES.every((face) => face.hasGlyphForCodePoint(codePoint));
 const covers = (text: string): boolean =>
@@ -42,6 +45,14 @@ describe('the PDF fallback table', () => {
       .filter(([, replacement]) => !covers(replacement))
       .map(([from, to]) => `${from} -> ${to}`);
     expect(stillMissing).toEqual([]);
+  });
+
+  it('keys the table by single code points only', () => {
+    // A multi-code-point key would compile into the character class as its first half
+    // alone, and the replace callback would then look up a key that is not in the
+    // table — writing the literal string "undefined" into the exported PDF.
+    const multiCodePoint = Object.keys(PDF_CHAR_FALLBACKS).filter((key) => [...key].length !== 1);
+    expect(multiCodePoint).toEqual([]);
   });
 
   it('never maps a character to itself', () => {
@@ -73,6 +84,14 @@ describe('substituteUnsupportedChars', () => {
     expect(substituteUnsupportedChars('5㎏ ㈜한글 Ⅲ ①')).toBe('5kg (주)한글 III 1');
   });
 
+  it('rewrites the pseudo-bold letters chat models emit as prose', () => {
+    // Mathematical Alphanumeric Symbols (U+1D400–1D7FF): astral code points, and the
+    // block a hand-picked scan range missed. `𝐍𝐨𝐭𝐞` exported as four tofu boxes.
+    expect(substituteUnsupportedChars('\u{1D40D}\u{1D428}\u{1D42D}\u{1D41E}: -1.0\u{2103}')).toBe(
+      'Note: -1.0\u00b0C',
+    );
+  });
+
   it('rewrites curated characters with no decomposition', () => {
     expect(substituteUnsupportedChars('※ 참고 ★ ☑')).toBe('* 참고 ● [v]');
   });
@@ -85,7 +104,7 @@ describe('substituteUnsupportedChars', () => {
   it('produces text the shaper renders without a single missing glyph', () => {
     // The doc-definition assertions above compare strings; this one asks the real
     // shaper, which is what actually decides whether the reader sees a tofu box.
-    const source = '온도 -1.0℃ / 5㎏ / ㈜LG / ※ 참고 / Ⅳ / ㎡';
+    const source = '온도 -1.0℃ / 5㎏ / ㈜LG / ※ 참고 / Ⅳ / ㎡ / \u{1D40D}\u{1D428}\u{1D42D}\u{1D41E}';
     const notdefBefore = FACES[0].layout(source).glyphs.filter((g) => g.id === 0);
     expect(notdefBefore.length).toBeGreaterThan(0);
 

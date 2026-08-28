@@ -180,6 +180,17 @@ The larger hazard that measurement exposed is filed above.)*
       pipe-in-code-in-a-table-cell item above. Found by the PR #78 review panel (contract QA).
 
 
+- [ ] [FIX] PDF export still draws tofu boxes for characters no NFKC form can rescue.
+      `src/export/pdf-charmap.ts` substitutes every missing character whose NFKC form the embedded
+      Jetendard faces can draw (1821 of them), but the ones with no usable decomposition still
+      export as empty boxes with no visible error — which sits against Golden Principle #4
+      ("fail loud on extraction"). Both-face census over the shipped fonts: Kana U+3040–30FF
+      192/192 missing, Miscellaneous Symbols 249/256, Dingbats 178/192 (so ✅ ❌ and every emoji),
+      Arrows 77/112, Math Operators 137/256. A Japanese conversation exports as a page of boxes.
+      Two candidate fixes, neither cheap: embed a wider face (the family is already 9 MB), or
+      detect unmapped-and-uncovered code points at export time and surface a warning. Found by the
+      qa-verifier pass on the ℃ fix (branch `fix/pdf-missing-glyph-fallbacks`, 2026-08-28).
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*

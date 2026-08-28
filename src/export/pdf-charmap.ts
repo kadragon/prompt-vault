@@ -15,7 +15,14 @@
 //     decomposition for, so a human has to choose the stand-in.
 //
 // Substitution runs on the built document nodes, never on the Markdown source: a
-// replacement that introduces `*` must not be able to turn into emphasis.
+// replacement that introduces `*` must not be able to turn into emphasis. It applies
+// to fenced code bodies as well as prose, so a code sample containing `℃` exports —
+// and is copied out — as `°C`: the alternative is a tofu box, which is neither
+// readable nor copy-pasteable.
+//
+// What this does NOT cover: characters the font lacks that have no NFKC form the font
+// can draw — emoji, kana, most dingbats. Those still export as tofu boxes, and only a
+// wider font can fix them (see backlog.md).
 
 import { NFKC_FALLBACKS } from './pdf-charmap-generated';
 
@@ -45,9 +52,15 @@ export const PDF_CHAR_FALLBACKS: Readonly<Record<string, string>> = {
   ...CURATED_FALLBACKS,
 };
 
-// A character class of every key, built once. Keys are single code points, so each is
-// emitted as a `\u{...}` escape rather than pasted raw — several are invisible spaces
-// or format characters that would be unreadable (and easy to mangle) inline.
+// A character class of every key, built once. Every key must be exactly ONE code
+// point: a class entry can only be a single character, so a two-code-point key would
+// compile to a class matching just its first half and then miss in the lookup below,
+// writing the literal string "undefined" into the PDF. The generated table cannot
+// violate that (each key is one `String.fromCodePoint`), but CURATED_FALLBACKS is
+// hand-written, so test/export/pdf-charmap.test.ts asserts it.
+//
+// Keys are emitted as `\u{...}` escapes rather than pasted raw — several are invisible
+// spaces or format characters that would be unreadable (and easy to mangle) inline.
 const FALLBACK_PATTERN = new RegExp(
   `[${Object.keys(PDF_CHAR_FALLBACKS)
     .map((char) => `\\u{${char.codePointAt(0)?.toString(16)}}`)

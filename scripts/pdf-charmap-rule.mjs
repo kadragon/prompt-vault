@@ -12,23 +12,22 @@
 // regression, not a fix.
 
 /**
- * Code point ranges scanned for missing-but-substitutable characters. Deliberately
- * bounded: these are the blocks whose characters realistically appear in chat prose
- * (punctuation, currency, letterlike/number forms, enclosed and squared CJK forms,
- * fullwidth forms). Scanning the whole BMP would drag in thousands of presentation
- * forms nobody types into a chat.
+ * Code point ranges scanned for missing-but-substitutable characters. The scan is
+ * deliberately wide — everything from the first printable character through the
+ * Supplementary Multilingual Plane — because the rule below is self-limiting: a code
+ * point is only added when the font cannot draw it AND can draw its NFKC form, so
+ * scanning more blocks can never rewrite a character that already renders. Narrowing
+ * the scan by hand only creates blind spots; the earlier hand-picked block list missed
+ * the Mathematical Alphanumeric Symbols (U+1D400–1D7FF) that chat models emit as
+ * pseudo-bold prose, so `𝐍𝐨𝐭𝐞` exported as four tofu boxes.
+ *
+ * Surrogate code points are skipped: they are not characters, and String.fromCodePoint
+ * would produce a lone surrogate that no normalization can act on.
  */
 export const FALLBACK_SCAN_RANGES = [
-  [0x2000, 0x206f], // General Punctuation
-  [0x2070, 0x209f], // Super/Subscripts
-  [0x20a0, 0x20bf], // Currency Symbols
-  [0x2100, 0x214f], // Letterlike Symbols (℃, ℉, ™, №)
-  [0x2150, 0x218f], // Number Forms (Ⅰ, ⅓)
-  [0x2460, 0x24ff], // Enclosed Alphanumerics (①, ⓐ)
-  [0x3000, 0x303f], // CJK Symbols and Punctuation
-  [0x3200, 0x32ff], // Enclosed CJK Letters and Months (㈜, ㊙)
-  [0x3300, 0x33ff], // CJK Compatibility (㎏, ㎡, ㎝)
-  [0xff00, 0xffef], // Halfwidth and Fullwidth Forms
+  [0x0020, 0xd7ff],
+  [0xe000, 0xffff],
+  [0x10000, 0x1ffff],
 ];
 
 /**
