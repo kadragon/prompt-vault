@@ -9,7 +9,12 @@
 
 import pdfMake from 'pdfmake/build/pdfmake';
 import type { TFontDictionary } from 'pdfmake/interfaces';
-import { JETENDARD_REGULAR_B64, JETENDARD_VFS_KEY } from '../export/fonts/jetendard';
+import {
+  JETENDARD_BOLD_B64,
+  JETENDARD_BOLD_VFS_KEY,
+  JETENDARD_REGULAR_B64,
+  JETENDARD_VFS_KEY,
+} from '../export/fonts/jetendard';
 import { PDF_FONT, pdfFilename, toPdfDocDefinition } from '../export/pdf';
 import type { Conversation } from '../core/conversation';
 
@@ -19,15 +24,21 @@ let fontsRegistered = false;
 
 function registerFonts(): void {
   if (fontsRegistered) return;
-  pdfMake.addVirtualFileSystem({ [JETENDARD_VFS_KEY]: JETENDARD_REGULAR_B64 });
-  // pdfmake requires all four style slots; we ship one weight, so every slot maps
-  // to Regular (headings differ by size/color, not weight).
+  pdfMake.addVirtualFileSystem({
+    [JETENDARD_VFS_KEY]: JETENDARD_REGULAR_B64,
+    [JETENDARD_BOLD_VFS_KEY]: JETENDARD_BOLD_B64,
+  });
+  // pdfmake requires all four style slots. We ship two weights: the bold slots carry
+  // the real Bold face (a `**strong**` run has to LOOK bold, and pdfmake does no
+  // synthetic bolding), while the italic slots fall back to their same-weight upright
+  // face — the serializer's `*em*` runs then read as unemphasized rather than as a
+  // missing-font failure.
   const fonts: TFontDictionary = {
     [PDF_FONT]: {
       normal: JETENDARD_VFS_KEY,
-      bold: JETENDARD_VFS_KEY,
+      bold: JETENDARD_BOLD_VFS_KEY,
       italics: JETENDARD_VFS_KEY,
-      bolditalics: JETENDARD_VFS_KEY,
+      bolditalics: JETENDARD_BOLD_VFS_KEY,
     },
   };
   pdfMake.addFonts(fonts);
