@@ -25,3 +25,12 @@ declare module 'pdfmake/build/pdfmake' {
   };
   export default pdfMake;
 }
+
+// The PDF character-fallback derivation rule, shared between the generator script and
+// its test (scripts/pdf-charmap-rule.mjs). It lives outside `src` — a build-time rule,
+// not shipped code — so it is declared here rather than typechecked in place.
+declare module '*/pdf-charmap-rule.mjs' {
+  export function deriveNfkcFallbacks(
+    hasGlyph: (codePoint: number) => boolean,
+  ): Record<string, string>;
+}

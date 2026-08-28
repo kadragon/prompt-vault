@@ -17,6 +17,7 @@ import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import type { Conversation, Role } from '../core/conversation';
 import { buildExportFilename } from './filename';
 import { renderMarkdown } from './markdown-pdf';
+import { substituteUnsupportedChars } from './pdf-charmap';
 
 // The embedded font family name, referenced by the vfs/fonts registration in the
 // content layer. Kept here so the pure doc definition names the same family the
@@ -87,7 +88,7 @@ export function toPdfDocDefinition(conversation: Conversation): TDocumentDefinit
     content.push(...renderMarkdown(message.content));
   }
   return {
-    content,
+    content: withCharFallbacks(content),
     defaultStyle: {
       font: PDF_FONT,
       fontSize: 10,
@@ -106,6 +107,24 @@ export function toPdfDocDefinition(conversation: Conversation): TDocumentDefinit
  */
 export function pdfFilename(conversation: Conversation, now: Date): string {
   return buildExportFilename(conversation, now, 'pdf');
+}
+
+// Rewrite every text run the font has no glyph for (see ./pdf-charmap). This runs on
+// the finished nodes rather than on the Markdown source so a substitution that yields
+// `*` or `_` can never be re-read as emphasis, and it copies rather than mutates:
+// the renderer reuses shared (and sometimes frozen) node and layout constants, and
+// layout callbacks must survive by reference.
+function withCharFallbacks<T>(node: T): T {
+  if (Array.isArray(node)) return node.map(withCharFallbacks) as T;
+  if (node === null || typeof node !== 'object') return node;
+  const copy: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    copy[key] =
+      key === 'text' && typeof value === 'string'
+        ? substituteUnsupportedChars(value)
+        : withCharFallbacks(value);
+  }
+  return copy as T;
 }
 
 // Flatten any newlines in the title so it stays a single heading line.
