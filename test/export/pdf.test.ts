@@ -249,6 +249,40 @@ describe('toPdfDocDefinition', () => {
   });
 });
 
+describe('character fallbacks in the document definition', () => {
+  it('rewrites a glyph-less character in the title', () => {
+    const [first] = nodes(conversation({ title: '설정 -1.0℃' }));
+    expect(first).toMatchObject({ text: '설정 -1.0\u00b0C', style: 'title' });
+  });
+
+  it('rewrites it inside prose, including a bold run', () => {
+    const runs = proseRuns('보통 약 **-1.0℃**의 냉장 영역');
+    expect(runs.map((r) => r.text).join('')).toBe('보통 약 -1.0\u00b0C의 냉장 영역');
+  });
+
+  it('rewrites it inside a fenced code block', () => {
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: '```\nset -1.0℃\n```' }] }));
+    expect(all.find((n) => n.style === 'code')).toMatchObject({ text: 'set -1.0\u00b0C' });
+  });
+
+  it('rewrites it inside a table cell', () => {
+    const body = ['| 모드 | 온도 |', '| --- | --- |', '| 강 | -2.0℃ |'].join('\n');
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: body }] }));
+    expect(JSON.stringify(all)).toContain('-2.0\u00b0C');
+    expect(JSON.stringify(all)).not.toContain('℃');
+  });
+
+  it('does not let a substitution introduce Markdown emphasis', () => {
+    // ※ has no decomposition and stands in as `*`. Substituting on the source text
+    // would make `※foo※` read as emphasis; substituting on the built nodes cannot.
+    // A run with no emphasis stays a single plain string — an emphasised `참고`
+    // would have split it into styled runs instead.
+    const all = nodes(conversation({ messages: [{ role: 'assistant', content: '※참고※ 사항' }] }));
+    const prose = all.find((n) => n.style !== 'title' && n.style !== 'role');
+    expect(prose).toMatchObject({ text: '*참고* 사항' });
+  });
+});
+
 describe('pdfFilename', () => {
   const date = new Date(2026, 0, 5); // 2026-01-05 (local); month is 0-based
 
