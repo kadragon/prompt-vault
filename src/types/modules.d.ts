@@ -30,7 +30,6 @@ declare module 'pdfmake/build/pdfmake' {
 // its test (scripts/pdf-charmap-rule.mjs). It lives outside `src` — a build-time rule,
 // not shipped code — so it is declared here rather than typechecked in place.
 declare module '*/pdf-charmap-rule.mjs' {
-  export const FALLBACK_SCAN_RANGES: ReadonlyArray<readonly [number, number]>;
   export function deriveNfkcFallbacks(
     hasGlyph: (codePoint: number) => boolean,
   ): Record<string, string>;

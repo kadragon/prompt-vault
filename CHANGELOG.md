@@ -10,8 +10,8 @@
   `src/export/pdf-charmap.ts` now rewrites each such character to a spelling the font does carry.
   The table is derived from the font files themselves — for every code point from U+0020 through
   the Supplementary Multilingual Plane that BOTH faces lack, its NFKC form, kept only when both
-  faces cover every character of it, with NFKC's typographic slashes folded to ASCII so `m/s`
-  stays searchable — plus twelve curated entries (`※`, `★`, `☑`, ...) for characters Unicode gives no
+  faces cover every character of it, with the typographic characters NFKC reaches for folded to
+  ASCII so `m/s` and `ABC-123` stay searchable — plus twelve curated entries (`※`, `★`, `☑`, ...) for characters Unicode gives no
   decomposition for. Substitution runs on the built pdfmake nodes, never on the Markdown source,
   so a stand-in containing `*` cannot be re-read as emphasis. The test re-runs the same derivation
   against the shipped faces, so swapping a font surfaces as a failure rather than as new tofu

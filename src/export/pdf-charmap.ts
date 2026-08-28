@@ -73,5 +73,9 @@ const FALLBACK_PATTERN = new RegExp(
  * A string containing none of them is returned unchanged.
  */
 export function substituteUnsupportedChars(text: string): string {
-  return text.replace(FALLBACK_PATTERN, (char) => PDF_CHAR_FALLBACKS[char]);
+  // `?? char` is a belt-and-braces degrade: if the pattern and the table ever
+  // disagreed, the miss would otherwise write the literal string "undefined" into the
+  // PDF. Leaving the character alone puts back a tofu box, which is the bug this
+  // module fixes rather than a new, worse one.
+  return text.replace(FALLBACK_PATTERN, (char) => PDF_CHAR_FALLBACKS[char] ?? char);
 }

@@ -55,14 +55,51 @@ describe('the PDF fallback table', () => {
     expect(multiCodePoint).toEqual([]);
   });
 
-  it('spells every replacement with ASCII characters a reader can search for', () => {
-    // NFKC reaches for typographic slashes (`㎧` → `m∕s`, `⅜` → `3⁄8`). They render,
-    // but text copied out of the PDF then fails a Ctrl-F for `m/s` and breaks when
-    // pasted into code — which defeats the point of substituting at all.
-    const typographic = Object.entries(PDF_CHAR_FALLBACKS)
-      .filter(([, replacement]) => /[\u2215\u2044]/.test(replacement))
+  it('never spells a replacement with a character that has an ASCII equivalent', () => {
+    // NFKC reaches for typographic punctuation (`㎧` → `m∕s`, `‑` → `‐`, `⁻` → `−`).
+    // It renders, but text copied out of the PDF then fails a Ctrl-F for `m/s` or
+    // `ABC-123` and breaks when pasted into code — which defeats the point of
+    // substituting at all. The rule folds these; this pins that it did.
+    const unfolded = Object.entries(PDF_CHAR_FALLBACKS)
+      .filter(([, to]) => /[\u2215\u2044\u2010\u2011\u2012\u2212\u2032\u2033]/.test(to))
       .map(([from, to]) => `${from} -> ${to}`);
-    expect(typographic).toEqual([]);
+    expect(unfolded).toEqual([]);
+  });
+
+  it('pins the non-ASCII characters replacements are still allowed to contain', () => {
+    // The characters above are folded because ASCII says the same thing. These are the
+    // ones left standing because it does not: letters and brackets from other scripts,
+    // and symbols with no ASCII spelling. Pinning the exact set means a font swap that
+    // introduces a new one fails here and forces that judgement to be made again,
+    // rather than quietly shipping another `m∕s`.
+    const survivors = [
+      ...new Set(
+        Object.values(PDF_CHAR_FALLBACKS)
+          .flatMap((to) => [...to])
+          .filter((char) => (char.codePointAt(0) as number) > 0x7e),
+      ),
+    ].sort();
+    const categorised = {
+      // Greek and Cyrillic letters, from the squared units and enclosed letter forms.
+      greekCyrillic: survivors.filter((c) => /[\u0370-\u03ff\u0400-\u04ff]/.test(c)),
+      // Hangul and CJK: syllables, choseong jamo, and the bracket punctuation the
+      // vertical/small compatibility forms decompose to.
+      cjk: survivors.filter((c) => /[\u1100-\u11ff\u3000-\u303f\uac00-\ud7af]/.test(c)),
+      // Latin letters other scripts' transliterations need (æ ø ħ ə œ ŋ ž), and `°`.
+      latin: survivors.filter((c) => /[\u00a5-\u02af]/.test(c)),
+      // Combining marks NFKC leaves on spacing diacritics, plus the box-drawing bar.
+      marks: survivors.filter((c) => /[\u0300-\u036f\u2502]/.test(c)),
+      // Symbols with no ASCII spelling: dashes that are punctuation rather than a
+      // stand-in for `-`, arrows, maths operators, geometric shapes, and the two
+      // curated check marks (`✔` → `✓`, `✘` → `✗`).
+      symbols: survivors.filter((c) =>
+        /[\u2013\u2014\u2190-\u2193\u2200-\u22ff\u25a0-\u25ff\u2713\u2717]/.test(c),
+      ),
+    };
+    const uncategorised = survivors.filter(
+      (c) => !Object.values(categorised).some((group) => group.includes(c)),
+    );
+    expect(uncategorised).toEqual([]);
   });
 
   it('never maps a character to itself', () => {
@@ -94,8 +131,11 @@ describe('substituteUnsupportedChars', () => {
     expect(substituteUnsupportedChars('5㎏ ㈜한글 Ⅲ ①')).toBe('5kg (주)한글 III 1');
   });
 
-  it('spells unit and fraction slashes as ASCII', () => {
-    expect(substituteUnsupportedChars('12㎧ ⅜')).toBe('12m/s 3/8');
+  it('spells slashes, hyphens and minus signs as ASCII', () => {
+    // `\u00b9` is left alone: the font draws it, so there is nothing to fix.
+    expect(substituteUnsupportedChars('12㎧ ⅜ ABC\u2011123 x\u207B\u00b9')).toBe(
+      '12m/s 3/8 ABC-123 x-\u00b9',
+    );
   });
 
   it('rewrites the pseudo-bold letters chat models emit as prose', () => {

@@ -272,6 +272,52 @@ describe('character fallbacks in the document definition', () => {
     expect(JSON.stringify(all)).not.toContain('℃');
   });
 
+  it('emits no visible text outside a `text` property for the walk to miss', () => {
+    // withCharFallbacks rewrites strings under a `text` key only — deliberately, since
+    // `table.widths` and `layout` are strings too and rewriting those would corrupt the
+    // document. pdfmake would also render a bare string in `content`/`text`/a table
+    // cell, which the walk would skip, so pin that the renderer never emits one: a
+    // future `content.push('…')` reintroduces tofu boxes silently otherwise.
+    const body = [
+      '# 제목',
+      '',
+      '본문 **강조** 와 `코드` 와 [링크](https://example.com)',
+      '',
+      '- 항목 하나',
+      '  1. 중첩 항목',
+      '',
+      '> 인용문',
+      '',
+      '| 모드 | 온도 |',
+      '| --- | --- |',
+      '| 강 | -2.0 |',
+      '',
+      '---',
+      '',
+      '```',
+      'code',
+      '```',
+    ].join('\n');
+    const bare: string[] = [];
+    const walk = (node: unknown, insideText: boolean): void => {
+      if (typeof node === 'string') {
+        if (insideText) bare.push(node);
+        return;
+      }
+      if (Array.isArray(node)) {
+        node.forEach((child) => walk(child, insideText));
+        return;
+      }
+      if (node === null || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === 'text' && typeof value === 'string') continue;
+        walk(value, key === 'text' || key === 'body' || key === 'ul' || key === 'ol');
+      }
+    };
+    walk(nodes(conversation({ messages: [{ role: 'assistant', content: body }] })), true);
+    expect(bare).toEqual([]);
+  });
+
   it('does not let a substitution introduce Markdown emphasis', () => {
     // ※ has no decomposition and stands in as `*`. Substituting on the source text
     // would make `※foo※` read as emphasis; substituting on the built nodes cannot.
