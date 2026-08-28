@@ -55,6 +55,16 @@ describe('the PDF fallback table', () => {
     expect(multiCodePoint).toEqual([]);
   });
 
+  it('spells every replacement with ASCII characters a reader can search for', () => {
+    // NFKC reaches for typographic slashes (`㎧` → `m∕s`, `⅜` → `3⁄8`). They render,
+    // but text copied out of the PDF then fails a Ctrl-F for `m/s` and breaks when
+    // pasted into code — which defeats the point of substituting at all.
+    const typographic = Object.entries(PDF_CHAR_FALLBACKS)
+      .filter(([, replacement]) => /[\u2215\u2044]/.test(replacement))
+      .map(([from, to]) => `${from} -> ${to}`);
+    expect(typographic).toEqual([]);
+  });
+
   it('never maps a character to itself', () => {
     const identity = Object.entries(PDF_CHAR_FALLBACKS).filter(([from, to]) => from === to);
     expect(identity).toEqual([]);
@@ -82,6 +92,10 @@ describe('substituteUnsupportedChars', () => {
 
   it('rewrites squared units, enclosed forms and roman numerals', () => {
     expect(substituteUnsupportedChars('5㎏ ㈜한글 Ⅲ ①')).toBe('5kg (주)한글 III 1');
+  });
+
+  it('spells unit and fraction slashes as ASCII', () => {
+    expect(substituteUnsupportedChars('12㎧ ⅜')).toBe('12m/s 3/8');
   });
 
   it('rewrites the pseudo-bold letters chat models emit as prose', () => {

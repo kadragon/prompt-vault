@@ -5,11 +5,11 @@
 // re-runs this rule against the new font files and fails on any drift.
 //
 // The rule: for every code point in the scanned ranges that BOTH embedded faces lack
-// a glyph for, take its Unicode NFKC form; keep the substitution only when that form
-// differs from the original AND every one of its code points is covered by both
-// faces. Anything else is left alone — a partial substitution would trade one tofu
-// box for another, and rewriting a character the font can already draw would be a
-// regression, not a fix.
+// a glyph for, take its Unicode NFKC form, fold its typographic slashes to ASCII, and
+// keep the substitution only when the result differs from the original AND every one
+// of its code points is covered by both faces. Anything else is left alone — a partial
+// substitution would trade one tofu box for another, and rewriting a character the
+// font can already draw would be a regression, not a fix.
 
 /**
  * Code point ranges scanned for missing-but-substitutable characters. The scan is
@@ -30,6 +30,13 @@ export const FALLBACK_SCAN_RANGES = [
   [0x10000, 0x1ffff],
 ];
 
+// NFKC spells several compatibility characters with a typographic slash — `㎧` becomes
+// `m∕s` (U+2215 DIVISION SLASH) and `⅜` becomes `3⁄8` (U+2044 FRACTION SLASH). Both
+// render, but the point of substituting at all is text the reader can search, copy and
+// paste: `m∕s` does not match a Ctrl-F for `m/s`, and pasting it into code or a shell
+// fails. Fold them to ASCII before the coverage check.
+const TYPOGRAPHIC_SLASHES = /[\u2215\u2044]/g;
+
 /**
  * Derive the NFKC-based fallback table.
  *
@@ -47,7 +54,7 @@ export function deriveNfkcFallbacks(hasGlyph) {
     for (let cp = start; cp <= end; cp++) {
       if (hasGlyph(cp)) continue;
       const char = String.fromCodePoint(cp);
-      const replacement = char.normalize('NFKC');
+      const replacement = char.normalize('NFKC').replace(TYPOGRAPHIC_SLASHES, '/');
       if (replacement === char) continue;
       if (![...replacement].every((c) => hasGlyph(c.codePointAt(0)))) continue;
       table[char] = replacement;
