@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- [done] PDF export: two Markdown constructs the renderer still got wrong (v1.13.1) (2026-08-28).
+  Found by the PR #77 review panel after the merge. A literal underscore-only line (`___`) was
+  classified as a horizontal rule and its text was replaced by a drawn line — `escapeMarkdownText`
+  leaves a non-flanking `_` unescaped, so page text reached the renderer looking like a rule; the
+  pattern now matches only the `---` form `serializeBlockElement` actually emits. And two adjacent
+  inline elements serialize to one merged delimiter run (`<strong>a</strong><em>b</em>` →
+  `**a***b*`), which the exact-width closer scan could not end, leaking the markers and losing the
+  bold; the scan now falls back to a longer run and consumes only its own width, after the
+  exact-width pass that keeps `*a **b** c*` nesting correctly.
+
 - [done] PDF export renders Markdown as formatting instead of showing its markers (v1.13.0)
   (2026-08-28). The exporter parsed only code fences and inline code, so everything else the
   adapters' serializer emits reached the page as literal source — `**bold**`, `[label](url)`,

@@ -174,6 +174,14 @@ describe('inline formatting', () => {
     expect(runs(markdown)).toEqual([{ text: 'x', bold: true, italics: true }]);
   });
 
+  // Two adjacent inline elements with no text between them serialize to one merged
+  // delimiter run: the `**` closing the strong and the `*` opening the em collide.
+  it('splits the merged delimiter run of two adjacent emphasis elements', () => {
+    const markdown = md('<p><strong>a</strong><em>b</em></p>');
+    expect(markdown).toBe('**a***b*');
+    expect(runs(markdown)).toEqual([{ text: 'a', bold: true }, { text: 'b', italics: true }]);
+  });
+
   it('leaves the emphasis characters the serializer escaped as literal text', () => {
     const markdown = md('<p>2 * 3 and snake_case and *stars*</p>');
     expect(markdown).toContain('\\*');
@@ -305,6 +313,14 @@ describe('block formatting', () => {
     const [table] = render(markdown);
     const body = (table.table as Node).body as Node[][];
     expect(body[1]).toEqual([{ text: 'x | y' }]);
+  });
+
+  // `escapeMarkdownText` leaves a non-flanking `_` alone, so an underscore-only line
+  // arrives here unescaped. Treating it as a rule replaced the text with a line.
+  it('keeps a literal underscore-only line as text, not a rule', () => {
+    const markdown = md('<p>___</p>');
+    expect(markdown).toBe('___');
+    expect(render(markdown)).toEqual([{ text: '___', margin: [0, 2, 0, 2] }]);
   });
 
   it('renders a horizontal rule as a drawn line, not three dashes', () => {

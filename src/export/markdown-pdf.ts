@@ -42,7 +42,11 @@ export function renderMarkdown(body: string): Content[] {
 // ---------------------------------------------------------------- block layer
 
 const HEADING = /^ {0,3}(#{1,6})[ \t]+(.*)$/;
-const HR = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*$/;
+// Only the `---` form: that is the one `serializeBlockElement` emits for an `<hr>`.
+// Accepting `***`/`___` cost more than it bought — `escapeMarkdownText` leaves a
+// leading `_` unescaped when it is non-flanking, so a literal `___` line in page text
+// was silently replaced by a rule and its text was lost.
+const HR = /^ {0,3}-{3,}[ \t]*$/;
 const QUOTE = /^ {0,3}>[ \t]?/;
 const FENCE_OPEN = /^[ \t]*(`{3,})/;
 // A list item marker. The trailing whitespace is OPTIONAL because the serializer
@@ -508,24 +512,33 @@ function matchEmphasis(text: string, at: number): Emphasis | null {
   const bodyStart = at + width;
   if (bodyStart >= text.length || /\s/.test(text[bodyStart])) return null;
 
-  let i = bodyStart;
-  while (i < text.length) {
-    if (text[i] === '\\') {
-      i += 2;
-      continue;
+  // Two passes. An EXACT-width closer wins, so `*a **b** c*` (an `<em>` wrapping a
+  // `<strong>`) walks over the inner `**` instead of ending on it. Only if no exact
+  // closer exists does a longer run close the span, consuming just `width` of its
+  // asterisks — the case of two adjacent elements the serializer merges into one run,
+  // `<strong>a</strong><em>b</em>` → `**a***b*`, where the leftover `*` opens the em.
+  const close = (exact: boolean): Emphasis | null => {
+    let i = bodyStart;
+    while (i < text.length) {
+      if (text[i] === '\\') {
+        i += 2;
+        continue;
+      }
+      if (text[i] !== '*') {
+        i++;
+        continue;
+      }
+      let closing = 0;
+      while (text[i + closing] === '*') closing++;
+      const fits = exact ? closing === width : closing > width;
+      if (fits && !/\s/.test(text[i - 1])) {
+        return { body: text.slice(bodyStart, i), end: i + width, marks: EMPHASIS_MARKS[width] };
+      }
+      i += closing;
     }
-    if (text[i] !== '*') {
-      i++;
-      continue;
-    }
-    let closing = 0;
-    while (text[i + closing] === '*') closing++;
-    if (closing === width && !/\s/.test(text[i - 1])) {
-      return { body: text.slice(bodyStart, i), end: i + width, marks: EMPHASIS_MARKS[width] };
-    }
-    i += closing;
-  }
-  return null;
+    return null;
+  };
+  return close(true) ?? close(false);
 }
 
 // Opening-run width → the styling it carries. Three is `***both***`, the shape a

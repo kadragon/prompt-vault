@@ -151,6 +151,27 @@ The larger hazard that measurement exposed is filed above.)*
       Principle #4 rules out. Found by the PR #77 review panel (contract QA).
 
 
+- [ ] *(out of scope for PR #77 — the fix is a model-contract change across adapters)*
+      [FIX] Plain-text message bodies are interpreted as Markdown by the PDF renderer. The
+      `Conversation` model documents `Message.content` as Markdown, but the ChatGPT adapter's
+      fallback paths put raw page text into it (`src/adapters/chatgpt/index.ts:582,586,593` use
+      `el.textContent`, including the user-turn path). Since PR #77 the PDF exporter parses that
+      text as Markdown, so a user turn typed as `**literal**` renders bold with the asterisks gone,
+      and `- item` becomes a real bullet list. The Markdown export has the same latent corruption —
+      the unescaped text is not valid Markdown source. Fix at the source: escape a plain-text
+      fallback with `escapeMarkdownText` (or carry a rich/plain flag on `Message`) so every
+      exporter can trust the contract. Found by the PR #77 review panel (Codex).
+
+- [ ] *(out of scope for PR #77 — the escape belongs in the serializer, not the renderer)*
+      [FIX] A `|` inside inline code inside a table cell splits the row. `serializeTableCell` →
+      `inlineCode()` emits the code body verbatim (code is deliberately never escaped), so
+      `<code>a|b</code>` in a `<td>` yields ``| `a|b` |``; the PDF renderer's `splitCells` skips
+      only backslash-escaped pipes and gains a column, tearing the code span. GFM requires the pipe
+      to be escaped even inside code when it is inside a table, so the Markdown export is wrong
+      here too. Fix in `serializeTableCell` (escape `|` after inline serialization), not in the PDF
+      splitter. Found by the PR #77 review panel (Codex).
+
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*
