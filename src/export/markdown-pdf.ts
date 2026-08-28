@@ -29,6 +29,13 @@ interface Marks {
   bold?: true;
   italics?: true;
   link?: string;
+  /**
+   * This text is one table cell. Not styling — it rides on `Marks` because that is
+   * what already propagates into every nested inline render (a link label, an
+   * emphasis body), which is exactly where a code span inside a cell can appear. Read
+   * only by the code-span branch; `run()` ignores it.
+   */
+  cell?: true;
 }
 
 /**
@@ -111,7 +118,18 @@ function renderBlocks(lines: string[]): Content[] {
       while (end < lines.length && TABLE_ROW.test(lines[end])) end++;
       const rows = [lines[i], ...lines.slice(i + 2, end)].map(splitCells);
       const table = tableNode(rows);
-      if (table) nodes.push(table);
+      if (table) {
+        nodes.push(table);
+        i = end;
+        continue;
+      }
+      // No row split into a single cell — the shape a row that is nothing but `|`
+      // produces — so there is no grid to draw. Dropping the block is the silent empty
+      // output Golden Principle #4 rules out, so fall through to prose. The delimiter
+      // row is layout, not content, and is left out the same way `rows` leaves it out.
+      const source = [lines[i], ...lines.slice(i + 2, end)].join('\n').trim();
+      const fallback = renderInline(source, {});
+      if (!isEmptyInline(fallback)) nodes.push({ text: fallback, margin: [0, 2, 0, 2] });
       i = end;
       continue;
     }
@@ -289,13 +307,46 @@ function splitCells(line: string): string[] {
   return cells.map((c) => c.trim());
 }
 
+/**
+ * Undo the delimiter escaping `escapeCellPipes` (src/core/html-to-markdown.ts) applied
+ * to a code body inside a table cell — its exact inverse, and the two must move
+ * together. A run of `2n` backslashes followed by `\|` was `n` backslashes and a
+ * literal pipe on the page; every other backslash is content and is left alone,
+ * because a code body is literal text and nothing else in it was ever escaped.
+ *
+ * Prose in a cell is NOT put through this: it carries escapeMarkdownText's own
+ * convention and is undone by `unescapeMarkdown` on the prose runs, as it always was.
+ */
+function unescapeCellCode(body: string): string {
+  let out = '';
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] === '\\') {
+      let end = i;
+      while (end < body.length && body[end] === '\\') end++;
+      const run = end - i;
+      if (body[end] === '|' && run % 2 === 1) {
+        out += '\\'.repeat((run - 1) / 2) + '|';
+        i = end + 1;
+      } else {
+        out += '\\'.repeat(run);
+        i = end;
+      }
+      continue;
+    }
+    out += body[i];
+    i++;
+  }
+  return out;
+}
+
 function tableNode(rows: string[][]): Content | null {
   const cols = Math.max(...rows.map((r) => r.length));
   if (!Number.isFinite(cols) || cols === 0) return null;
   const body: TableCell[][] = rows.map((cells, rowIndex) => {
     const row: TableCell[] = [];
     for (let c = 0; c < cols; c++) {
-      const text = renderInline(cells[c] ?? '', {});
+      const text = renderInline(cells[c] ?? '', { cell: true });
       row.push(rowIndex === 0 ? { text, style: 'tableHeader' } : { text });
     }
     return row;
@@ -402,7 +453,8 @@ function renderRuns(text: string, marks: Marks): InlineResult {
     if (ch === '`') {
       INLINE_CODE_AT.lastIndex = i;
       const code = INLINE_CODE_AT.exec(text);
-      const body = code ? stripCodePadding(code[2]) : '';
+      const raw = code ? stripCodePadding(code[2]) : '';
+      const body = marks.cell ? unescapeCellCode(raw) : raw;
       if (code && body.length > 0) {
         flush();
         runs.push(run(body, marks, 'inlineCode'));
@@ -608,9 +660,10 @@ function matchLink(text: string, at: number): Link | null {
   const close = matchBracket(text, at, '[', ']');
   if (close === -1 || text[close + 1] !== '(') return null;
   const label = text.slice(at + 1, close);
-  const hrefEnd = matchBracket(text, close + 1, '(', ')');
+  const angle = matchAngleDestination(text, close + 2);
+  const hrefEnd = angle ? angle.end : matchBracket(text, close + 1, '(', ')');
   if (hrefEnd === -1) return null;
-  const href = text.slice(close + 2, hrefEnd).trim();
+  const href = angle ? angle.href : text.slice(close + 2, hrefEnd).trim();
   if (href.length === 0) return null;
   // A label that renders to nothing — an image-only citation label, an empty pair —
   // would leave an invisible link, so the href itself becomes the visible text.
@@ -622,6 +675,19 @@ function matchLink(text: string, at: number): Link | null {
   // The href is displayed text now, not Markdown: re-parsing it would italicize a
   // URL that happens to contain `*` and drop the characters from what is shown.
   return { text: href, href, end: hrefEnd + 1, literal: true };
+}
+
+// The CommonMark angle-bracket destination `[label](<url>)`, which the serializer
+// emits for a URL holding whitespace or unbalanced parens — the shapes the bare
+// paren-depth scan would truncate. Returns null unless `at` opens a wrapper that is
+// closed and immediately followed by the link's `)`, so a literal `<` in an ordinary
+// destination still falls through to the bare scan. `end` is the index of that `)`,
+// matching what `matchBracket` returns.
+function matchAngleDestination(text: string, at: number): { href: string; end: number } | null {
+  if (text[at] !== '<') return null;
+  const close = text.indexOf('>', at + 1);
+  if (close === -1 || text[close + 1] !== ')') return null;
+  return { href: text.slice(at + 1, close).trim(), end: close + 1 };
 }
 
 interface Image {

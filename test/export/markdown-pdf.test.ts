@@ -462,3 +462,92 @@ describe('the reported ChatGPT export', () => {
     expect(renderMarkdown(body)).toEqual(renderMarkdown(body));
   });
 });
+
+// The renderer half of the PR #77/#78 fidelity fixes. Driven through the real
+// serializer wherever it can emit the shape, per the note at the top of this file.
+describe('serializer/renderer fidelity', () => {
+  it('pairs an inline code span whose source held a newline', () => {
+    const markdown = md('<p>x <code>a\nb</code> y</p>');
+    expect(markdown).toBe('x `a b` y');
+    expect(runs(markdown)).toEqual([
+      { text: 'x ' },
+      { text: 'a b', style: 'inlineCode' },
+      { text: ' y' },
+    ]);
+  });
+
+  it('keeps two touching code spans as one code run instead of splitting them', () => {
+    const markdown = md('<p><code>k</code><code>k</code></p>');
+    expect(runs(markdown)).toEqual([{ text: 'kk', style: 'inlineCode' }]);
+  });
+
+  it('keeps a pipe inside inline code inside a table cell in its own column', () => {
+    const markdown = md('<table><tr><th>h</th></tr><tr><td><code>a|b</code></td></tr></table>');
+    const [table] = render(markdown);
+    const body = (table.table as Node).body as Node[][];
+    // One column, not two: the escaped pipe is content, and the backslash the escape
+    // added is table syntax that must not reach the page.
+    expect(body[1]).toHaveLength(1);
+    expect(allText(table)).toBe('ha|b');
+  });
+
+  it('follows a link destination that holds an unbalanced paren to its full length', () => {
+    const markdown = md('<p><a href="https://e.com/a)b">t</a></p>');
+    expect(markdown).toBe('[t](<https://e.com/a)b>)');
+    expect(runs(markdown)).toEqual([{ text: 't', link: 'https://e.com/a)b', style: 'link' }]);
+  });
+
+  it('shows a table whose every cell is empty instead of dropping it', () => {
+    // `tableNode` cannot build a grid with zero columns, but a silently vanished
+    // block is the empty output Golden Principle #4 rules out — so the rows fall
+    // through to prose and the reader still sees them. Hand-written: the serializer
+    // does not emit this shape.
+    const nodes = render('|\n| --- |');
+    expect(nodes).toHaveLength(1);
+    expect(allText(nodes)).toContain('|');
+  });
+});
+
+// Regressions the PR #82 review panel found in the first pass of these fixes.
+describe('serializer/renderer fidelity — review-panel regressions', () => {
+  it('keeps a backslash that precedes a pipe inside table-cell code', () => {
+    // The first pass escaped over the finished cell string, which cannot tell a
+    // backslash escapeMarkdownText added from one the page showed — the renderer then
+    // stripped the page's own backslash. Escape and undo now mirror each other.
+    const markdown = md('<table><tr><th>h</th></tr><tr><td><code>a\\|b</code></td></tr></table>');
+    const [table] = render(markdown);
+    const body = (table.table as Node).body as Node[][];
+    expect(body[1]).toHaveLength(1);
+    expect(allText(table)).toBe('ha\\|b');
+  });
+
+  it('keeps a backslash that precedes no pipe inside table-cell code', () => {
+    const markdown = md('<table><tr><th>h</th></tr><tr><td><code>C:\\path</code></td></tr></table>');
+    expect(allText(render(markdown))).toBe('hC:\\path');
+  });
+
+  it('keeps two backslashes before a pipe inside table-cell code', () => {
+    const markdown = md('<table><tr><th>h</th></tr><tr><td><code>a\\\\|b</code></td></tr></table>');
+    const [table] = render(markdown);
+    expect((((table.table as Node).body as Node[][])[1])).toHaveLength(1);
+    expect(allText(table)).toBe('ha\\\\|b');
+  });
+
+  it('leaves a code span outside a table unescaped', () => {
+    const markdown = md('<p><code>a\\|b</code></p>');
+    expect(runs(markdown)).toEqual([{ text: 'a\\|b', style: 'inlineCode' }]);
+  });
+
+  it('does not print the delimiter row when an unbuildable table falls back to prose', () => {
+    // `| --- |` is layout, not content — the fallback must leave it out the way the
+    // table path does.
+    const nodes = render('|\n| --- |');
+    expect(nodes).toHaveLength(1);
+    expect(allText(nodes)).toBe('|');
+  });
+
+  it('merges code spans a provider wrapped in spans', () => {
+    const markdown = md('<p><span><code>k</code></span><span><code>k</code></span></p>');
+    expect(runs(markdown)).toEqual([{ text: 'kk', style: 'inlineCode' }]);
+  });
+});

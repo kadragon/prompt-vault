@@ -2,6 +2,7 @@ import type { Conversation, Message } from '../../core/conversation';
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import { htmlToMarkdown } from '../../core/html-to-markdown';
+import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import {
   advanceScrollPort,
   delay,
@@ -1048,11 +1049,14 @@ function readUserContent(query: Element): string {
       .map((line) => (line.textContent ?? '').trim())
       .join('\n')
       .trim();
-    if (text) return joinUserContent(attachments, text);
+    // The prompt is literal text the user typed, and `Message.content` is Markdown by
+    // contract — escape at the source so a typed `**literal**` or `- item` exports as
+    // the characters on the page rather than as formatting.
+    if (text) return joinUserContent(attachments, escapeMarkdownBlock(text));
   }
 
   const fallback = textWithoutScreenReaderLabel(scope);
-  if (fallback) return joinUserContent(attachments, fallback);
+  if (fallback) return joinUserContent(attachments, escapeMarkdownBlock(fallback));
 
   if (attachments) return attachments;
 

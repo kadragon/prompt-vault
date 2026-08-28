@@ -276,3 +276,136 @@ describe('blockToMarkdown', () => {
     expect(block('<p>plain <strong>text</strong></p>')).toBe('plain **text**');
   });
 });
+
+// Four fidelity defects the PR #77/#78 review panels found: source the serializer
+// emitted that no longer means what the page showed. Each is fixed here, at the
+// serializer, because the Markdown export carries the same corruption the PDF
+// renderer does.
+describe('serialization fidelity', () => {
+  it('collapses a newline inside inline code so the span stays on one line', () => {
+    // A code span is single-line in Markdown: left as-is, the closing fence lands on
+    // another line where nothing pairs it and the backticks print as literal text.
+    expect(md('<p>x <code>a\nb</code> y</p>')).toBe('x `a b` y');
+  });
+
+  it('merges two touching code spans into one', () => {
+    // `` `k` `` + `` `k` `` reads back as a single span holding ``k``, and no fence
+    // length repairs it — CommonMark pairs runs of equal length.
+    expect(md('<p><code>k</code><code>k</code></p>')).toBe('`kk`');
+  });
+
+  it('merges a run of three touching code spans', () => {
+    expect(md('<p><code>a</code><code>b</code><code>c</code></p>')).toBe('`abc`');
+  });
+
+  it('keeps code spans separate when visible text sits between them', () => {
+    expect(md('<p><code>k</code> <code>k</code></p>')).toBe('`k` `k`');
+  });
+
+  it('escapes a pipe inside inline code inside a table cell', () => {
+    // The code body is deliberately never escaped, so without a cell-level pass this
+    // bare `|` splits the row and tears the code span in two.
+    expect(md('<table><tr><td><code>a|b</code></td><td>c</td></tr></table>')).toBe(
+      '| `a\\|b` | c |\n| --- | --- |',
+    );
+  });
+
+  it('does not double-escape a pipe a text node already escaped', () => {
+    expect(md('<table><tr><td>x | y</td></tr></table>')).toBe('| x \\| y |\n| --- |');
+  });
+
+  it('wraps a link destination holding an unbalanced paren in angle brackets', () => {
+    // Bare, the destination is read up to the first unbalanced `)` and the URL is
+    // silently truncated.
+    expect(md('<p><a href="https://e.com/a)b">t</a></p>')).toBe('[t](<https://e.com/a)b>)');
+  });
+
+  it('percent-encodes whitespace in a link destination rather than wrapping it', () => {
+    // The angle form does not rescue whitespace: CommonMark forbids a newline inside
+    // it, and the PDF renderer re-splits the document on newlines, so a wrapped
+    // destination would break the link across two lines.
+    expect(md('<p><a href="https://e.com/a b">t</a></p>')).toBe('[t](https://e.com/a%20b)');
+    expect(md('<p><a href="https://e.com/a\nb">t</a></p>')).toBe('[t](https://e.com/a%20b)');
+  });
+
+  it('percent-encodes whitespace and still wraps an unbalanced paren', () => {
+    expect(md('<p><a href="https://e.com/a b)c">t</a></p>')).toBe('[t](<https://e.com/a%20b)c>)');
+  });
+
+  it('drops a whitespace-only destination instead of linking to it', () => {
+    expect(md('<p><a href="   ">t</a></p>')).toBe('t');
+  });
+
+  it('leaves a destination with balanced parens bare', () => {
+    expect(md('<p><a href="https://e.com/a(b)c">t</a></p>')).toBe('[t](https://e.com/a(b)c)');
+  });
+
+  it('leaves a destination containing an angle bracket bare rather than corrupting it', () => {
+    // `>` would close the wrapper early; the URL has no valid spelling either way.
+    expect(md('<p><a href="https://e.com/a>b c">t</a></p>')).toBe('[t](https://e.com/a>b%20c)');
+  });
+});
+
+// Regressions the PR #82 review panel found in the first pass of these fixes.
+describe('serialization fidelity — review-panel regressions', () => {
+  it('merges code spans separated only by an element that renders nothing', () => {
+    // A provider wraps inline code in a span far more often than it emits bare
+    // sibling `<code>`s, so a merge that only saw direct siblings still produced the
+    // unreadable `` `k``k` `` on the markup these pages actually ship.
+    expect(md('<p><code>k</code><span></span><code>k</code></p>')).toBe('`kk`');
+    expect(md('<p><code>k</code><span><code>k</code></span></p>')).toBe('`kk`');
+    expect(md('<p><span><code>k</code></span><span><code>k</code></span></p>')).toBe('`kk`');
+    expect(md('<p><code>k</code><em></em><code>k</code></p>')).toBe('`kk`');
+  });
+
+  it('merges code spans a wrapper only partly holds', () => {
+    // The wrapper shows the reader nothing of its own, so what the page displays is
+    // one continuous run of code followed by text — an all-or-nothing \u201cis this
+    // element only code?\u201d test still emitted the unreadable form here.
+    expect(md('<p><code>k</code><span><code>k</code> x</span></p>')).toBe('`kk` x');
+    expect(md('<p><span>lead <code>a</code></span><code>b</code></p>')).toBe('lead `ab`');
+    expect(md('<p><code>a</code><span><code>b</code><code>c</code> tail</span></p>')).toBe(
+      '`abc` tail',
+    );
+  });
+
+  it('merges through a wrapper tag no allowlist would have named', () => {
+    // Wrappers are open-ended \u2014 a provider can ship any inline tag \u2014 so the rule is
+    // stated as the tags that render markup of their own, not as a list of wrappers.
+    expect(md('<p><code>k</code><mark><code>k</code></mark></p>')).toBe('`kk`');
+    expect(md('<p><code>k</code><sup><code>k</code></sup></p>')).toBe('`kk`');
+  });
+
+  it('still separates code spans an element with real content sits between', () => {
+    expect(md('<p><code>a</code><em>x</em><code>b</code></p>')).toBe('`a`*x*`b`');
+    expect(md('<p><code>a</code><span>x</span><code>b</code></p>')).toBe('`a`x`b`');
+    // Real formatting between them IS a separator: the emphasis is content.
+    expect(md('<p><code>a</code><em><code>b</code></em></p>')).toBe('`a`*`b`*');
+  });
+
+  it('keeps a code body\u2019s spaces and tabs, collapsing only its line breaks', () => {
+    // A code body is literal text: collapsing its space runs would silently reformat
+    // the code the reader saw.
+    expect(md('<p><code>a  b</code></p>')).toBe('`a  b`');
+    expect(md('<p><code>a\tb</code></p>')).toBe('`a\tb`');
+    expect(md('<p><code>a\nb</code></p>')).toBe('`a b`');
+  });
+
+  it('keeps a backslash that precedes a pipe inside table-cell code', () => {
+    // The reader consumes backslashes in pairs, so the run in front of the pipe is
+    // doubled and the escape lands on the pipe itself.
+    expect(md('<table><tr><td><code>a\\|b</code></td></tr></table>')).toBe(
+      '| `a\\\\\\|b` |\n| --- |',
+    );
+  });
+
+  it('leaves a backslash that precedes no pipe in table-cell code alone', () => {
+    expect(md('<table><tr><td><code>C:\\path</code></td></tr></table>')).toBe(
+      '| `C:\\path` |\n| --- |',
+    );
+  });
+
+  it('does not escape pipes in code outside a table', () => {
+    expect(md('<p><code>a|b</code></p>')).toBe('`a|b`');
+  });
+});

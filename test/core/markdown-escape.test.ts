@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeMarkdownText } from '../../src/core/markdown-escape';
+import { escapeMarkdownBlock, escapeMarkdownText } from '../../src/core/markdown-escape';
 
 describe('escapeMarkdownText', () => {
   describe('backslash', () => {
@@ -102,5 +102,60 @@ describe('escapeMarkdownText', () => {
     it('leaves a decimal alone', () => {
       expect(escapeMarkdownText('1.23 is a float', true)).toBe('1.23 is a float');
     });
+  });
+});
+
+// Plain page text an adapter read with `textContent`. `Message.content` is Markdown by
+// contract, so this text has to survive as the literal characters the reader saw.
+describe('escapeMarkdownBlock', () => {
+  it('escapes emphasis a user typed literally', () => {
+    expect(escapeMarkdownBlock('**literal**')).toBe('\\*\\*literal\\*\\*');
+  });
+
+  it('escapes a block marker on every line, not just the first', () => {
+    // The single-call form treats only the first line as a line start, which is right
+    // for inline serialization and wrong for a multi-line pre-wrap block.
+    expect(escapeMarkdownBlock('- one\n- two')).toBe('\\- one\n\\- two');
+  });
+
+  it('escapes a heading marker and an ordered-list marker per line', () => {
+    expect(escapeMarkdownBlock('# note\n1. first')).toBe('\\# note\n1\\. first');
+  });
+
+  it('preserves blank lines so paragraph breaks survive', () => {
+    expect(escapeMarkdownBlock('one\n\ntwo')).toBe('one\n\ntwo');
+  });
+
+  it('leaves text with nothing significant unchanged', () => {
+    expect(escapeMarkdownBlock('just words\nand more')).toBe('just words\nand more');
+  });
+});
+
+// Block constructs only a whole line can form, so escapeMarkdownText does not cover
+// them — they became reachable when literal page text started routing through
+// escapeMarkdownBlock. Found by the PR #82 review panel.
+describe('escapeMarkdownBlock — whole-line constructs', () => {
+  it('escapes a setext underline so a typed line does not become a heading', () => {
+    expect(escapeMarkdownBlock('Title\n===')).toBe('Title\n\\===');
+    // The `-` form is already covered by the bullet-marker escape.
+    expect(escapeMarkdownBlock('Title\n---')).toBe('Title\n\\---');
+  });
+
+  it('leaves an equals sign that is not a whole-line run alone', () => {
+    expect(escapeMarkdownBlock('a = b')).toBe('a = b');
+    expect(escapeMarkdownBlock('=== not alone')).toBe('=== not alone');
+  });
+
+  it('keeps a four-space indent from opening a code block', () => {
+    expect(escapeMarkdownBlock('    indented')).toBe('\u00a0   indented');
+    expect(escapeMarkdownBlock('   three spaces')).toBe('   three spaces');
+  });
+
+  it('keeps a leading tab from opening a code block', () => {
+    // A tab advances to the next multiple of four columns, so these all reach the
+    // same indent four spaces do.
+    expect(escapeMarkdownBlock('\tindented')).toBe('\u00a0   indented');
+    expect(escapeMarkdownBlock(' \tindented')).toBe('\u00a0   indented');
+    expect(escapeMarkdownBlock('   \tindented')).toBe('\u00a0   indented');
   });
 });

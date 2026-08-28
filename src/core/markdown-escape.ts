@@ -57,6 +57,49 @@ export function escapeMarkdownText(
   return out;
 }
 
+/**
+ * Escape a block of *plain page text* — text an adapter read straight off the page
+ * with `textContent`, never markup it serialized — so it survives export as the
+ * literal text the reader saw. `Message.content` is documented as Markdown, so an
+ * unescaped `**literal**` or `- item` from a pre-wrap block would otherwise be
+ * re-read as formatting by every exporter downstream.
+ *
+ * Every non-blank line is escaped as a line start, because each one genuinely begins
+ * a line in the emitted document — unlike inline serialization, where only the first
+ * text node of a run is. Blank lines pass through untouched so paragraph breaks
+ * survive.
+ */
+export function escapeMarkdownBlock(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => (line.trim() ? escapeBlockLine(line) : line))
+    .join('\n');
+}
+
+// Two block constructs only a whole line can form, so `escapeMarkdownText` — which
+// escapes leading markers but sees each text node, not each line — does not cover
+// them. They become reachable the moment literal page text is routed through here.
+const SETEXT_UNDERLINE = /^[ \t]*(=+|-+)[ \t]*$/;
+const INDENTED_CODE = /^(?: {4}| {0,3}\t)/;
+
+function escapeBlockLine(line: string): string {
+  // A line of only `=` under a line of text is a setext H1, and one of only `-` a
+  // setext H2. The `-` form already comes back escaped as a bullet marker; `=` has no
+  // inline meaning at all, so escaping the first character is what makes the run
+  // literal.
+  if (SETEXT_UNDERLINE.test(line) && line.trimStart().startsWith('=')) {
+    const indent = line.slice(0, line.length - line.trimStart().length);
+    return `${indent}\\${line.trimStart()}`;
+  }
+  const escaped = escapeMarkdownText(line, true);
+  // Four leading columns open an indented code block, which would swallow the line's
+  // own escaping and print it as code. A tab advances to the next multiple of four, so
+  // up to three spaces followed by one reaches the same column as four spaces do. The
+  // indent is presentation the page already rendered, so a non-breaking space keeps
+  // the visual offset without the block.
+  return INDENTED_CODE.test(escaped) ? escaped.replace(INDENTED_CODE, '\u00a0   ') : escaped;
+}
+
 // Single left-to-right scan over the ORIGINAL text so the backslashes we add
 // never perturb the neighbor lookups used for flanking classification. Escapes
 // `\`, `` ` ``, `[`, `]`, `|` unconditionally and `*`/`_`/`~` runs when flanking.
