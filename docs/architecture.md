@@ -21,7 +21,8 @@ site adapter  (src/adapters/{provider}/)   ── implements ConversationAdapter
 core model    (src/core/)                   ── Conversation, Message (provider-agnostic)
       │
       ▼
-exporters     (src/export/)                 ── markdown.ts, pdf.ts  (consume Conversation only)
+exporters     (src/export/)                 ── markdown.ts, pdf.ts, html.ts, json.ts
+                                              (consume Conversation only)
 ```
 
 **Rule:** dependencies point downward only. Exporters never import an adapter; adapters never
@@ -56,6 +57,10 @@ import an exporter. The `Conversation` model is the single contract between scra
 - `src/core/dom.ts` — DOM primitives with no provider knowledge (`ownerDocument`). Exists so
   `core/sidebar.ts` need not reach into an adapter for them.
 - `src/export/markdown.ts` / `pdf.ts` — pure functions `Conversation → Blob/string`. No DOM access.
+- `src/export/markdown-pdf.ts` — Markdown → pdfmake content nodes, split out of `pdf.ts` so the
+  document shell (font, styles, role sections) and the Markdown grammar it renders stay separately
+  testable. The grammar it parses is exactly what `src/core/html-to-markdown.ts` emits; the two are
+  pinned together by tests driven through the real serializer.
 - `src/content/` — content-script entry: pick the adapter whose `matches()` is true, mount the
   download button, wire it to the exporters.
 - `manifest.json` — MV3. `content_scripts.matches` lists only supported hosts and is the *only*
