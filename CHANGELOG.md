@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- [done] PDF export: characters the embedded font cannot draw are substituted instead of printed
+  as tofu boxes (v1.13.2) (2026-08-28). Reported from a real Korean export, where every `℃` in an
+  LG fridge conversation came out as `-1.0□`: Jetendard covers Latin, Hangul and common
+  symbols but not the CJK-compatibility, letterlike, or Mathematical Alphanumeric blocks, so
+  pdfmake drew an empty box for `℃`, `㎏`, `㈜`, and for the pseudo-bold `𝐍𝐨𝐭𝐞` chat models emit as prose.
+  `src/export/pdf-charmap.ts` now rewrites each such character to a spelling the font does carry.
+  The table is derived from the font files themselves — for every code point from U+0020 through
+  the Supplementary Multilingual Plane that BOTH faces lack, its NFKC form, kept only when both
+  faces cover every character of it, with NFKC's typographic slashes folded to ASCII so `m/s`
+  stays searchable — plus twelve curated entries (`※`, `★`, `☑`, ...) for characters Unicode gives no
+  decomposition for. Substitution runs on the built pdfmake nodes, never on the Markdown source,
+  so a stand-in containing `*` cannot be re-read as emphasis. The test re-runs the same derivation
+  against the shipped faces, so swapping a font surfaces as a failure rather than as new tofu
+  boxes, and asserts via fontkit that the substituted text lays out with no `.notdef` glyph.
+  Characters with no usable decomposition (kana, dingbats, emoji) are still boxes — filed in
+  `backlog.md`.
+
 - [done] PDF export: two Markdown constructs the renderer still got wrong (v1.13.1) (2026-08-28).
   Found by the PR #77 review panel after the merge. A literal underscore-only line (`___`) was
   classified as a horizontal rule and its text was replaced by a drawn line — `escapeMarkdownText`
