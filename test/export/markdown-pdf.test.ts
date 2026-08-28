@@ -507,3 +507,47 @@ describe('serializer/renderer fidelity', () => {
     expect(allText(nodes)).toContain('|');
   });
 });
+
+// Regressions the PR #82 review panel found in the first pass of these fixes.
+describe('serializer/renderer fidelity — review-panel regressions', () => {
+  it('keeps a backslash that precedes a pipe inside table-cell code', () => {
+    // The first pass escaped over the finished cell string, which cannot tell a
+    // backslash escapeMarkdownText added from one the page showed — the renderer then
+    // stripped the page's own backslash. Escape and undo now mirror each other.
+    const markdown = md('<table><tr><th>h</th></tr><tr><td><code>a\\|b</code></td></tr></table>');
+    const [table] = render(markdown);
+    const body = (table.table as Node).body as Node[][];
+    expect(body[1]).toHaveLength(1);
+    expect(allText(table)).toBe('ha\\|b');
+  });
+
+  it('keeps a backslash that precedes no pipe inside table-cell code', () => {
+    const markdown = md('<table><tr><th>h</th></tr><tr><td><code>C:\\path</code></td></tr></table>');
+    expect(allText(render(markdown))).toBe('hC:\\path');
+  });
+
+  it('keeps two backslashes before a pipe inside table-cell code', () => {
+    const markdown = md('<table><tr><th>h</th></tr><tr><td><code>a\\\\|b</code></td></tr></table>');
+    const [table] = render(markdown);
+    expect((((table.table as Node).body as Node[][])[1])).toHaveLength(1);
+    expect(allText(table)).toBe('ha\\\\|b');
+  });
+
+  it('leaves a code span outside a table unescaped', () => {
+    const markdown = md('<p><code>a\\|b</code></p>');
+    expect(runs(markdown)).toEqual([{ text: 'a\\|b', style: 'inlineCode' }]);
+  });
+
+  it('does not print the delimiter row when an unbuildable table falls back to prose', () => {
+    // `| --- |` is layout, not content — the fallback must leave it out the way the
+    // table path does.
+    const nodes = render('|\n| --- |');
+    expect(nodes).toHaveLength(1);
+    expect(allText(nodes)).toBe('|');
+  });
+
+  it('merges code spans a provider wrapped in spans', () => {
+    const markdown = md('<p><span><code>k</code></span><span><code>k</code></span></p>');
+    expect(runs(markdown)).toEqual([{ text: 'kk', style: 'inlineCode' }]);
+  });
+});

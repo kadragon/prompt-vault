@@ -130,3 +130,32 @@ describe('escapeMarkdownBlock', () => {
     expect(escapeMarkdownBlock('just words\nand more')).toBe('just words\nand more');
   });
 });
+
+// Block constructs only a whole line can form, so escapeMarkdownText does not cover
+// them — they became reachable when literal page text started routing through
+// escapeMarkdownBlock. Found by the PR #82 review panel.
+describe('escapeMarkdownBlock — whole-line constructs', () => {
+  it('escapes a setext underline so a typed line does not become a heading', () => {
+    expect(escapeMarkdownBlock('Title\n===')).toBe('Title\n\\===');
+    // The `-` form is already covered by the bullet-marker escape.
+    expect(escapeMarkdownBlock('Title\n---')).toBe('Title\n\\---');
+  });
+
+  it('leaves an equals sign that is not a whole-line run alone', () => {
+    expect(escapeMarkdownBlock('a = b')).toBe('a = b');
+    expect(escapeMarkdownBlock('=== not alone')).toBe('=== not alone');
+  });
+
+  it('keeps a four-space indent from opening a code block', () => {
+    expect(escapeMarkdownBlock('    indented')).toBe('\u00a0   indented');
+    expect(escapeMarkdownBlock('   three spaces')).toBe('   three spaces');
+  });
+
+  it('keeps a leading tab from opening a code block', () => {
+    // A tab advances to the next multiple of four columns, so these all reach the
+    // same indent four spaces do.
+    expect(escapeMarkdownBlock('\tindented')).toBe('\u00a0   indented');
+    expect(escapeMarkdownBlock(' \tindented')).toBe('\u00a0   indented');
+    expect(escapeMarkdownBlock('   \tindented')).toBe('\u00a0   indented');
+  });
+});

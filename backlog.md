@@ -85,6 +85,25 @@ continuation line is invisible to it and the blocked item is offered as actionab
 a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
 The larger hazard that measurement exposed is filed above.)*
 
+### PR #82 review (Markdown serialization fidelity, 2026-08-28)
+
+> Out-of-scope findings from the PR #82 panel. Both sit in code the PR edited but
+> outside its acceptance criteria.
+
+- [ ] [FIX] A code span whose body ends with a backslash loses its styling in the PDF.
+      `INLINE_CODE_AT` in `src/export/markdown-pdf.ts` carries a `(?<![\\`])\1` lookbehind, so
+      it refuses a closing backtick preceded by `\` — but CommonMark has no escapes inside a
+      code span, so `<p>path <code>C:\</code> end</p>` serializes correctly and then renders as
+      literal ``path `C:` end``: code style lost, the backslash dropped, the backticks leaked.
+      Hits Windows paths, LaTeX and regexes. Pre-existing and untouched by PR #82, which is why
+      it was excluded there. Found by the PR #82 review panel (code-review).
+- [ ] [FIX] `serializeInlineElement`'s `img` case does not route `src` through
+      `linkDestination`, so `<img src="https://e.com/a)b">` still emits `![alt](https://e.com/a)b)`
+      and truncates at the unbalanced paren — the exact defect PR #82 fixed for the `a` case, at
+      the one call site its criterion did not name. Fixing it means teaching `matchImage` the
+      angle-bracket form the way `matchLink` was taught. Found by the PR #82 review panel
+      (contract QA).
+
 ### QA pass on the Gemini bulk/sidebar track (2026-08-20)
 
 > Non-blocking findings from the independent QA of the sprint that shipped Gemini's

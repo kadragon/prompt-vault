@@ -29,6 +29,13 @@ interface Marks {
   bold?: true;
   italics?: true;
   link?: string;
+  /**
+   * This text is one table cell. Not styling — it rides on `Marks` because that is
+   * what already propagates into every nested inline render (a link label, an
+   * emphasis body), which is exactly where a code span inside a cell can appear. Read
+   * only by the code-span branch; `run()` ignores it.
+   */
+  cell?: true;
 }
 
 /**
@@ -116,10 +123,12 @@ function renderBlocks(lines: string[]): Content[] {
         i = end;
         continue;
       }
-      // Every cell was empty, so there is no grid to draw — but dropping the block
-      // is the silent empty output Golden Principle #4 rules out. Fall through to
-      // prose so the reader still sees the rows the page held.
-      const fallback = renderInline(lines.slice(i, end).join('\n').trim(), {});
+      // No row split into a single cell — the shape a row that is nothing but `|`
+      // produces — so there is no grid to draw. Dropping the block is the silent empty
+      // output Golden Principle #4 rules out, so fall through to prose. The delimiter
+      // row is layout, not content, and is left out the same way `rows` leaves it out.
+      const source = [lines[i], ...lines.slice(i + 2, end)].join('\n').trim();
+      const fallback = renderInline(source, {});
       if (!isEmptyInline(fallback)) nodes.push({ text: fallback, margin: [0, 2, 0, 2] });
       i = end;
       continue;
@@ -295,16 +304,40 @@ function splitCells(line: string): string[] {
   cells.push(cur);
   if (cells.length > 0 && cells[0].trim() === '') cells.shift();
   if (cells.length > 0 && cells[cells.length - 1].trim() === '') cells.pop();
-  return cells.map((c) => unescapeCellPipes(c).trim());
+  return cells.map((c) => c.trim());
 }
 
-// Inside a cell every surviving `|` is an escaped one — an unescaped pipe was a
-// delimiter and is already gone — so the backslash is table syntax, not content, and
-// GFM strips it before inline parsing. Do it here rather than leaving it to the prose
-// unescaper: a pipe inside a code span (`` `a\|b` ``) never reaches that pass, since
-// code bodies are deliberately never unescaped, and would print its backslash.
-function unescapeCellPipes(cell: string): string {
-  return cell.replace(/\\(?=\|)/g, '');
+/**
+ * Undo the delimiter escaping `escapeCellPipes` (src/core/html-to-markdown.ts) applied
+ * to a code body inside a table cell — its exact inverse, and the two must move
+ * together. A run of `2n` backslashes followed by `\|` was `n` backslashes and a
+ * literal pipe on the page; every other backslash is content and is left alone,
+ * because a code body is literal text and nothing else in it was ever escaped.
+ *
+ * Prose in a cell is NOT put through this: it carries escapeMarkdownText's own
+ * convention and is undone by `unescapeMarkdown` on the prose runs, as it always was.
+ */
+function unescapeCellCode(body: string): string {
+  let out = '';
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] === '\\') {
+      let end = i;
+      while (end < body.length && body[end] === '\\') end++;
+      const run = end - i;
+      if (body[end] === '|' && run % 2 === 1) {
+        out += '\\'.repeat((run - 1) / 2) + '|';
+        i = end + 1;
+      } else {
+        out += '\\'.repeat(run);
+        i = end;
+      }
+      continue;
+    }
+    out += body[i];
+    i++;
+  }
+  return out;
 }
 
 function tableNode(rows: string[][]): Content | null {
@@ -313,7 +346,7 @@ function tableNode(rows: string[][]): Content | null {
   const body: TableCell[][] = rows.map((cells, rowIndex) => {
     const row: TableCell[] = [];
     for (let c = 0; c < cols; c++) {
-      const text = renderInline(cells[c] ?? '', {});
+      const text = renderInline(cells[c] ?? '', { cell: true });
       row.push(rowIndex === 0 ? { text, style: 'tableHeader' } : { text });
     }
     return row;
@@ -420,7 +453,8 @@ function renderRuns(text: string, marks: Marks): InlineResult {
     if (ch === '`') {
       INLINE_CODE_AT.lastIndex = i;
       const code = INLINE_CODE_AT.exec(text);
-      const body = code ? stripCodePadding(code[2]) : '';
+      const raw = code ? stripCodePadding(code[2]) : '';
+      const body = marks.cell ? unescapeCellCode(raw) : raw;
       if (code && body.length > 0) {
         flush();
         runs.push(run(body, marks, 'inlineCode'));
