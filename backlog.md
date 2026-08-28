@@ -171,6 +171,14 @@ The larger hazard that measurement exposed is filed above.)*
       here too. Fix in `serializeTableCell` (escape `|` after inline serialization), not in the PDF
       splitter. Found by the PR #77 review panel (Codex).
 
+- [ ] *(out of scope for PR #78 — pre-existing in the serializer, not a renderer bug)*
+      [FIX] Two touching `<code>` elements serialize to one unreadable span.
+      `<p><code>k</code><code>k</code></p>` → `` `k``k` ``, which every reader (the PDF renderer
+      included) sees as a single code span containing two backticks: `k``k`. Byte-identical at PR
+      #77 and PR #78, so nothing recent caused it. Fix belongs in `serializeInlineNodes` — two
+      adjacent code spans need separating, the way CommonMark requires. Same family as the
+      pipe-in-code-in-a-table-cell item above. Found by the PR #78 review panel (contract QA).
+
 
 ## Next (roadmap — not v1)
 

@@ -8,9 +8,13 @@
   leaves a non-flanking `_` unescaped, so page text reached the renderer looking like a rule; the
   pattern now matches only the `---` form `serializeBlockElement` actually emits. And two adjacent
   inline elements serialize to one merged delimiter run (`<strong>a</strong><em>b</em>` →
-  `**a***b*`), which the exact-width closer scan could not end, leaking the markers and losing the
-  bold; the scan now falls back to a longer run and consumes only its own width, after the
-  exact-width pass that keeps `*a **b** c*` nesting correctly.
+  `**a***b*`), which the width-matching closer scan could not end, leaking the markers and losing
+  the bold. The scan is now a single pass: a run closes the span when the character before it is
+  not whitespace and the run is at least as wide as the opener, consuming only its own width; a run
+  that cannot close is an inner opener, and the span it opens is skipped whole — which is what
+  keeps `*a **b** c*` nesting. Asterisks inside a code span, a URL or an image source are stepped
+  over as content, and a candidate whose body is nothing but asterisks is refused, so an ASCII
+  divider line survives.
 
 - [done] PDF export renders Markdown as formatting instead of showing its markers (v1.13.0)
   (2026-08-28). The exporter parsed only code fences and inline code, so everything else the

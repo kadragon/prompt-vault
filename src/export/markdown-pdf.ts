@@ -43,9 +43,10 @@ export function renderMarkdown(body: string): Content[] {
 
 const HEADING = /^ {0,3}(#{1,6})[ \t]+(.*)$/;
 // Only the `---` form: that is the one `serializeBlockElement` emits for an `<hr>`.
-// Accepting `***`/`___` cost more than it bought — `escapeMarkdownText` leaves a
-// leading `_` unescaped when it is non-flanking, so a literal `___` line in page text
-// was silently replaced by a rule and its text was lost.
+// The `___` spelling had to go — `escapeMarkdownText` escapes a line-leading `-`, `*`
+// and `+`, but a non-flanking `_` is left alone, so a literal `___` line of page text
+// arrived here bare and was silently replaced by a drawn rule. (`***` was never at
+// risk: a leading `*` IS escaped. It is dropped only because nothing emits it.)
 const HR = /^ {0,3}-{3,}[ \t]*$/;
 const QUOTE = /^ {0,3}>[ \t]?/;
 const FENCE_OPEN = /^[ \t]*(`{3,})/;
@@ -487,12 +488,12 @@ interface Emphasis {
 /**
  * An emphasis span opened at `at`: `*em*`, `**strong**` or `***both***`.
  *
- * A scan rather than a regex, because the two shapes a flat pattern cannot express
- * are both shapes the serializer emits. `*a **b** c*` (an `<em>` wrapping a
- * `<strong>`) needs the closer to be a run of EXACTLY the opening length, so the
- * `**` inside is walked over as content instead of ending the span; `***x***` needs
- * the opening run measured as a whole, or a lazy `**` pattern pairs it with the
- * first two of the closing three and bolds a literal `*` into the text.
+ * A scan rather than a regex, because the shapes a flat pattern cannot express are
+ * all shapes the serializer emits. `*a **b** c*` (an `<em>` wrapping a `<strong>`)
+ * needs the inner span skipped WHOLE, or its closer ends the outer one; `***x***`
+ * needs the opening run measured as a whole, or a lazy `**` pattern pairs it with the
+ * first two of the closing three and bolds a literal `*` into the text; and
+ * `**a***b*` (two adjacent elements) needs one run to both close and open.
  *
  * The body may span a newline: `<br>` inside a `<strong>` serializes to a literal
  * `\n` between the delimiters, and a paragraph keeps that soft break in one node,
@@ -512,33 +513,74 @@ function matchEmphasis(text: string, at: number): Emphasis | null {
   const bodyStart = at + width;
   if (bodyStart >= text.length || /\s/.test(text[bodyStart])) return null;
 
-  // Two passes. An EXACT-width closer wins, so `*a **b** c*` (an `<em>` wrapping a
-  // `<strong>`) walks over the inner `**` instead of ending on it. Only if no exact
-  // closer exists does a longer run close the span, consuming just `width` of its
-  // asterisks — the case of two adjacent elements the serializer merges into one run,
-  // `<strong>a</strong><em>b</em>` → `**a***b*`, where the leftover `*` opens the em.
-  const close = (exact: boolean): Emphasis | null => {
-    let i = bodyStart;
-    while (i < text.length) {
-      if (text[i] === '\\') {
-        i += 2;
-        continue;
-      }
-      if (text[i] !== '*') {
-        i++;
-        continue;
-      }
-      let closing = 0;
-      while (text[i + closing] === '*') closing++;
-      const fits = exact ? closing === width : closing > width;
-      if (fits && !/\s/.test(text[i - 1])) {
-        return { body: text.slice(bodyStart, i), end: i + width, marks: EMPHASIS_MARKS[width] };
-      }
-      i += closing;
+  // Walk to the closer. A run of asterisks closes this span when the character
+  // before it is not whitespace (CommonMark's right-flanking test) and the run is at
+  // least as wide as the opener — consuming only `width` of it, which is what splits
+  // the merged run two adjacent elements produce (`<strong>a</strong><em>b</em>` →
+  // `**a***b*`: the three asterisks close the strong and open the em).
+  //
+  // A run that cannot close here is an inner opener, so the scan skips the span it
+  // opens WHOLE rather than stepping over the delimiter alone. That is what keeps
+  // `*a **b** c*` (an `<em>` wrapping a `<strong>`) nesting: the `**` after `b` is a
+  // legal closer by width, and without the skip the italic would end there. Searching
+  // for an exact-width closer instead is not a substitute — it reaches past the
+  // adjacent case into a LATER run of the same width (`**a***b* **c**` swallowed
+  // everything up to the closer of `**c**`).
+  let i = bodyStart;
+  while (i < text.length) {
+    if (text[i] === '\\') {
+      i += 2;
+      continue;
     }
-    return null;
-  };
-  return close(true) ?? close(false);
+    // An asterisk inside a code span, a URL or an image source is content, not a
+    // delimiter: `**a `x*y` b**` used to consume the code span's `*` as a nested
+    // opener, eat the real closer and spill both the backticks and the `**` onto the
+    // page. Atoms are skipped whole, in the same precedence renderRuns uses.
+    const atom = skipInlineAtom(text, i);
+    if (atom !== -1) {
+      i = atom;
+      continue;
+    }
+    if (text[i] !== '*') {
+      i++;
+      continue;
+    }
+    let closing = 0;
+    while (text[i + closing] === '*') closing++;
+    if (closing >= width && !/\s/.test(text[i - 1])) {
+      const body = text.slice(bodyStart, i);
+      // A body of nothing but asterisks is not emphasis, it is an ASCII divider the
+      // page showed (`**********`, which the escaper protects only at its first
+      // character). Pairing there silently ate most of the line.
+      if (!/[^*]/.test(body)) return null;
+      return { body, end: i + width, marks: EMPHASIS_MARKS[width] };
+    }
+    const nested = matchEmphasis(text, i);
+    i = nested ? nested.end : i + closing;
+  }
+  return null;
+}
+
+/**
+ * End of the inline atom starting at `i` — a code span, an image or a link — or -1
+ * when no atom starts there. Used by the emphasis scan to step over regions whose
+ * asterisks are content; the atoms themselves are parsed by `renderRuns`.
+ */
+function skipInlineAtom(text: string, i: number): number {
+  if (text[i] === '`') {
+    INLINE_CODE_AT.lastIndex = i;
+    const code = INLINE_CODE_AT.exec(text);
+    if (code && stripCodePadding(code[2]).length > 0) return INLINE_CODE_AT.lastIndex;
+  }
+  if (text[i] === '!' && text[i + 1] === '[') {
+    const image = matchImage(text, i);
+    if (image) return image.end;
+  }
+  if (text[i] === '[') {
+    const link = matchLink(text, i);
+    if (link) return link.end;
+  }
+  return -1;
 }
 
 // Opening-run width → the styling it carries. Three is `***both***`, the shape a

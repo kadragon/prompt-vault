@@ -182,6 +182,76 @@ describe('inline formatting', () => {
     expect(runs(markdown)).toEqual([{ text: 'a', bold: true }, { text: 'b', italics: true }]);
   });
 
+  // The regression the two-pass scan this replaced introduced: an exact-width closer
+  // search reached past the adjacent run into the closer of a LATER element.
+  it('does not let a later element close an adjacent emphasis run', () => {
+    const markdown = md('<p><strong>a</strong><em>b</em> <strong>c</strong></p>');
+    expect(markdown).toBe('**a***b* **c**');
+    expect(runs(markdown)).toEqual([
+      { text: 'a', bold: true },
+      { text: 'b', italics: true },
+      { text: ' ' },
+      { text: 'c', bold: true },
+    ]);
+  });
+
+  it('keeps nesting intact when another emphasis follows in the same paragraph', () => {
+    const markdown = md('<p><em>a <strong>b</strong> c</em> and <em>d</em></p>');
+    expect(markdown).toBe('*a **b** c* and *d*');
+    expect(runs(markdown)).toEqual([
+      { text: 'a ', italics: true },
+      { text: 'b', bold: true, italics: true },
+      { text: ' c', italics: true },
+      { text: ' and ' },
+      { text: 'd', italics: true },
+    ]);
+  });
+
+  // Emphasis closing at the very end of an outer span merges the two closers into one
+  // run; the split has to leave the inner one its asterisks, not take them first.
+  it.each([
+    ['<p><em>a <strong>b</strong></em></p>', '*a **b***', { italics: true }, { bold: true, italics: true }],
+    ['<p><strong>a <em>b</em></strong></p>', '**a *b***', { bold: true }, { bold: true, italics: true }],
+  ])('closes %s without leaking the inner delimiters', (html, source, outer, inner) => {
+    const markdown = md(html);
+    expect(markdown).toBe(source);
+    expect(runs(markdown)).toEqual([{ text: 'a ', ...outer }, { text: 'b', ...inner }]);
+  });
+
+  // Two adjacent elements with the SAME tag merge into an even-width run, which a
+  // width-matching closer would step over entirely.
+  it.each([
+    ['<p><strong>a</strong><strong>b</strong></p>', '**a****b**', { bold: true }],
+    ['<p><em>a</em><em>b</em></p>', '*a**b*', { italics: true }],
+  ])('splits the merged run of two adjacent %s elements', (html, source, marks) => {
+    const markdown = md(html);
+    expect(markdown).toBe(source);
+    expect(runs(markdown)).toEqual([{ text: 'a', ...marks }, { text: 'b', ...marks }]);
+  });
+
+  // An asterisk divider line: `escapeMarkdownText` protects only the leading `*`, so
+  // the rest arrives bare and used to be swallowed as delimiters.
+  it('keeps an asterisk divider line intact', () => {
+    const markdown = md('<p>**********</p>');
+    expect(markdown).toBe('\\**********');
+    expect(runs(markdown)).toBe('**********');
+  });
+
+  // An asterisk inside a code span, a URL or an image source is content. The
+  // emphasis scan has to step over those atoms whole or it consumes the real closer.
+  it.each([
+    ['<p><strong>a <code>x*y</code> b</strong></p>', '**a `x*y` b**'],
+    ['<p><em>a <code>p*q</code></em></p>', '*a `p*q`*'],
+    ['<p><strong>a <a href="https://e.com/x*y">L</a> b</strong></p>', '**a [L](https://e.com/x*y) b**'],
+  ])('does not read an asterisk inside %s as a delimiter', (html, source) => {
+    const markdown = md(html);
+    expect(markdown).toBe(source);
+    const rendered = runs(markdown) as Array<Record<string, unknown>>;
+    expect(rendered.every((r) => r.bold === true || r.italics === true)).toBe(true);
+    expect(allText(rendered)).not.toContain('`');
+    expect(allText(rendered)).not.toContain('](');
+  });
+
   it('leaves the emphasis characters the serializer escaped as literal text', () => {
     const markdown = md('<p>2 * 3 and snake_case and *stars*</p>');
     expect(markdown).toContain('\\*');
