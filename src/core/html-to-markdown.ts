@@ -58,7 +58,12 @@ function serializeBlockElement(el: Element, listDepth: number): string {
     case 'h4':
     case 'h5':
     case 'h6':
-      return '#'.repeat(Number(tag[1])) + ' ' + serializeInline(el).trim();
+      // An ATX heading is a single line by definition, so a `<br>` inside one is
+      // flattened rather than emitted as a second line — the same treatment
+      // `serializeTableCell` gives its inline-only context. Emitting the break split
+      // the heading into a heading plus a stray paragraph, and tore any emphasis
+      // spanning it in half, leaving `**` visible.
+      return '#'.repeat(Number(tag[1])) + ' ' + serializeInline(el).replace(/\n+/g, ' ').trim();
     case 'p':
       return serializeInline(el).trim();
     case 'pre':
@@ -328,15 +333,19 @@ function serializeInlineNodes(nodes: Node[], skip?: Set<Element>): string {
   for (let idx = 0; idx < nodes.length; idx++) {
     const node = nodes[idx];
     if (node.nodeType === NODE_TEXT) {
-      // A text node is at a line start only when it is the first content emitted
-      // in this inline run; a run after an inline element (`**bold** - x`) is
-      // mid-line, so its leading marker must not be escaped as a block marker.
+      // A text node is at a line start when it is the first content emitted in this
+      // inline run, or when the run so far ended with a newline (a `<br>` — the text
+      // after it genuinely begins a line, and an unescaped `- ` there is read back as
+      // a real bullet by any renderer that parses this Markdown). A run after an
+      // inline element (`**bold** - x`) is mid-line, so its leading marker must not
+      // be escaped as a block marker.
       // Classify edge delimiters against their real neighbor across inline-element
       // boundaries: `prevChar` is the last visible char of the preceding siblings,
       // `nextChar` the first visible char of the following siblings.
       const prevChar = lastVisibleChar(nodes, idx - 1, skip);
       const nextChar = firstVisibleChar(nodes, idx + 1, skip);
-      out += escapeMarkdownText(collapseWs(node.textContent ?? ''), out === '', prevChar, nextChar);
+      const atLineStart = out === '' || out.endsWith('\n');
+      out += escapeMarkdownText(collapseWs(node.textContent ?? ''), atLineStart, prevChar, nextChar);
       continue;
     }
     if (node.nodeType !== NODE_ELEMENT) continue;

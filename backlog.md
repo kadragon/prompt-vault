@@ -128,6 +128,29 @@ The larger hazard that measurement exposed is filed above.)*
       rather than patching each removal site. Found by the PR #76 review panel (code-review).
 
 
+- [ ] *(out of scope for PR #77 — a different loading architecture for the PDF fonts)*
+      [REFACTOR] Stop base64-inlining the PDF faces. Measured on PR #77: embedding
+      `Jetendard-Bold.ttf` alongside Regular takes the lazily-imported PDF chunk from 7,220 kB to
+      13,399 kB (gzip 3.32 MB → 6.29 MB), because `?inline` turns each 4.6 MB TTF into base64
+      inside one JS module — so every export parses ~13 MB of script and decodes ~6 MB of base64
+      before the first PDF byte. Two options: subset each face to the glyph coverage a chat export
+      needs, or declare the `.ttf` files as `web_accessible_resources` and `fetch(chrome.runtime
+      .getURL(...))` them at export time (an extension-internal request, so Golden Principle #1 is
+      untouched). Worth settling before the next Web Store submission. Found by the PR #77 review
+      panel (code-review).
+
+- [ ] *(out of scope for PR #77 — three narrow renderer edges, none reachable from a normal chat)*
+      [FIX] `src/export/markdown-pdf.ts` fidelity edges left standing by the Markdown renderer.
+      (a) An inline-code span whose body contains a newline (`<code>a\nb</code>` — `inlineCode()`
+      uses raw `textContent`, so the newline is not collapsed) fails to pair and leaves its
+      backticks as text; `test/export/pdf.test.ts` currently pins that non-pairing, so fixing it
+      means narrowing that test or collapsing whitespace in the serializer instead. (b) An `href`
+      containing an unbalanced `)` truncates at the paren-depth scan in `matchLink` (CommonMark
+      behaves the same way, so this is fidelity, not correctness). (c) `tableNode` returns `null`
+      when every cell of a table is empty, dropping the block silently — the shape Golden
+      Principle #4 rules out. Found by the PR #77 review panel (contract QA).
+
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*

@@ -110,6 +110,17 @@ describe('inline formatting', () => {
     ]);
   });
 
+  it('drops a paragraph that renders to nothing rather than emitting a blank node', () => {
+    const markdown = md('<p><img src="https://cdn.example/icon.png" alt=""></p>');
+    expect(markdown).toBe('![](https://cdn.example/icon.png)');
+    expect(render(markdown)).toEqual([]);
+  });
+
+  it('shows an href fallback label verbatim instead of re-parsing it as Markdown', () => {
+    const url = 'http://x/a*b*c';
+    expect(runs(`[](${url})`)).toEqual([{ text: url, link: url, style: 'link' }]);
+  });
+
   it('keeps a standalone image as its alt text, without the markup', () => {
     const markdown = md('<p>before <img src="https://cdn.example/x.png" alt="a chart"> after</p>');
     expect(markdown).toBe('before ![a chart](https://cdn.example/x.png) after');
@@ -131,8 +142,36 @@ describe('inline formatting', () => {
     expect(runs('see [not a link] here')).toBe('see [not a link] here');
   });
 
-  it('does not pair emphasis across a line break', () => {
-    expect(runs('a *b\nc* d')).toBe('a *b\nc* d');
+  // A `<br>` inside emphasis serializes to a literal newline BETWEEN the delimiters,
+  // and the paragraph keeps that soft break in one node — so refusing to pair across
+  // it is what left `**` on the page. Pairing is still bounded by the paragraph: a
+  // blank line ends the block upstream of the inline scan.
+  it('pairs emphasis across the soft line break a <br> produces', () => {
+    const markdown = md('<p><strong>alpha<br>beta</strong> tail</p>');
+    expect(markdown).toBe('**alpha\nbeta** tail');
+    expect(runs(markdown)).toEqual([{ text: 'alpha\nbeta', bold: true }, { text: ' tail' }]);
+  });
+
+  it('does not pair a delimiter whose body starts with whitespace', () => {
+    expect(runs('a * b\nc * d')).toBe('a * b\nc * d');
+  });
+
+  // `<em>` wrapping `<strong>`: the closer must be a run of exactly the opening
+  // length, or the inner `**` ends the italic span and its markers reach the page.
+  it('nests strong inside emphasis', () => {
+    const markdown = md('<p><em>a <strong>b</strong> c</em></p>');
+    expect(markdown).toBe('*a **b** c*');
+    expect(runs(markdown)).toEqual([
+      { text: 'a ', italics: true },
+      { text: 'b', bold: true, italics: true },
+      { text: ' c', italics: true },
+    ]);
+  });
+
+  it('renders a ***both*** run as bold and italic, with no stray asterisk', () => {
+    const markdown = md('<p><strong><em>x</em></strong></p>');
+    expect(markdown).toBe('***x***');
+    expect(runs(markdown)).toEqual([{ text: 'x', bold: true, italics: true }]);
   });
 
   it('leaves the emphasis characters the serializer escaped as literal text', () => {
@@ -173,6 +212,12 @@ describe('block formatting', () => {
   it('styles inline formatting inside a heading', () => {
     const [heading] = render(md('<h2>Plan <strong>B</strong></h2>'));
     expect(heading).toEqual({ text: [{ text: 'Plan ' }, { text: 'B', bold: true }], style: 'h2' });
+  });
+
+  it('keeps a heading with a <br> on one line, emphasis intact', () => {
+    const markdown = md('<h2><strong>a<br>b</strong></h2>');
+    expect(markdown).toBe('## **a b**');
+    expect(render(markdown)).toEqual([{ text: [{ text: 'a b', bold: true }], style: 'h2' }]);
   });
 
   it('renders a blockquote as a left-barred block, marker dropped', () => {
@@ -216,6 +261,27 @@ describe('block formatting', () => {
     const [inner] = (item.stack as Node[]).slice(1);
     expect(allText(item)).toBe('parentchild');
     expect(inner.ul).toBeDefined();
+  });
+
+  // The serializer emits a marker on its own line for an empty <li> and for an <li>
+  // whose first content is a nested list. Requiring a space after the marker split
+  // the list in two and printed the marker as prose.
+  it('keeps a bare marker line inside its list', () => {
+    const markdown = md('<ul><li><ul><li>child</li></ul></li></ul>');
+    expect(markdown).toBe('-\n  - child');
+    const nodes = render(markdown);
+    expect(nodes).toHaveLength(1);
+    expect(allText(nodes[0])).toBe('child');
+    expect(JSON.stringify(nodes)).not.toContain('"text":"-"');
+  });
+
+  it('keeps an empty ordered item so the numbering does not restart', () => {
+    const markdown = md('<ol><li></li><li>b</li></ol>');
+    expect(markdown).toBe('1.\n2. b');
+    const nodes = render(markdown);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].ol).toHaveLength(2);
+    expect(nodes[0].start).toBeUndefined();
   });
 
   it('renders a GFM table with a styled header row', () => {

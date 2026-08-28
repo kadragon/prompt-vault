@@ -45,7 +45,12 @@ const HEADING = /^ {0,3}(#{1,6})[ \t]+(.*)$/;
 const HR = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*$/;
 const QUOTE = /^ {0,3}>[ \t]?/;
 const FENCE_OPEN = /^[ \t]*(`{3,})/;
-const LIST_ITEM = /^([ \t]*)(?:[-*+]|\d+[.)])[ \t]+/;
+// A list item marker. The trailing whitespace is OPTIONAL because the serializer
+// emits a marker on its own line twice (html-to-markdown `serializeListItem`): for an
+// empty `<li>`, and for an `<li>` whose first content is a nested list. Requiring the
+// space there broke the list in two and printed the bare marker as prose — the exact
+// leaked marker this renderer exists to remove.
+const LIST_ITEM = /^([ \t]*)([-*+]|\d+[.)])([ \t]+|[ \t]*$)/;
 const TABLE_ROW = /^[ \t]*\|/;
 const TABLE_DIVIDER = /^[ \t]*\|(?:[ \t]*:?-{3,}:?[ \t]*\|)+[ \t]*$/;
 
@@ -74,7 +79,8 @@ function renderBlocks(lines: string[]): Content[] {
 
     const heading = HEADING.exec(line);
     if (heading) {
-      nodes.push({ text: renderInline(heading[2].trim(), {}), style: `h${heading[1].length}` });
+      const text = renderInline(heading[2].trim(), {});
+      if (!isEmptyInline(text)) nodes.push({ text, style: `h${heading[1].length}` });
       i++;
       continue;
     }
@@ -117,11 +123,23 @@ function renderBlocks(lines: string[]): Content[] {
     // breaks inside it (the serializer's `<br>` → `\n`) stay inside the one node.
     let end = i + 1;
     while (end < lines.length && lines[end].trim() !== '' && !startsBlock(lines, end)) end++;
-    const text = lines.slice(i, end).join('\n').trim();
-    if (text.length > 0) nodes.push({ text: renderInline(text, {}), margin: [0, 2, 0, 2] });
+    const source = lines.slice(i, end).join('\n').trim();
+    const text = renderInline(source, {});
+    // Emptiness is judged on the RENDERED runs, not the source line: a paragraph
+    // holding only an image with no alt text has non-empty Markdown and nothing to
+    // show, and a blank block on the page is the silent output Golden Principle #4
+    // rules out.
+    if (!isEmptyInline(text)) nodes.push({ text, margin: [0, 2, 0, 2] });
     i = end;
   }
   return nodes;
+}
+
+// Whether an inline render came out with nothing to show — an empty string, or runs
+// that all carry empty text.
+function isEmptyInline(text: string | Content[]): boolean {
+  if (typeof text === 'string') return text.trim().length === 0;
+  return text.every((node) => ((node as { text?: string }).text ?? '').trim().length === 0);
 }
 
 // Whether the line at `idx` opens a block, used to close an open paragraph. A table
@@ -202,14 +220,20 @@ function listNode(lines: string[]): Content | null {
     const from = starts[s];
     const to = s + 1 < starts.length ? starts[s + 1] : lines.length;
     const marker = LIST_ITEM.exec(lines[from]);
-    const width = marker ? marker[0].length : base;
+    // Continuation lines are indented to the marker's FULL width — including the
+    // space that follows it — so a bare marker still dedents by that implied space.
+    const width = marker
+      ? marker[1].length + marker[2].length + Math.max(marker[3].length, 1)
+      : base;
     const body = [
       lines[from].slice(width),
       ...lines.slice(from + 1, to).map((l) => dedent(l, width)),
     ];
     const content = renderBlocks(body);
-    if (content.length === 0) continue;
-    items.push(content.length === 1 ? content[0] : { stack: content });
+    // An empty `<li>` keeps its marker: dropping the item would renumber every
+    // ordered sibling after it and lose a bullet the page showed.
+    if (content.length === 0) items.push({ text: '' });
+    else items.push(content.length === 1 ? content[0] : { stack: content });
   }
   if (items.length === 0) return null;
 
@@ -321,8 +345,6 @@ function quoteNode(content: Content[]): Content {
 // closing run of at least N. The scan below consumes backslash escapes before
 // testing, so an escaped backtick can never open or close a span.
 const INLINE_CODE_AT = /(`+)([^\n]*?)(?<![\\`])\1(?!`)/y;
-const STRONG_AT = /\*\*(?=\S)([^\n]*?\S)\*\*/y;
-const EM_AT = /\*(?=[^\s*])([^\n*]*[^\s*])\*(?!\*)/y;
 
 // CommonMark backslash escape: a backslash plus ASCII punctuation.
 const MARKDOWN_ESCAPE = /\\([!-/:-@[-`{-~])/g;
@@ -402,7 +424,9 @@ function renderRuns(text: string, marks: Marks): InlineResult {
       const link = matchLink(text, i);
       if (link) {
         flush();
-        runs.push(...renderRuns(link.text, { ...marks, link: link.href }).runs);
+        const linkMarks = { ...marks, link: link.href };
+        if (link.literal) runs.push(run(link.text, linkMarks));
+        else runs.push(...renderRuns(link.text, linkMarks).runs);
         styled = true;
         i = link.end;
         continue;
@@ -410,20 +434,12 @@ function renderRuns(text: string, marks: Marks): InlineResult {
     }
 
     if (ch === '*') {
-      const strong = matchDelimited(text, i, STRONG_AT);
-      if (strong) {
+      const emphasis = matchEmphasis(text, i);
+      if (emphasis) {
         flush();
-        runs.push(...renderRuns(strong.body, { ...marks, bold: true }).runs);
+        runs.push(...renderRuns(emphasis.body, { ...marks, ...emphasis.marks }).runs);
         styled = true;
-        i = strong.end;
-        continue;
-      }
-      const em = matchDelimited(text, i, EM_AT);
-      if (em) {
-        flush();
-        runs.push(...renderRuns(em.body, { ...marks, italics: true }).runs);
-        styled = true;
-        i = em.end;
+        i = emphasis.end;
         continue;
       }
     }
@@ -458,22 +474,74 @@ function run(text: string, marks: Marks, codeStyle?: 'inlineCode'): Content {
   return node;
 }
 
-interface Delimited {
+interface Emphasis {
   body: string;
   end: number;
+  marks: Marks;
 }
 
-function matchDelimited(text: string, at: number, re: RegExp): Delimited | null {
-  re.lastIndex = at;
-  const match = re.exec(text);
-  if (!match) return null;
-  return { body: match[1], end: re.lastIndex };
+/**
+ * An emphasis span opened at `at`: `*em*`, `**strong**` or `***both***`.
+ *
+ * A scan rather than a regex, because the two shapes a flat pattern cannot express
+ * are both shapes the serializer emits. `*a **b** c*` (an `<em>` wrapping a
+ * `<strong>`) needs the closer to be a run of EXACTLY the opening length, so the
+ * `**` inside is walked over as content instead of ending the span; `***x***` needs
+ * the opening run measured as a whole, or a lazy `**` pattern pairs it with the
+ * first two of the closing three and bolds a literal `*` into the text.
+ *
+ * The body may span a newline: `<br>` inside a `<strong>` serializes to a literal
+ * `\n` between the delimiters, and a paragraph keeps that soft break in one node,
+ * so refusing to pair across it left `**` on the page. Blank lines end the
+ * paragraph upstream of here, so this cannot pair across blocks.
+ *
+ * Flanking is approximated the way the emitted grammar needs it: the body may not
+ * start or end with whitespace, which is what keeps prose like `2 * 3 * 4` literal.
+ */
+function matchEmphasis(text: string, at: number): Emphasis | null {
+  let run = 0;
+  while (text[at + run] === '*') run++;
+  // Runs past three carry no additional meaning here — redundantly nested identical
+  // tags (`<strong>a<strong>b</strong></strong>` → `**a**b****`) serialize to
+  // ambiguous Markdown that no reading recovers, so the extra delimiters stay text.
+  const width = Math.min(run, 3);
+  const bodyStart = at + width;
+  if (bodyStart >= text.length || /\s/.test(text[bodyStart])) return null;
+
+  let i = bodyStart;
+  while (i < text.length) {
+    if (text[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (text[i] !== '*') {
+      i++;
+      continue;
+    }
+    let closing = 0;
+    while (text[i + closing] === '*') closing++;
+    if (closing === width && !/\s/.test(text[i - 1])) {
+      return { body: text.slice(bodyStart, i), end: i + width, marks: EMPHASIS_MARKS[width] };
+    }
+    i += closing;
+  }
+  return null;
 }
+
+// Opening-run width → the styling it carries. Three is `***both***`, the shape a
+// `<strong>` wrapping an `<em>` (or the reverse) serializes to.
+const EMPHASIS_MARKS: Record<number, Marks> = {
+  1: { italics: true },
+  2: { bold: true },
+  3: { bold: true, italics: true },
+};
 
 interface Link {
   text: string;
   href: string;
   end: number;
+  /** The text is the href standing in for an invisible label — show it as it is. */
+  literal?: true;
 }
 
 // `[text](href)` anchored at `at`. The label may itself contain a nested image
@@ -495,7 +563,10 @@ function matchLink(text: string, at: number): Link | null {
     .runs.map((r) => (r as { text?: string }).text ?? '')
     .join('')
     .trim();
-  return { text: visible.length > 0 ? label : href, href, end: hrefEnd + 1 };
+  if (visible.length > 0) return { text: label, href, end: hrefEnd + 1 };
+  // The href is displayed text now, not Markdown: re-parsing it would italicize a
+  // URL that happens to contain `*` and drop the characters from what is shown.
+  return { text: href, href, end: hrefEnd + 1, literal: true };
 }
 
 interface Image {

@@ -13,8 +13,12 @@
   citation's favicon `<img>` inside the `<a>` is dropped and the label carries the link — no image
   can be fetched into the PDF (Golden Principle #1). Bold needed a real face: pdfmake does no
   synthetic bolding and the bold slot pointed at Regular, so `Jetendard-Bold.ttf` is now embedded
-  alongside Regular (same OFL family) and the PDF chunk — lazy-loaded only on export — grows
-  accordingly. Italic slots still fall back to their upright face.
+  alongside Regular (same OFL family). Measured cost, accepted deliberately: the PDF chunk —
+  imported only when the export button is pressed — goes 7,220 kB → 13,399 kB (gzip 3.32 MB →
+  6.29 MB); dropping the base64 inlining is filed in `backlog.md`. Italic slots still fall back to
+  their upright face. One upstream fix rides along: `serializeInlineNodes` now treats a run
+  following a `<br>` as a line start, so a `- ` or `#` after a line break is escaped — text that
+  showed literally before this renderer learned to parse those markers.
 
 - [done] Release workflow refuses a dispatch off main and fails closed on unreadable release/tag state (2026-08-20) → docs/runbook.md
 - [done] Manual workflow_dispatch republish for a release the push gate skips (2026-08-20) → docs/runbook.md
