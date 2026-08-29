@@ -340,6 +340,20 @@ describe('serialization fidelity', () => {
     expect(md('<p><a href="https://e.com/a(b)c">t</a></p>')).toBe('[t](https://e.com/a(b)c)');
   });
 
+  it('wraps an image destination holding an unbalanced paren in angle brackets', () => {
+    // The `img` src needs the same treatment as an `a` href: bare, it truncates at the
+    // first unbalanced `)` and the reader loses the rest of the URL.
+    expect(md('<p><img src="https://e.com/a)b" alt="x"></p>')).toBe('![x](<https://e.com/a)b>)');
+  });
+
+  it('percent-encodes whitespace in an image destination', () => {
+    expect(md('<p><img src="https://e.com/a b" alt="x"></p>')).toBe('![x](https://e.com/a%20b)');
+  });
+
+  it('drops an image whose src is whitespace only', () => {
+    expect(md('<p><img src="   " alt="x"></p>')).toBe('');
+  });
+
   it('leaves a destination containing an angle bracket bare rather than corrupting it', () => {
     // `>` would close the wrapper early; the URL has no valid spelling either way.
     expect(md('<p><a href="https://e.com/a>b c">t</a></p>')).toBe('[t](https://e.com/a>b%20c)');

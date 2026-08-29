@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- [done] Markdown serialization fidelity: two defects the PR #82 review panel found outside that
+  PR's criteria (v1.13.4) (2026-08-29). A code span whose body ended with `\` lost its styling in
+  the PDF: the renderer's lookbehind refused a closing backtick preceded by a backslash, but
+  CommonMark has no escapes inside a code span, so `` `C:\` `` printed as literal text with the
+  backslash dropped — Windows paths, LaTeX and regexes all hit it. The `img` case of
+  `serializeInlineElement` did not route `src` through `linkDestination`, so a src holding an
+  unbalanced `)` was truncated by every paren-depth scan — it now takes the angle-bracket form the
+  `a` case already used, and the PDF renderer's `matchImage` reads that form back.
+
 - [done] Markdown serialization fidelity: four defects that made the exported source mean
   something the page never showed (v1.13.3) (2026-08-28). Found by the PR #77 and #78 review
   panels. An inline-code span whose body held a newline left its closing fence on another line,

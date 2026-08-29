@@ -487,9 +487,11 @@ function serializeInlineElement(el: Element, inTable = false): string {
       return href ? `[${text}](${linkDestination(href)})` : text;
     }
     case 'img': {
-      const src = el.getAttribute('src') ?? '';
+      // Same destination rules as the `a` case above: a src holding whitespace or an
+      // unbalanced paren truncates when written bare.
+      const src = (el.getAttribute('src') ?? '').trim();
       const alt = el.getAttribute('alt') ?? '';
-      return src ? `![${alt}](${src})` : '';
+      return src ? `![${alt}](${linkDestination(src)})` : '';
     }
     case 'br':
       return '\n';

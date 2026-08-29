@@ -398,9 +398,11 @@ function quoteNode(content: Content[]): Content {
 // --------------------------------------------------------------- inline layer
 
 // An inline-code span anchored at the scan position: N backticks, a body, then a
-// closing run of at least N. The scan below consumes backslash escapes before
-// testing, so an escaped backtick can never open or close a span.
-const INLINE_CODE_AT = /(`+)([^\n]*?)(?<![\\`])\1(?!`)/y;
+// closing run of exactly N — the equal-length rule the lookarounds enforce. The scan
+// below consumes backslash escapes before testing, so an escaped backtick can never
+// OPEN a span; it can still close one, because CommonMark has no backslash escapes
+// inside a code span (a body may end with `\`).
+const INLINE_CODE_AT = /(`+)([^\n]*?)(?<!`)\1(?!`)/y;
 
 // CommonMark backslash escape: a backslash plus ASCII punctuation.
 const MARKDOWN_ESCAPE = /\\([!-/:-@[-`{-~])/g;
@@ -699,7 +701,10 @@ interface Image {
 function matchImage(text: string, at: number): Image | null {
   const close = matchBracket(text, at + 1, '[', ']');
   if (close === -1 || text[close + 1] !== '(') return null;
-  const srcEnd = matchBracket(text, close + 1, '(', ')');
+  // The serializer wraps a src holding whitespace or unbalanced parens the same way it
+  // wraps an href, so the destination has both spellings here too.
+  const angle = matchAngleDestination(text, close + 2);
+  const srcEnd = angle ? angle.end : matchBracket(text, close + 1, '(', ')');
   if (srcEnd === -1) return null;
   return { alt: text.slice(at + 2, close), end: srcEnd + 1 };
 }

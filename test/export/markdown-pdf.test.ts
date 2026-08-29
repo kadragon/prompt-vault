@@ -550,4 +550,34 @@ describe('serializer/renderer fidelity — review-panel regressions', () => {
     const markdown = md('<p><span><code>k</code></span><span><code>k</code></span></p>');
     expect(runs(markdown)).toEqual([{ text: 'kk', style: 'inlineCode' }]);
   });
+
+  it('consumes an angle-wrapped image destination whole', () => {
+    // The serializer wraps an unbalanced-paren src the way it wraps an href; the
+    // renderer must follow it to the closing `)` instead of stopping inside the URL
+    // and leaking `>)` into the prose.
+    const markdown = md('<p>before <img src="https://e.com/a)b" alt="a chart"> after</p>');
+    expect(markdown).toBe('before ![a chart](<https://e.com/a)b>) after');
+    expect(allText(render(markdown))).toBe('before a chart after');
+  });
+
+  it('keeps a code span whose body ends with a backslash', () => {
+    // CommonMark has no escapes inside a code span, so the closing backtick pairs even
+    // when a backslash precedes it. Hits Windows paths, LaTeX and regexes.
+    const markdown = md('<p>path <code>C:\\</code> end</p>');
+    expect(runs(markdown)).toEqual([
+      { text: 'path ' },
+      { text: 'C:\\', style: 'inlineCode' },
+      { text: ' end' },
+    ]);
+  });
+
+  it('still refuses to open or close a span on an escaped backtick', () => {
+    // `\`` in prose is a literal backtick the reader saw, not a delimiter.
+    expect(allText(render('a \\` b \\` c'))).toBe('a ` b ` c');
+  });
+
+  it('still refuses a closing run longer than the opening one', () => {
+    // CommonMark pairs equal-length runs only; `` ` `` never closes against ``` `` ```.
+    expect(allText(render('a `b`` c'))).toBe('a `b`` c');
+  });
 });
