@@ -11,7 +11,7 @@ generator/evaluator separation.
 | First time mapping a provider's live conversation DOM this session | `explorer` | sub-agent | Recommended |
 | Target area spans >5 files, or output would flood context (>20 lines) | `explorer` | sub-agent | Recommended |
 | Implementation run in parallel/batch (`task-next --all`, worktree isolation), or spanning >5 files | `implementer` | sub-agent | Recommended |
-| After any implementation | `qa-verifier` | sub-agent | **Mandatory** — whoever implemented must not self-verify |
+| After any implementation | `qa-verifier` | sub-agent | **Mandatory** — whoever implemented must not verify their own work |
 | Before a Web Store release, or a feature shipping new user-visible UI (against `docs/eval-criteria.md`) | `product-evaluator` | sub-agent | Mandatory |
 
 **The lead implements by default.** A Sprint Contract is not itself a delegation trigger — an
@@ -22,11 +22,17 @@ Nothing here is path-blocking (no critical-path hook) — this is a client-side 
 server, auth, or migrations. The one hard rule is generator ≠ evaluator: whoever wrote the code does
 not grade it.
 
-**Changing a trigger means changing it in four places.** A routing rule is duplicated across the
-table above, the `## Delegation` summary in `AGENTS.md`, the matching step in `docs/workflows.md`
-(Steps 3–5), and the spawning agent's own `description:` in `.claude/agents/{agent}.md` — an agent
-routes off whichever it reads first, so a partial edit produces silently contradictory routing.
-Grep the agent name across all four before considering the change done.
+**This table is the owner; two other places restate it, and a test holds them together.** A
+routing rule has to read the same in the matching step of `docs/workflows.md` (Steps 1, 3–5) and in
+the spawning agent's own `description:` in `.claude/agents/{agent}.md` — an agent routes off
+whichever it reads first, so a partial edit produced silently contradictory routing. `AGENTS.md`
+used to carry a fourth copy; it now points here instead.
+
+`test/harness/routing-consistency.test.ts` pins the discriminating phrase of each trigger — the
+phrases live only in that test's `ROLES` list, deliberately not restated in this prose — and fails
+unless each one appears in all three places *and* in the table above. Changing a trigger therefore means changing the table, the
+workflow step, the agent description, and the phrase list in that test — and touching only one of
+them is RED, not silent drift.
 
 ## Spawn Prompt Contract (four fields)
 

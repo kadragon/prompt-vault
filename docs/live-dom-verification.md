@@ -95,6 +95,23 @@ and re-read its config rather than assuming the flags below.
 
 ## The loop
 
+**Step 0 — enumerate the whole measurable set BEFORE asking anyone to log in, and state it.** A
+logged-in session is a resource the user supplied by hand; it is not repeatable on demand. So the
+session is scoped once, up front, not discovered one measurement at a time. List, in the first
+message of the session:
+
+- every open `[VERIFY]` item in `tasks.md` and every measurement-blocked item in `backlog.md`,
+  named individually;
+- every number in the *Re-measure these numbers* table above that this session's provider relies on;
+- every selector changed in that provider's `selectors.ts` since its last recorded stamp.
+
+Then work that list to exhaustion in the one session, and close by reporting each entry as
+**measured / unmeasurable (with the reason) / out of scope**. Do not stop after the item that
+prompted the session and wait to be asked for the next one — the standing failure mode here is a
+session that ends with the user having to ask whether anything is left to measure, which costs
+another login. An entry needing a conversation that does not exist in the account is not a blocker
+either: create that conversation and measure it, rather than deferring the entry.
+
 1. User logs in; navigate to the target page (conversation, `#history` sidebar, or a project home
    page `/g/g-p-…/project`).
 2. `browser_evaluate` a **self-contained** snippet that re-runs the shipped logic: copy the selector
@@ -103,6 +120,8 @@ and re-read its config rather than assuming the flags below.
 3. Return **counts, ids, and booleans — never conversation text.** Keeps the evidence small and
    keeps private content out of the transcript.
 4. Compare against ground truth visible on the page (sidebar count, turn count, titles).
+5. Return to the Step 0 list and take the next unmeasured entry. The session ends when every entry
+   is measured or has a stated reason it cannot be — not when the first one is answered.
 
 ## When the user drives their own browser
 
