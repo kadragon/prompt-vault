@@ -571,9 +571,15 @@ describe('serializer/renderer fidelity — review-panel regressions', () => {
     ]);
   });
 
-  it('still refuses to open or close a span on an escaped backtick', () => {
+  it('still refuses to open a span on an escaped backtick', () => {
     // `\`` in prose is a literal backtick the reader saw, not a delimiter.
     expect(allText(render('a \\` b \\` c'))).toBe('a ` b ` c');
+  });
+
+  it('lets an escaped backtick close a span, as CommonMark requires', () => {
+    // The other half of the rule the lookbehind used to break: a code span has no
+    // escapes inside it, so the `\`` that ends this body is the closing fence.
+    expect(runs('a `b \\` c')).toEqual([{ text: 'a ' }, { text: 'b \\', style: 'inlineCode' }, { text: ' c' }]);
   });
 
   it('still refuses a closing run longer than the opening one', () => {

@@ -701,8 +701,8 @@ interface Image {
 function matchImage(text: string, at: number): Image | null {
   const close = matchBracket(text, at + 1, '[', ']');
   if (close === -1 || text[close + 1] !== '(') return null;
-  // The serializer wraps a src holding whitespace or unbalanced parens the same way it
-  // wraps an href, so the destination has both spellings here too.
+  // The serializer wraps a src holding unbalanced parens the same way it wraps an
+  // href, so the destination has both spellings here too.
   const angle = matchAngleDestination(text, close + 2);
   const srcEnd = angle ? angle.end : matchBracket(text, close + 1, '(', ')');
   if (srcEnd === -1) return null;
