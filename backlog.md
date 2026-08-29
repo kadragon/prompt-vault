@@ -30,22 +30,34 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
-### PR #83 review (link/image destination edge cases, 2026-08-29)
+### PR #85 review (inline values a destination fix does not reach, 2026-08-29)
 
-> Out-of-scope findings from the PR #83 panel. Both are pre-existing and hit the `a` and `img`
-> paths identically, so neither was introduced by that PR's `img` fix.
+> Out-of-scope findings from the PR #85 panel. Both are pre-existing: that PR escaped the two
+> values it owned — the destination and the anchor's fallback label — and these are the inline
+> values sitting beside them.
 
-- [ ] [FIX] A destination holding both `>` and an unbalanced `)` still truncates.
-      `linkDestination` (`src/core/html-to-markdown.ts`) leaves such a URL bare — the angle wrapper
-      would be closed early by the `>` — so `<img src="https://e.com/a>b)c" alt="q">` renders as
-      `qc)` and `<a href="…">t</a>` as `tc)`. CommonMark has no spelling that survives both, so the
-      fix is percent-encoding the `>` (or the parens) rather than choosing between the two forms.
-      Found by the PR #83 review panel (contract QA).
-- [ ] [FIX] An unescaped `|` inside a link or image destination breaks the table row it sits in.
-      `escapeCellPipes` covers cell text and code bodies, but a destination is emitted by
-      `linkDestination`/the `img` case after that escaping decision, so `| ![z](https://e.com/a|b) |`
-      tears the row. Same before and after PR #83, and for links as well as images. Found by the
-      PR #83 review panel (contract QA).
+- [ ] [FIX] An `img` alt is emitted raw whenever the `src` is usable, so it corrupts the markup
+      around it exactly as an unescaped destination did. `<img src="https://e.com/a" alt="x|y">`
+      in a table cell serializes to `| ![x|y](https://e.com/a) |`, which GFM splits into two cells
+      against a one-column delimiter row; an alt holding `[`/`]` breaks the image out of its own
+      brackets (`![a]b](…)`). Only the destination-less branch escapes the alt today
+      (`src/core/html-to-markdown.ts` → the `img` case). The alt is display text, so it wants
+      `escapeMarkdownText`, not the destination's percent-encoding. Found by the PR #85 review
+      panel (code-review, twice independently).
+- [ ] [FIX] A destination *starting* with `<` degrades the whole link to literal text.
+      CommonMark forbids a bare destination from starting with `<` and the unclosed angle form
+      fails too, so `href="<https://e.com/a"` with balanced parens — which `linkDestination` sends
+      out bare — has no valid spelling until the wrapper/encode path takes it. Pre-existing and
+      explicitly out of scope for PR #85, but that PR's comment ("a bare destination may hold an
+      angle bracket") now blesses the position-0 case it does not cover. Found by the PR #85
+      review panel (code-review).
+- [ ] [FIX] A `\` in a *bare* destination is still eaten by the reader. The wrapper now
+      percent-encodes it, but the balanced-paren path returns before that, so
+      `https://e.com/a\|b` in a table cell emits `https://e.com/a\%7Cb` and a CommonMark
+      reader resolves `\%` to a literal `%` — the backslash is dropped and the destination
+      silently differs from the page's. Same class as the pre-existing `\%20` from the
+      whitespace pass, marginally widened by PR #85. The row still survives, so no criterion
+      breaks. Fix is encoding `\` in the bare form too. Found by the PR #85 contract QA.
 
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 

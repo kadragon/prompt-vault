@@ -367,8 +367,54 @@ describe('serialization fidelity', () => {
   });
 
   it('leaves a destination containing an angle bracket bare rather than corrupting it', () => {
-    // `>` would close the wrapper early; the URL has no valid spelling either way.
+    // A bare destination may hold angle brackets — only the wrapper is closed early by them,
+    // and balanced parens mean no wrapper is needed here.
     expect(md('<p><a href="https://e.com/a>b c">t</a></p>')).toBe('[t](https://e.com/a>b%20c)');
+  });
+
+  it('percent-encodes an angle bracket when the destination must be wrapped', () => {
+    // Both defects at once: the unbalanced `)` forces the angle wrapper, and a `>` inside
+    // would close that wrapper early. Neither bare nor wrapped survives as written, so the
+    // `>` is percent-encoded and the wrapper does its job.
+    expect(md('<p><a href="https://e.com/a>b)c">t</a></p>')).toBe('[t](<https://e.com/a%3Eb)c>)');
+    expect(md('<p><img src="https://e.com/a>b)c" alt="q"></p>')).toBe('![q](<https://e.com/a%3Eb)c>)');
+    expect(md('<p><a href="https://e.com/a<b)c">t</a></p>')).toBe('[t](<https://e.com/a%3Cb)c>)');
+  });
+
+  it('percent-encodes a pipe in a destination inside a table cell', () => {
+    // A GFM row is split on its unescaped `|` before any inline parsing, so a pipe in a
+    // destination tears the row. The destination is emitted after the cell-text escaping
+    // decision, so it encodes its own.
+    expect(md('<table><tr><td><img src="https://e.com/a|b" alt="z"></td></tr></table>')).toBe(
+      '| ![z](https://e.com/a%7Cb) |\n| --- |',
+    );
+    expect(md('<table><tr><td><a href="https://e.com/a|b">t</a></td></tr></table>')).toBe(
+      '| [t](https://e.com/a%7Cb) |\n| --- |',
+    );
+  });
+
+  it('leaves a pipe in a destination alone outside a table', () => {
+    expect(md('<p><a href="https://e.com/a|b">t</a></p>')).toBe('[t](https://e.com/a|b)');
+  });
+
+  it('percent-encodes a backslash when the destination must be wrapped', () => {
+    // Inside the angle form a `\` escapes the punctuation after it, so a destination
+    // ending in one swallows the closing `>` and the link never terminates.
+    expect(md('<p><a href="https://e.com/a)b\\">t</a></p>')).toBe('[t](<https://e.com/a)b%5C>)');
+    // A non-terminal one is eaten just as quietly: `\-` reads back as `-`.
+    expect(md('<p><a href="https://e.com/a)b\\-c">t</a></p>')).toBe('[t](<https://e.com/a)b%5C-c>)');
+  });
+
+  it('escapes an anchor label that falls back to the href', () => {
+    // An anchor whose content is an icon serializes to no label and the href stands in
+    // for it. As visible text it is prose: a `|` would split the row it sits in, and a
+    // bracket or backtick would corrupt the markup around it.
+    expect(md('<table><tr><td><a href="https://e.com/a|b"></a></td></tr></table>')).toBe(
+      '| [https://e.com/a\\|b](https://e.com/a%7Cb) |\n| --- |',
+    );
+    expect(md('<p><a href="https://e.com/a[b]c"></a></p>')).toBe(
+      '[https://e.com/a\\[b\\]c](https://e.com/a[b]c)',
+    );
   });
 });
 

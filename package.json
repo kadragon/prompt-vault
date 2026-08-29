@@ -1,6 +1,6 @@
 {
   "name": "prompt-vault",
-  "version": "1.13.4",
+  "version": "1.13.5",
   "private": true,
   "type": "module",
   "description": "Back up ChatGPT, Claude, and Gemini chats to local Markdown, PDF, JSON, or HTML files.",
