@@ -30,23 +30,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
-### PR #83 review (link/image destination edge cases, 2026-08-29)
-
-> Out-of-scope findings from the PR #83 panel. Both are pre-existing and hit the `a` and `img`
-> paths identically, so neither was introduced by that PR's `img` fix.
-
-- [ ] [FIX] A destination holding both `>` and an unbalanced `)` still truncates.
-      `linkDestination` (`src/core/html-to-markdown.ts`) leaves such a URL bare — the angle wrapper
-      would be closed early by the `>` — so `<img src="https://e.com/a>b)c" alt="q">` renders as
-      `qc)` and `<a href="…">t</a>` as `tc)`. CommonMark has no spelling that survives both, so the
-      fix is percent-encoding the `>` (or the parens) rather than choosing between the two forms.
-      Found by the PR #83 review panel (contract QA).
-- [ ] [FIX] An unescaped `|` inside a link or image destination breaks the table row it sits in.
-      `escapeCellPipes` covers cell text and code bodies, but a destination is emitted by
-      `linkDestination`/the `img` case after that escaping decision, so `| ![z](https://e.com/a|b) |`
-      tears the row. Same before and after PR #83, and for links as well as images. Found by the
-      PR #83 review panel (contract QA).
-
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*

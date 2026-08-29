@@ -484,7 +484,7 @@ function serializeInlineElement(el: Element, inTable = false): string {
     case 'a': {
       const href = (el.getAttribute('href') ?? '').trim();
       const text = serializeInline(el, undefined, inTable).trim() || href;
-      return href ? `[${text}](${linkDestination(href)})` : text;
+      return href ? `[${text}](${linkDestination(href, inTable)})` : text;
     }
     case 'img': {
       // Same destination rules as the `a` case above: written bare, a src holding an
@@ -492,7 +492,7 @@ function serializeInlineElement(el: Element, inTable = false): string {
       // — `linkDestination` wraps the first and percent-encodes the second.
       const src = (el.getAttribute('src') ?? '').trim();
       const alt = el.getAttribute('alt') ?? '';
-      if (src) return `![${alt}](${linkDestination(src)})`;
+      if (src) return `![${alt}](${linkDestination(src, inTable)})`;
       // No usable destination: keep the alt as prose rather than dropping it, the way
       // the `a` case keeps its label. It is source text now, not markup, so it is
       // escaped at this boundary — the surrounding `![...]` no longer protects it.
@@ -516,17 +516,26 @@ function serializeInlineElement(el: Element, inTable = false): string {
 // one (`…/a)b`) is silently truncated by any CommonMark parser, this project's PDF
 // renderer included. Whitespace has the same problem. CommonMark provides the
 // angle-bracket form for exactly these, so wrap when the destination needs it.
-function linkDestination(href: string): string {
+// `inTable` says the destination lands in a GFM cell, where a literal `|` would split
+// the row before the link is ever parsed.
+function linkDestination(href: string, inTable = false): string {
   // Whitespace cannot survive in a destination in any form: the bare one ends at the
   // first space, and CommonMark forbids a newline even inside the angle brackets — a
   // wrapped newline would also split the link across two lines when the PDF renderer
   // re-splits the document. Percent-encode instead, which is the standard spelling and
   // keeps the link clickable.
-  const single = href.replace(/\s+/g, '%20');
-  // A `<` or `>` inside the destination would close the wrapper early — such a URL
-  // has no valid spelling either way, so leave it bare rather than corrupt it.
-  if (hasBalancedParens(single) || /[<>]/.test(single)) return single;
-  return `<${single}>`;
+  const spaced = href.replace(/\s+/g, '%20');
+  // A GFM row is split on its unescaped `|` before any inline parsing, so a pipe here
+  // tears the row it sits in. The destination is emitted after the cell-text escaping
+  // decision (`escapeCellPipes`), so it has to encode its own — and percent-encoding,
+  // not a backslash, because the PDF renderer only unescapes a code body.
+  const single = inTable ? spaced.replace(/\|/g, '%7C') : spaced;
+  // A bare destination may hold an angle bracket, so leave one alone while it stays
+  // bare. Balanced parens are what decide that.
+  if (hasBalancedParens(single)) return single;
+  // The wrapper is now required, and a `<` or `>` inside would close it early — so
+  // percent-encode those two rather than emit a destination that truncates either way.
+  return `<${single.replace(/</g, '%3C').replace(/>/g, '%3E')}>`;
 }
 
 function hasBalancedParens(href: string): boolean {

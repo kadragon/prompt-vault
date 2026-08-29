@@ -367,8 +367,34 @@ describe('serialization fidelity', () => {
   });
 
   it('leaves a destination containing an angle bracket bare rather than corrupting it', () => {
-    // `>` would close the wrapper early; the URL has no valid spelling either way.
+    // A bare destination may hold angle brackets — only the wrapper is closed early by them,
+    // and balanced parens mean no wrapper is needed here.
     expect(md('<p><a href="https://e.com/a>b c">t</a></p>')).toBe('[t](https://e.com/a>b%20c)');
+  });
+
+  it('percent-encodes an angle bracket when the destination must be wrapped', () => {
+    // Both defects at once: the unbalanced `)` forces the angle wrapper, and a `>` inside
+    // would close that wrapper early. Neither bare nor wrapped survives as written, so the
+    // `>` is percent-encoded and the wrapper does its job.
+    expect(md('<p><a href="https://e.com/a>b)c">t</a></p>')).toBe('[t](<https://e.com/a%3Eb)c>)');
+    expect(md('<p><img src="https://e.com/a>b)c" alt="q"></p>')).toBe('![q](<https://e.com/a%3Eb)c>)');
+    expect(md('<p><a href="https://e.com/a<b)c">t</a></p>')).toBe('[t](<https://e.com/a%3Cb)c>)');
+  });
+
+  it('percent-encodes a pipe in a destination inside a table cell', () => {
+    // A GFM row is split on its unescaped `|` before any inline parsing, so a pipe in a
+    // destination tears the row. The destination is emitted after the cell-text escaping
+    // decision, so it encodes its own.
+    expect(md('<table><tr><td><img src="https://e.com/a|b" alt="z"></td></tr></table>')).toBe(
+      '| ![z](https://e.com/a%7Cb) |\n| --- |',
+    );
+    expect(md('<table><tr><td><a href="https://e.com/a|b">t</a></td></tr></table>')).toBe(
+      '| [t](https://e.com/a%7Cb) |\n| --- |',
+    );
+  });
+
+  it('leaves a pipe in a destination alone outside a table', () => {
+    expect(md('<p><a href="https://e.com/a|b">t</a></p>')).toBe('[t](https://e.com/a|b)');
   });
 });
 

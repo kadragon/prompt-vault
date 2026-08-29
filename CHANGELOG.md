@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- [done] Two link/image destination edge cases the PR #83 review panel found, both pre-existing
+  and both hitting the `a` and `img` paths alike (v1.13.5) (2026-08-29). A destination holding
+  both a `>` and an unbalanced `)` truncated either way — bare it stopped at the paren, and the
+  angle wrapper that fixes that was itself closed early by the `>`, so `https://e.com/a>b)c`
+  exported as `c)`; the wrapper now percent-encodes the angle brackets it cannot contain, while a
+  destination with balanced parens still goes out bare and unencoded. A `|` inside a destination
+  in a table cell tore the row, because a GFM row is split on its unescaped pipes before any
+  inline parsing and `escapeCellPipes` covers only cell text and code bodies — `linkDestination`
+  now percent-encodes its own, which needs no inverse in the PDF renderer.
+
 - [done] Markdown serialization fidelity: two defects the PR #82 review panel found outside that
   PR's criteria (v1.13.4) (2026-08-29). A code span whose body ended with `\` lost its styling in
   the PDF: the renderer's lookbehind refused a closing backtick preceded by a backslash, but
