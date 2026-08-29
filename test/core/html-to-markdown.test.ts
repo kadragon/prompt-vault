@@ -340,6 +340,32 @@ describe('serialization fidelity', () => {
     expect(md('<p><a href="https://e.com/a(b)c">t</a></p>')).toBe('[t](https://e.com/a(b)c)');
   });
 
+  it('wraps an image destination holding an unbalanced paren in angle brackets', () => {
+    // The `img` src needs the same treatment as an `a` href: bare, it truncates at the
+    // first unbalanced `)` and the reader loses the rest of the URL.
+    expect(md('<p><img src="https://e.com/a)b" alt="x"></p>')).toBe('![x](<https://e.com/a)b>)');
+  });
+
+  it('percent-encodes whitespace in an image destination', () => {
+    expect(md('<p><img src="https://e.com/a b" alt="x"></p>')).toBe('![x](https://e.com/a%20b)');
+  });
+
+  it('keeps the alt text of an image whose src is whitespace only', () => {
+    // No destination survives the trim, so the markup goes — but the alt is what the
+    // browser showed for that broken image, and it is escaped on the way out because
+    // it is prose now rather than a bracketed label.
+    expect(md('<p><img src="   " alt="a [chart]"></p>')).toBe('a \\[chart\\]');
+    expect(md('<p><img src="   " alt=""></p>')).toBe('');
+  });
+
+  it('escapes a block marker in the alt text of a destination-less image', () => {
+    // The fallback starts its paragraph, so an alt of `- item` would export as a list
+    // and a multi-line alt could start a marker on the second line.
+    expect(md('<p><img src="   " alt="- item"></p>')).toBe('\\- item');
+    expect(md('<p><img src="   " alt="# head"></p>')).toBe('\\# head');
+    expect(md('<p><img src="   " alt="a&#10;- b"></p>')).toBe('a - b');
+  });
+
   it('leaves a destination containing an angle bracket bare rather than corrupting it', () => {
     // `>` would close the wrapper early; the URL has no valid spelling either way.
     expect(md('<p><a href="https://e.com/a>b c">t</a></p>')).toBe('[t](https://e.com/a>b%20c)');

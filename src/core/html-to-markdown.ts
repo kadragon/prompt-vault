@@ -487,9 +487,21 @@ function serializeInlineElement(el: Element, inTable = false): string {
       return href ? `[${text}](${linkDestination(href)})` : text;
     }
     case 'img': {
-      const src = el.getAttribute('src') ?? '';
+      // Same destination rules as the `a` case above: written bare, a src holding an
+      // unbalanced paren truncates at it and one holding whitespace ends at the space
+      // — `linkDestination` wraps the first and percent-encodes the second.
+      const src = (el.getAttribute('src') ?? '').trim();
       const alt = el.getAttribute('alt') ?? '';
-      return src ? `![${alt}](${src})` : '';
+      if (src) return `![${alt}](${linkDestination(src)})`;
+      // No usable destination: keep the alt as prose rather than dropping it, the way
+      // the `a` case keeps its label. It is source text now, not markup, so it is
+      // escaped at this boundary — the surrounding `![...]` no longer protects it.
+      // Block markers are escaped too (`atLineStart`), because this chunk can be the
+      // first thing in its paragraph and an alt of `- item` would otherwise export as
+      // a list; line breaks are collapsed first so no marker can start a later line.
+      // A `-` that turns out to be mid-line is escaped needlessly and renders the
+      // same, the trade-off `markdown-escape.ts` already documents.
+      return escapeMarkdownText(alt.trim().replace(/\s*[\r\n]+\s*/g, ' '), true);
     }
     case 'br':
       return '\n';

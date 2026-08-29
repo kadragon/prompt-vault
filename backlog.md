@@ -30,6 +30,23 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### PR #83 review (link/image destination edge cases, 2026-08-29)
+
+> Out-of-scope findings from the PR #83 panel. Both are pre-existing and hit the `a` and `img`
+> paths identically, so neither was introduced by that PR's `img` fix.
+
+- [ ] [FIX] A destination holding both `>` and an unbalanced `)` still truncates.
+      `linkDestination` (`src/core/html-to-markdown.ts`) leaves such a URL bare — the angle wrapper
+      would be closed early by the `>` — so `<img src="https://e.com/a>b)c" alt="q">` renders as
+      `qc)` and `<a href="…">t</a>` as `tc)`. CommonMark has no spelling that survives both, so the
+      fix is percent-encoding the `>` (or the parens) rather than choosing between the two forms.
+      Found by the PR #83 review panel (contract QA).
+- [ ] [FIX] An unescaped `|` inside a link or image destination breaks the table row it sits in.
+      `escapeCellPipes` covers cell text and code bodies, but a destination is emitted by
+      `linkDestination`/the `img` case after that escaping decision, so `| ![z](https://e.com/a|b) |`
+      tears the row. Same before and after PR #83, and for links as well as images. Found by the
+      PR #83 review panel (contract QA).
+
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
@@ -84,25 +101,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 *(No open items — the sidebar-recycling `[FIX]` was closed 2026-08-10 by measurement rather than by
 a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
 The larger hazard that measurement exposed is filed above.)*
-
-### PR #82 review (Markdown serialization fidelity, 2026-08-28)
-
-> Out-of-scope findings from the PR #82 panel. Both sit in code the PR edited but
-> outside its acceptance criteria.
-
-- [ ] [FIX] A code span whose body ends with a backslash loses its styling in the PDF.
-      `INLINE_CODE_AT` in `src/export/markdown-pdf.ts` carries a `(?<![\\`])\1` lookbehind, so
-      it refuses a closing backtick preceded by `\` — but CommonMark has no escapes inside a
-      code span, so `<p>path <code>C:\</code> end</p>` serializes correctly and then renders as
-      literal ``path `C:` end``: code style lost, the backslash dropped, the backticks leaked.
-      Hits Windows paths, LaTeX and regexes. Pre-existing and untouched by PR #82, which is why
-      it was excluded there. Found by the PR #82 review panel (code-review).
-- [ ] [FIX] `serializeInlineElement`'s `img` case does not route `src` through
-      `linkDestination`, so `<img src="https://e.com/a)b">` still emits `![alt](https://e.com/a)b)`
-      and truncates at the unbalanced paren — the exact defect PR #82 fixed for the `a` case, at
-      the one call site its criterion did not name. Fixing it means teaching `matchImage` the
-      angle-bracket form the way `matchLink` was taught. Found by the PR #82 review panel
-      (contract QA).
 
 ### QA pass on the Gemini bulk/sidebar track (2026-08-20)
 
