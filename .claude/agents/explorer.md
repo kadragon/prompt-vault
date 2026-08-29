@@ -1,7 +1,7 @@
 ---
 name: explorer
 description: |
-  Trigger on first-time mapping of a provider's live conversation DOM this
+  Trigger on the first time mapping a provider's live conversation DOM this
   session, OR when the target area spans >5 files. Read-only — produces a map,
   not a change. Spawn before editing an unfamiliar adapter.
 tools: Read, Grep, Glob

@@ -20,7 +20,8 @@ The primary cycle for behavioral changes.
 **Step 0: Branch** — never edit on `main`. `git checkout -b <type>/<slug>` (`feat/`, `fix/`, `refactor/`).
 
 **Step 1: Scope check** — objective delegation triggers (see `docs/delegation.md`): first time
-reading an adapter's live DOM structure, or target area >5 files → spawn `explorer` first. Else proceed.
+mapping a provider's live conversation DOM this session, or a target area spanning >5 files → spawn
+`explorer` first. Else proceed.
 
 **Step 2: Sprint Contract** — before writing code, define "done" in concrete, testable terms in
 `tasks.md`. Template + criteria in `docs/eval-criteria.md`. Approach for this repo:
@@ -30,8 +31,8 @@ reference the target site DOM / existing adapter → implement → lint/build �
 the work is run in parallel/batch (`task-next --all`, worktree isolation) or spans >5 files, handing
 it the Sprint Contract, in-scope file paths, and the lint/build command.
 
-**Step 4: QA (mandatory)** — always spawn `qa-verifier`, whether the lead or `implementer` wrote the
-change. Whoever implemented must NOT verify their own work. Verify against the Sprint Contract,
+**Step 4: QA (mandatory)** — spawn `qa-verifier` after any implementation, whether the lead or
+`implementer` wrote the change. Whoever implemented must not verify their own work. Verify against the Sprint Contract,
 including a real load-unpacked run where relevant.
 
 **Step 5: Feature-complete evaluation** — before a Web Store release, or when a feature ships new

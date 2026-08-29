@@ -21,6 +21,7 @@ All processing is local — conversation data never leaves the browser.
 | `docs/runbook.md` | For build, load-unpacked, test, and package commands |
 | `docs/live-dom-verification.md` | Before verifying selectors — or the loaded extension's own rendered UI — against the logged-in live page, or capturing a fixture |
 | `docs/store-listing.md` | Before preparing or updating a Chrome Web Store submission |
+| `docs/harness-log.md` | When auditing the harness, or before changing a rule a past edit predicted |
 | `docs/PRIVACY.md` | Before changing data handling, permissions, or store privacy disclosures |
 
 ## Golden Principles
@@ -43,20 +44,18 @@ Invariants that, if broken, cause the most damage. Keep them true.
 
 ## Delegation
 
-Read `docs/delegation.md` for the routing table and Spawn Prompt Contract. Solo/greenfield repo —
-**the lead implements by default**; a Sprint Contract is not a delegation trigger. Objective triggers
-to delegate: target area >5 files or first exploration of an adapter's DOM structure → `explorer`;
-parallel/batch or >5-file implementation → `implementer`; after any implementation →
-`qa-verifier` (whoever implemented must NOT verify their own work); Web Store release or new
-user-visible UI → `product-evaluator`.
+`docs/delegation.md` **owns** the objective-trigger routing table and the Spawn Prompt Contract —
+read it before delegating; the triggers are deliberately not copied here (they were duplicated in
+four places and drifted). Solo/greenfield repo — **the lead implements by default**; a Sprint
+Contract is not a delegation trigger. The one hard rule, restated because it is never optional:
+whoever implemented must not verify their own work.
 
 ## Token Economy
 
-1. Do not re-read a file already read this session; re-check only the changed region.
-2. Do not call tools to confirm what you already know.
-3. Run independent tool calls in parallel.
-4. Delegate analysis that would flood context (>20 lines of raw output); keep only the conclusion.
-5. Do not restate the user's message.
+1. Do not re-read a file already read this session, and do not call a tool to confirm what you
+   already know; re-check only the changed region.
+2. Delegate analysis that would flood context (>20 lines of raw output); keep only the conclusion.
+3. Do not restate the user's message.
 
 ## Working with Existing Code
 
@@ -68,8 +67,9 @@ user-visible UI → `product-evaluator`.
 
 ## Language Policy
 
-- Code, commits, comments, docs: English.
 - User-facing UI strings: English first; Korean when i18n is added.
+- Korean *prose* shipped to users — store listing copy, release/announcement posts — goes through
+  the `humanize-korean` skill before it lands. Drafting it inline reads as machine-translated.
 
 ## Maintenance
 
