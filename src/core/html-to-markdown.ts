@@ -483,7 +483,13 @@ function serializeInlineElement(el: Element, inTable = false): string {
       return inlineCode(el.textContent ?? '', inTable);
     case 'a': {
       const href = (el.getAttribute('href') ?? '').trim();
-      const text = serializeInline(el, undefined, inTable).trim() || href;
+      // An anchor whose content is an icon or an empty `<span>` serializes to no
+      // label, and the href stands in for it — as the visible label it is prose now,
+      // not a destination, so it is escaped at this boundary the way the
+      // destination-less `img` case escapes its alt. Unescaped it leaks whatever the
+      // URL holds into the document: a `|` splits the table row the link sits in, and
+      // a `[`/`]` or a backtick corrupts the markup around it.
+      const text = serializeInline(el, undefined, inTable).trim() || escapeMarkdownText(href);
       return href ? `[${text}](${linkDestination(href, inTable)})` : text;
     }
     case 'img': {
@@ -528,15 +534,20 @@ function linkDestination(href: string, inTable = false): string {
   // A GFM row is split on its unescaped `|` before any inline parsing, so a pipe here
   // tears the row it sits in. The destination is emitted after the cell-text escaping
   // decision (`escapeCellPipes`), so it has to encode its own — and percent-encoding,
-  // not a backslash, because the PDF renderer only unescapes a code body.
+  // not a backslash, because neither reader unescapes a destination on the way back in.
   const single = inTable ? spaced.replace(/\|/g, '%7C') : spaced;
   // A bare destination may hold an angle bracket, so leave one alone while it stays
   // bare. Balanced parens are what decide that.
   if (hasBalancedParens(single)) return single;
-  // The wrapper is now required, and a `<` or `>` inside would close it early — so
-  // percent-encode those two rather than emit a destination that truncates either way.
-  return `<${single.replace(/</g, '%3C').replace(/>/g, '%3E')}>`;
+  // The wrapper is now required, and three characters inside would defeat it: `<` and
+  // `>` close it early, and a `\` escapes the punctuation after it, so a destination
+  // ending in one swallows the closing `>` and the link never terminates. Percent-encode
+  // all three rather than emit a destination that truncates either way.
+  return `<${single.replace(/[\\<>]/g, (ch) => ANGLE_ESCAPES[ch])}>`;
 }
+
+// The three characters that cannot appear literally inside an angle destination.
+const ANGLE_ESCAPES: Record<string, string> = { '<': '%3C', '>': '%3E', '\\': '%5C' };
 
 function hasBalancedParens(href: string): boolean {
   let depth = 0;

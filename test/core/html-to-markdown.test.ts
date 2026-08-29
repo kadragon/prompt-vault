@@ -396,6 +396,26 @@ describe('serialization fidelity', () => {
   it('leaves a pipe in a destination alone outside a table', () => {
     expect(md('<p><a href="https://e.com/a|b">t</a></p>')).toBe('[t](https://e.com/a|b)');
   });
+
+  it('percent-encodes a backslash when the destination must be wrapped', () => {
+    // Inside the angle form a `\` escapes the punctuation after it, so a destination
+    // ending in one swallows the closing `>` and the link never terminates.
+    expect(md('<p><a href="https://e.com/a)b\\">t</a></p>')).toBe('[t](<https://e.com/a)b%5C>)');
+    // A non-terminal one is eaten just as quietly: `\-` reads back as `-`.
+    expect(md('<p><a href="https://e.com/a)b\\-c">t</a></p>')).toBe('[t](<https://e.com/a)b%5C-c>)');
+  });
+
+  it('escapes an anchor label that falls back to the href', () => {
+    // An anchor whose content is an icon serializes to no label and the href stands in
+    // for it. As visible text it is prose: a `|` would split the row it sits in, and a
+    // bracket or backtick would corrupt the markup around it.
+    expect(md('<table><tr><td><a href="https://e.com/a|b"></a></td></tr></table>')).toBe(
+      '| [https://e.com/a\\|b](https://e.com/a%7Cb) |\n| --- |',
+    );
+    expect(md('<p><a href="https://e.com/a[b]c"></a></p>')).toBe(
+      '[https://e.com/a\\[b\\]c](https://e.com/a[b]c)',
+    );
+  });
 });
 
 // Regressions the PR #82 review panel found in the first pass of these fixes.

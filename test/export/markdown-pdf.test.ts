@@ -497,6 +497,19 @@ describe('serializer/renderer fidelity', () => {
     expect(runs(markdown)).toEqual([{ text: 't', link: 'https://e.com/a)b', style: 'link' }]);
   });
 
+  it('reads the percent-encodings the serializer puts inside an angle destination back verbatim', () => {
+    // `linkDestination` percent-encodes `<`, `>` and `\` rather than backslash-escaping
+    // them, on the stated invariant that neither reader unescapes a destination on the
+    // way back in. Pin it: the renderer must hand pdfmake the encoded characters
+    // untouched, so the URL the reader clicks is the one the page had.
+    const markdown = md('<p><a href="https://e.com/a)b\\">t</a></p>');
+    expect(markdown).toBe('[t](<https://e.com/a)b%5C>)');
+    expect(runs(markdown)).toEqual([{ text: 't', link: 'https://e.com/a)b%5C', style: 'link' }]);
+
+    const angled = md('<p><a href="https://e.com/a>b)c">t</a></p>');
+    expect(runs(angled)).toEqual([{ text: 't', link: 'https://e.com/a%3Eb)c', style: 'link' }]);
+  });
+
   it('shows a table whose every cell is empty instead of dropping it', () => {
     // `tableNode` cannot build a grid with zero columns, but a silently vanished
     // block is the empty output Golden Principle #4 rules out — so the rows fall
