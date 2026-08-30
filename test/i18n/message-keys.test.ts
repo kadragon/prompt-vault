@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const STRINGS_PATH = join(REPO_ROOT, 'src', 'strings.ts');
+const MANIFEST_PATH = join(REPO_ROOT, 'manifest.config.ts');
 const LOCALES_DIR = join(REPO_ROOT, 'public', '_locales');
 // Enumerated, not hardcoded: a new locale directory is gated the moment it is added,
 // which is the only thing standing between a half-translated catalog and a Chrome Web
@@ -44,11 +45,23 @@ function extractReferencedKeys(source: string): string[] {
   return [...keys];
 }
 
+// The manifest resolves its own strings through `__MSG_key__` substitution, never through
+// m(), so scanning src/strings.ts alone leaves appName/appDesc ungated — and those are the
+// two strings a Web Store visitor reads in their own language. A locale that copied the
+// English appDesc would have passed green and shipped an English store description under a
+// native listing.
+function extractManifestKeys(source: string): string[] {
+  return [...new Set([...source.matchAll(/__MSG_(\w+)__/g)].map((match) => match[1]))];
+}
+
 function placeholderKeys(entry: MessageEntry | undefined): string[] {
   return Object.keys(entry?.placeholders ?? {}).sort();
 }
 
-const referencedKeys = extractReferencedKeys(readFileSync(STRINGS_PATH, 'utf8'));
+const manifestKeys = extractManifestKeys(readFileSync(MANIFEST_PATH, 'utf8'));
+const referencedKeys = [
+  ...new Set([...extractReferencedKeys(readFileSync(STRINGS_PATH, 'utf8')), ...manifestKeys]),
+];
 const locales = readdirSync(LOCALES_DIR, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
@@ -64,6 +77,10 @@ const localeKeyPairs = locales.flatMap((locale) =>
 describe('i18n message-key safety', () => {
   it('finds referenced keys in src/strings.ts (guard against a broken scan)', () => {
     expect(referencedKeys.length).toBeGreaterThan(0);
+  });
+
+  it('finds the manifest __MSG_ keys (guard against a broken scan)', () => {
+    expect(manifestKeys).toEqual(expect.arrayContaining(['appName', 'appDesc']));
   });
 
   it('discovers the shipped locale catalogs, including the default_locale', () => {

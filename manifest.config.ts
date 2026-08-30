@@ -31,12 +31,13 @@ const HOSTS = [
 
 export default defineManifest({
   manifest_version: 3,
-  // name/description resolve via chrome.i18n against _locales/{en,ko}/messages.json
+  // name/description resolve via chrome.i18n against _locales/<locale>/messages.json
   // so Chrome shows a proper, localized display name instead of the package slug.
   name: '__MSG_appName__',
   version: pkg.version,
   description: '__MSG_appDesc__',
-  // UI strings resolve via chrome.i18n against _locales/{en,ko}/messages.json,
+  // UI strings resolve via chrome.i18n against _locales/<locale>/messages.json (en, ko,
+  // ja, zh_CN, zh_TW),
   // keyed to the browser's UI language. No extra permission needed.
   default_locale: 'en',
   // Toolbar/extension-list icons. crxjs copies public/ into dist/ verbatim, so

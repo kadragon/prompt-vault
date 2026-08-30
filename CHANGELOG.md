@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- [done] Japanese, Simplified Chinese and Traditional Chinese UI, plus their store listings
+  (v1.14.0) (2026-08-30). The Chinese listing copy written first could never have been
+  registered: the Web Store dashboard offers a localized listing only for the locales the
+  extension itself supports, so a listing locale is downstream of a `public/_locales` catalog,
+  never a substitute for one — with `en` and `ko` alone, Chinese was absent from the dashboard
+  and from the store page's language list. Three catalogs (`ja`, `zh_CN`, `zh_TW`, 46 keys each)
+  now ship, authored in each language rather than translated line by line, and the four existing
+  listings dropped the claim that the interface was English and Korean only. Listing copy moved
+  to `docs/store-listing/{en,ko,zh_CN,zh_TW,ja}.md`, one file per locale. The i18n gate stopped
+  hardcoding `en`/`ko`: it enumerates the locale directories, asserts placeholder parity against
+  `en`, and fails any catalog that leaves a translatable message in English. The pre-release
+  evaluation then caught that the gate scanned only `m()` call sites, leaving `appName`/`appDesc`
+  — the two strings a store visitor reads in their own language — ungated; it now also scans the
+  manifest's `__MSG_` references. No adapter, manifest, permission, or export-format change.
+
 - [done] Two link/image destination edge cases the PR #83 review panel found, both pre-existing
   and both hitting the `a` and `img` paths alike (v1.13.5) (2026-08-29). A destination holding
   both a `>` and an unbalanced `)` truncated either way — bare it stopped at the paren, and the
