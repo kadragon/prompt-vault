@@ -1,6 +1,7 @@
 // Central store for user-facing UI strings. Strings resolve through
 // chrome.i18n.getMessage(), which selects the message keyed to the browser's UI
-// language from the catalog in _locales/{en,ko}/messages.json. No page-detection
+// language from the catalog in _locales/<locale>/messages.json (en, ko, ja, zh_CN,
+// zh_TW; en is the default_locale fallback). No page-detection
 // or in-app toggle — locale follows the browser, per chrome.i18n's native behavior.
 
 const m = (key: string, substitutions?: string[]): string => chrome.i18n.getMessage(key, substitutions);

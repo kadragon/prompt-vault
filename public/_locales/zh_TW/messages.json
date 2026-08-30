@@ -1,0 +1,230 @@
+{
+  "appName": {
+    "message": "Prompt Vault — AI 對話備份",
+    "description": "Extension display name shown in the Chrome toolbar and extensions list."
+  },
+  "appDesc": {
+    "message": "把 ChatGPT、Claude、Gemini 的對話存成電腦裡的 Markdown、PDF、JSON 或 HTML 檔案。內容不會離開瀏覽器。",
+    "description": "Extension description shown in the Chrome Web Store and extensions list."
+  },
+  "downloadMdLabel": {
+    "message": "MD",
+    "description": "Label for the Markdown export button."
+  },
+  "downloadPdfLabel": {
+    "message": "PDF",
+    "description": "Label for the PDF export button."
+  },
+  "downloadJsonLabel": {
+    "message": "JSON",
+    "description": "Label for the JSON export button."
+  },
+  "downloadHtmlLabel": {
+    "message": "HTML",
+    "description": "Label for the HTML export button."
+  },
+  "downloadMdAriaLabel": {
+    "message": "把對話下載成 Markdown",
+    "description": "Accessible name for the Markdown export button."
+  },
+  "downloadPdfAriaLabel": {
+    "message": "把對話下載成 PDF",
+    "description": "Accessible name for the PDF export button."
+  },
+  "downloadJsonAriaLabel": {
+    "message": "把對話下載成 JSON",
+    "description": "Accessible name for the JSON export button."
+  },
+  "downloadHtmlAriaLabel": {
+    "message": "把對話下載成 HTML",
+    "description": "Accessible name for the HTML export button."
+  },
+  "exportNoAdapterMessage": {
+    "message": "這個頁面不是支援的對話，沒有東西可以匯出。",
+    "description": "Shown when the current page is not a recognized conversation."
+  },
+  "exportFailedMessage": {
+    "message": "無法匯出這則對話，請再試一次。",
+    "description": "Generic fallback for an unexpected export failure."
+  },
+  "exportEmptyMessage": {
+    "message": "這則對話沒有任何訊息，沒有東西可以匯出。",
+    "description": "Shown when extraction returns a conversation with no messages."
+  },
+  "downloadBulkLabel": {
+    "message": "批次",
+    "description": "Label for the toolbar button that opens the bulk-export panel."
+  },
+  "downloadBulkAriaLabel": {
+    "message": "匯出多則對話",
+    "description": "Accessible name for the bulk-export toolbar button."
+  },
+  "downloadProjectBulkLabel": {
+    "message": "全部下載",
+    "description": "Label for the trigger that bulk-downloads a project's conversations."
+  },
+  "downloadProjectBulkAriaLabel": {
+    "message": "下載這個專案裡的所有對話",
+    "description": "Accessible name for the project bulk-download trigger."
+  },
+  "downloadRecentsBulkAriaLabel": {
+    "message": "下載所有最近的對話",
+    "description": "Accessible name for the bulk-download trigger on the full history page."
+  },
+  "bulkPanelTitle": {
+    "message": "匯出多則對話",
+    "description": "Title of the bulk-export selection panel."
+  },
+  "bulkPanelFormatLabel": {
+    "message": "格式",
+    "description": "Label for the format picker in the bulk-export panel."
+  },
+  "bulkPanelSelectAll": {
+    "message": "全選",
+    "description": "Select-all control in the bulk-export panel."
+  },
+  "bulkPanelCancel": {
+    "message": "取消",
+    "description": "Cancel button in the bulk-export panel."
+  },
+  "bulkPanelClose": {
+    "message": "關閉",
+    "description": "Close button in the bulk-export panel."
+  },
+  "bulkPanelLoadMore": {
+    "message": "載入更多",
+    "description": "Button in the bulk-export panel that loads conversations not yet rendered in the virtualized source list."
+  },
+  "bulkPanelLoadMoreBusy": {
+    "message": "載入中…",
+    "description": "Busy label on the Load more button while it scrolls the source list."
+  },
+  "bulkPanelLoadMoreDone": {
+    "message": "已載入所有對話",
+    "description": "Disabled label on the Load more button once every conversation has been loaded."
+  },
+  "bulkLoadMoreProgressMessage": {
+    "message": "正在載入對話…目前 $count$ 則",
+    "description": "Progress line while Load more walks the virtualized list. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkLoadMoreIncompleteMessage": {
+    "message": "已載入 $count$ 則對話。清單可能不完整，請再按一次「載入更多」。",
+    "description": "Shown when Load more stopped while the page-size parity check still expected another page, so the list may be short. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkEmptyMessage": {
+    "message": "找不到可以匯出的對話。",
+    "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
+  },
+  "bulkListErrorMessage": {
+    "message": "無法讀取對話清單：$error$",
+    "description": "Shown when a provider's conversation-list extraction fails before the bulk panel can render its selection list.",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkUnsupportedMessage": {
+    "message": "這個頁面不支援批次匯出。",
+    "description": "Shown when the current page's adapter does not support bulk export."
+  },
+  "bulkExportButtonLabel": {
+    "message": "匯出所選的 $count$ 則",
+    "description": "Export-button label with the current selected count.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkProgressMessage": {
+    "message": "正在匯出第 $current$ 則，共 $total$ 則：$title$",
+    "description": "In-progress line shown while a batch runs.",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "bulkSummarySaved": {
+    "message": "已儲存 $succeeded$ 則，共 $total$ 則。",
+    "description": "Final summary line after a batch: how many succeeded.",
+    "placeholders": {
+      "succeeded": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "bulkSummaryFailed": {
+    "message": "$failed$ 則失敗。",
+    "description": "Appended to the summary line when some exports failed.",
+    "placeholders": {
+      "failed": {
+        "content": "$1"
+      }
+    }
+  },
+  "coachMarkTitle": {
+    "message": "在工具列找到 Prompt Vault",
+    "description": "Heading of the first-run coach mark that points at the browser toolbar."
+  },
+  "coachMarkBody": {
+    "message": "按一下瀏覽器工具列的拼圖（擴充功能）按鈕，再把 Prompt Vault 釘選起來，之後按一下就能用。",
+    "description": "Body copy of the first-run coach mark, describing how to pin the extension."
+  },
+  "coachMarkCloseLabel": {
+    "message": "知道了",
+    "description": "Label of the button that dismisses the first-run coach mark."
+  },
+  "coachMarkAriaLabel": {
+    "message": "Prompt Vault 設定提示",
+    "description": "Accessible name of the first-run coach mark dialog."
+  },
+  "optionsTitle": {
+    "message": "prompt-vault 設定",
+    "description": "Browser-tab title of the options page."
+  },
+  "optionsHeading": {
+    "message": "工具列圖示",
+    "description": "Visible heading of the options page."
+  },
+  "optionsFormatsLabel": {
+    "message": "顯示這些匯出格式圖示",
+    "description": "Label above the format checklist on the options page."
+  },
+  "optionsBulkLabel": {
+    "message": "顯示批次匯出圖示",
+    "description": "Label for the bulk-icon toggle on the options page."
+  },
+  "optionsSavedNote": {
+    "message": "已儲存。",
+    "description": "Transient confirmation shown after a setting change is saved."
+  },
+  "optionsSaveFailedNote": {
+    "message": "無法儲存，請再試一次。",
+    "description": "Shown when persisting a setting change to storage fails."
+  },
+  "optionsMinFormatNote": {
+    "message": "至少要保留一種匯出格式。",
+    "description": "Shown when the user tries to uncheck the last remaining format."
+  }
+}

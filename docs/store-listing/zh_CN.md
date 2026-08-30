@@ -33,14 +33,16 @@ Gemini 的侧边栏都能用；ChatGPT 和 Claude 还能在项目的对话列表
   （gemini.google.com）上运行，只申请必需的权限。
 • 读不到就报错。抓不到对话内容时直接提示出错，不会让你下到一个残缺文件。
 • 图标可以自己挑。扩展程序弹窗里能逐个显示或隐藏各导出格式图标和批量导出图标。
-• 扩展程序界面只有英文和韩文，跟随浏览器语言，暂时没有中文界面。
+• 界面有中文。英文、简体中文、繁体中文、日文、韩文五种，按浏览器语言自动切换。
 
 支持的站点：ChatGPT、Claude、Gemini。三个站点都能批量导出；项目导出目前只有 ChatGPT 和
 Claude 支持。
 ```
 
-**Screenshots:** None — a Chinese-UI capture is impossible, so leave this locale empty and the English set is served.
+**Screenshots:** None yet — no capture of the Simplified Chinese UI has been taken, so this
+locale is left empty and the English set is served. Recapture in zh_CN when convenient.
 
-The extension UI ships only in English and Korean (`public/_locales` holds `en` and `ko`),
-so the last bullet says so plainly rather than translating the English listing's
-"follows your browser language" claim.
+The extension UI is localized into Simplified Chinese (`public/_locales` holds `en`, `ja`,
+`ko`, `zh_CN` and `zh_TW`), so the last bullet states the full locale list and the
+browser-language behaviour. The screenshots are still the English-UI set — they have not
+been retaken against the Chinese UI.
