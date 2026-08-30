@@ -113,7 +113,7 @@
     }
   },
   "bulkLoadMoreIncompleteMessage": {
-    "message": "已加载 $count$ 个对话。列表可能不完整，请再点一次「加载更多」。",
+    "message": "已加载 $count$ 个对话。列表可能不完整，请再点一次“加载更多”。",
     "description": "Shown when Load more stopped while the page-size parity check still expected another page, so the list may be short. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
     "placeholders": {
       "count": {
