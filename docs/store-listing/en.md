@@ -39,7 +39,8 @@ Key points:
   of a half-empty file in your downloads folder.
 • Your toolbar, your call. The extension popup shows or hides each export format icon and
   the bulk-export icon.
-• The interface is in English and Korean, and follows your browser language.
+• The interface is in English, Korean, Japanese, Simplified Chinese and Traditional
+  Chinese, and follows your browser language.
 
 Supported sites: ChatGPT, Claude and Gemini. Bulk export works on all three; project export
 works on ChatGPT and Claude.

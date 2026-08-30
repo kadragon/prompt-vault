@@ -36,7 +36,8 @@ SVG into an `Image`, `drawImage` onto a `<canvas>` at each size, read `toDataURL
 write the base64 to `public/icons/icon{size}.png` for sizes 16/32/48/128. `npm run build` copies
 `public/icons/` verbatim into `dist/icons/`; the manifest references them via `icons` (extensions
 list) and `action.default_icon` (toolbar). The display name/description are localized —
-`__MSG_appName__`/`__MSG_appDesc__` resolve from `public/_locales/{en,ko}/messages.json`.
+`__MSG_appName__`/`__MSG_appDesc__` resolve from `public/_locales/<locale>/messages.json` —
+`en`, `ko`, `ja`, `zh_CN` and `zh_TW` ship, with `en` as `default_locale`.
 
 ## Load unpacked (manual test loop)
 

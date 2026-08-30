@@ -34,14 +34,16 @@ Gemini 都可以從側邊欄開；ChatGPT 和 Claude 還能從專案的對話清
   (gemini.google.com) 上運作。
 • 讀不到就報錯。抓不到對話內容時會直接顯示錯誤，不會丟給你一個殘缺的檔案。
 • 圖示自己挑。擴充功能的彈出視窗裡，各種匯出格式的圖示和批次匯出圖示都能分別顯示或隱藏。
-• 介面目前只有英文和韓文，會跟著瀏覽器語言走（還沒有中文介面）。
+• 介面有英文、繁體中文、簡體中文、日文和韓文，會跟著瀏覽器語言走。
 
 支援的網站是 ChatGPT、Claude、Gemini。三個都能批次匯出，專案匯出目前只有 ChatGPT 和
 Claude 可以。
 ```
 
-**Screenshots:** None — a Chinese-UI capture is impossible, so leave this locale empty and the English set is served.
+**Screenshots:** None yet — the Chinese-UI screenshots have not been captured, so this locale
+falls back to the English set. Recapture them under the zh_TW UI when convenient.
 
-The extension UI ships only in English and Korean (`public/_locales` holds `en` and `ko`),
-so the last bullet says so plainly rather than translating the English listing's
-"follows your browser language" claim.
+The extension UI is localized into Traditional Chinese (`public/_locales/zh_TW`), alongside
+English, Simplified Chinese, Japanese and Korean, so the last bullet lists all five and keeps
+the English listing's "follows your browser language" claim. The screenshots are still the
+English-UI set — they have not been retaken against the zh_TW interface.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -7,14 +7,19 @@ import { dirname, join } from 'node:path';
 // returns "" (not a throw) for a missing/misspelled key, so a key typo in
 // src/strings.ts would silently ship an empty button label or empty fail-loud
 // message. This gate turns that class of typo into a red test: every key resolved
-// through m('...') in src/strings.ts must exist in BOTH locale catalogs, and the
-// two catalogs must declare identical placeholder sets per key (a placeholder
-// mismatch breaks substitution in one language only). See docs/conventions.md.
+// through m('...') in src/strings.ts must exist in EVERY shipped locale catalog, each
+// catalog must declare the same placeholder set per key as en (a placeholder mismatch
+// breaks substitution in one language only), and no catalog may leave a translatable
+// message sitting in English. See docs/conventions.md.
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const STRINGS_PATH = join(REPO_ROOT, 'src', 'strings.ts');
-const EN_PATH = join(REPO_ROOT, 'public', '_locales', 'en', 'messages.json');
-const KO_PATH = join(REPO_ROOT, 'public', '_locales', 'ko', 'messages.json');
+const LOCALES_DIR = join(REPO_ROOT, 'public', '_locales');
+// Enumerated, not hardcoded: a new locale directory is gated the moment it is added,
+// which is the only thing standing between a half-translated catalog and a Chrome Web
+// Store listing that claims to support that language. `en` is the default_locale and
+// therefore the reference every other catalog is compared against.
+const REFERENCE_LOCALE = 'en';
 
 interface MessageEntry {
   message: string;
@@ -44,23 +49,55 @@ function placeholderKeys(entry: MessageEntry | undefined): string[] {
 }
 
 const referencedKeys = extractReferencedKeys(readFileSync(STRINGS_PATH, 'utf8'));
-const en = loadCatalog(EN_PATH);
-const ko = loadCatalog(KO_PATH);
+const locales = readdirSync(LOCALES_DIR, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+const catalogs = new Map<string, Record<string, MessageEntry>>(
+  locales.map((locale) => [locale, loadCatalog(join(LOCALES_DIR, locale, 'messages.json'))]),
+);
+const reference = catalogs.get(REFERENCE_LOCALE)!;
+const localeKeyPairs = locales.flatMap((locale) =>
+  referencedKeys.map((key) => [locale, key] as const),
+);
 
 describe('i18n message-key safety', () => {
   it('finds referenced keys in src/strings.ts (guard against a broken scan)', () => {
     expect(referencedKeys.length).toBeGreaterThan(0);
   });
 
-  it.each(referencedKeys)('key "%s" exists in the en catalog', (key) => {
-    expect(en, `missing "${key}" in en/messages.json`).toHaveProperty(key);
+  it('discovers the shipped locale catalogs, including the default_locale', () => {
+    expect(locales).toContain(REFERENCE_LOCALE);
+    expect(locales.length).toBeGreaterThan(1);
   });
 
-  it.each(referencedKeys)('key "%s" exists in the ko catalog', (key) => {
-    expect(ko, `missing "${key}" in ko/messages.json`).toHaveProperty(key);
+  it.each(localeKeyPairs)('%s catalog defines key "%s"', (locale, key) => {
+    expect(catalogs.get(locale), `missing "${key}" in ${locale}/messages.json`).toHaveProperty(key);
   });
 
-  it.each(referencedKeys)('key "%s" declares matching placeholder sets across catalogs', (key) => {
-    expect(placeholderKeys(ko[key])).toEqual(placeholderKeys(en[key]));
+  it.each(localeKeyPairs)('%s key "%s" matches the en placeholder set', (locale, key) => {
+    expect(placeholderKeys(catalogs.get(locale)![key])).toEqual(placeholderKeys(reference[key]));
   });
+
+  // A catalog that copies the English message verbatim ships an untranslated string to a
+  // user whose listing promised their language. Labels that are the same in every language
+  // (format names, file extensions) are the legitimate exception.
+  const UNTRANSLATED_ALLOWED = new Set([
+    'downloadMdLabel',
+    'downloadPdfLabel',
+    'downloadJsonLabel',
+    'downloadHtmlLabel',
+  ]);
+
+  it.each(locales.filter((locale) => locale !== REFERENCE_LOCALE))(
+    '%s catalog translates every message that is not language-neutral',
+    (locale) => {
+      const copied = referencedKeys.filter(
+        (key) =>
+          !UNTRANSLATED_ALLOWED.has(key) &&
+          catalogs.get(locale)![key]?.message === reference[key]?.message,
+      );
+      expect(copied, `${locale} left these keys in English`).toEqual([]);
+    },
+  );
 });

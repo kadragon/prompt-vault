@@ -20,7 +20,7 @@ All processing is local — conversation data never leaves the browser.
 | `docs/eval-criteria.md` | When writing a Sprint Contract or evaluating a completed feature |
 | `docs/runbook.md` | For build, load-unpacked, test, and package commands |
 | `docs/live-dom-verification.md` | Before verifying selectors — or the loaded extension's own rendered UI — against the logged-in live page, or capturing a fixture |
-| `docs/store-listing.md` (+ `docs/store-listing/{en,ko,zh_CN,zh_TW}.md`) | Before preparing or updating a Chrome Web Store submission; the per-locale files hold the summary and description copy |
+| `docs/store-listing.md` (+ `docs/store-listing/{en,ko,zh_CN,zh_TW,ja}.md`) | Before preparing or updating a Chrome Web Store submission; the per-locale files hold the summary and description copy, and a listing locale requires the matching `public/_locales` catalog |
 | `docs/harness-log.md` | When auditing the harness, or before changing a rule a past edit predicted |
 | `docs/PRIVACY.md` | Before changing data handling, permissions, or store privacy disclosures |
 
@@ -67,9 +67,15 @@ whoever implemented must not verify their own work.
 
 ## Language Policy
 
-- User-facing UI strings: English first; Korean when i18n is added.
+- User-facing UI strings resolve through `chrome.i18n` from `src/strings.ts`. Five catalogs
+  ship (`en` default, plus `ko`, `ja`, `zh_CN`, `zh_TW`): a new or changed string is written in
+  English first and lands in ALL five, or `test/i18n/message-keys.test.ts` fails — an untranslated
+  key is a store listing promising a language the UI does not speak.
 - Korean *prose* shipped to users — store listing copy, release/announcement posts — goes through
   the `humanize-korean` skill before it lands. Drafting it inline reads as machine-translated.
+- Same standard, no skill, for the other locales: listing copy and UI catalogs are AUTHORED in the
+  target language, not translated line-by-line from `en`. Route each locale to its own reviewer and
+  hold the product claims fixed — the claims are the constraint, the phrasing is not.
 
 ## Maintenance
 

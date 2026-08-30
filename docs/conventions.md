@@ -75,7 +75,9 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 
 - Files/dirs: kebab-case. Types/interfaces: PascalCase. Functions/vars: camelCase.
 - Prefer TypeScript once the build tool is chosen; until then, keep functions small and typed via JSDoc.
-- User-facing strings centralized (one module) so i18n is a later drop-in, not a rewrite.
+- User-facing strings centralized in `src/strings.ts`, resolved via `chrome.i18n`. Never inline a
+  literal in a component: a string that skips the module skips the five-catalog gate and ships
+  English into four other locales.
 
 ## Privacy invariant (enforce, don't just hope)
 

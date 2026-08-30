@@ -1,0 +1,230 @@
+{
+  "appName": {
+    "message": "Prompt Vault — AI チャットのバックアップ",
+    "description": "Extension display name shown in the Chrome toolbar and extensions list."
+  },
+  "appDesc": {
+    "message": "ChatGPT・Claude・Gemini の会話を Markdown、PDF、JSON、HTML でローカルに保存します。データはブラウザの外に出ません。",
+    "description": "Extension description shown in the Chrome Web Store and extensions list."
+  },
+  "downloadMdLabel": {
+    "message": "MD",
+    "description": "Label for the Markdown export button."
+  },
+  "downloadPdfLabel": {
+    "message": "PDF",
+    "description": "Label for the PDF export button."
+  },
+  "downloadJsonLabel": {
+    "message": "JSON",
+    "description": "Label for the JSON export button."
+  },
+  "downloadHtmlLabel": {
+    "message": "HTML",
+    "description": "Label for the HTML export button."
+  },
+  "downloadMdAriaLabel": {
+    "message": "会話を Markdown でダウンロード",
+    "description": "Accessible name for the Markdown export button."
+  },
+  "downloadPdfAriaLabel": {
+    "message": "会話を PDF でダウンロード",
+    "description": "Accessible name for the PDF export button."
+  },
+  "downloadJsonAriaLabel": {
+    "message": "会話を JSON でダウンロード",
+    "description": "Accessible name for the JSON export button."
+  },
+  "downloadHtmlAriaLabel": {
+    "message": "会話を HTML でダウンロード",
+    "description": "Accessible name for the HTML export button."
+  },
+  "exportNoAdapterMessage": {
+    "message": "このページは対応している会話ではないため、エクスポートできる内容がありません。",
+    "description": "Shown when the current page is not a recognized conversation."
+  },
+  "exportFailedMessage": {
+    "message": "会話をエクスポートできませんでした。もう一度お試しください。",
+    "description": "Generic fallback for an unexpected export failure."
+  },
+  "exportEmptyMessage": {
+    "message": "この会話にはメッセージがないため、エクスポートできる内容がありません。",
+    "description": "Shown when extraction returns a conversation with no messages."
+  },
+  "downloadBulkLabel": {
+    "message": "一括",
+    "description": "Label for the toolbar button that opens the bulk-export panel."
+  },
+  "downloadBulkAriaLabel": {
+    "message": "複数の会話をエクスポート",
+    "description": "Accessible name for the bulk-export toolbar button."
+  },
+  "downloadProjectBulkLabel": {
+    "message": "すべてダウンロード",
+    "description": "Label for the trigger that bulk-downloads a project's conversations."
+  },
+  "downloadProjectBulkAriaLabel": {
+    "message": "このプロジェクトのすべての会話をダウンロード",
+    "description": "Accessible name for the project bulk-download trigger."
+  },
+  "downloadRecentsBulkAriaLabel": {
+    "message": "最近の会話をすべてダウンロード",
+    "description": "Accessible name for the bulk-download trigger on the full history page."
+  },
+  "bulkPanelTitle": {
+    "message": "複数の会話をエクスポート",
+    "description": "Title of the bulk-export selection panel."
+  },
+  "bulkPanelFormatLabel": {
+    "message": "形式",
+    "description": "Label for the format picker in the bulk-export panel."
+  },
+  "bulkPanelSelectAll": {
+    "message": "すべて選択",
+    "description": "Select-all control in the bulk-export panel."
+  },
+  "bulkPanelCancel": {
+    "message": "キャンセル",
+    "description": "Cancel button in the bulk-export panel."
+  },
+  "bulkPanelClose": {
+    "message": "閉じる",
+    "description": "Close button in the bulk-export panel."
+  },
+  "bulkPanelLoadMore": {
+    "message": "さらに読み込む",
+    "description": "Button in the bulk-export panel that loads conversations not yet rendered in the virtualized source list."
+  },
+  "bulkPanelLoadMoreBusy": {
+    "message": "読み込み中…",
+    "description": "Busy label on the Load more button while it scrolls the source list."
+  },
+  "bulkPanelLoadMoreDone": {
+    "message": "すべての会話を読み込みました",
+    "description": "Disabled label on the Load more button once every conversation has been loaded."
+  },
+  "bulkLoadMoreProgressMessage": {
+    "message": "会話を読み込み中… 現在 $count$ 件",
+    "description": "Progress line while Load more walks the virtualized list. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkLoadMoreIncompleteMessage": {
+    "message": "会話を $count$ 件読み込みました。一覧が不完全な可能性があります。「さらに読み込む」をもう一度押してください。",
+    "description": "Shown when Load more stopped while the page-size parity check still expected another page, so the list may be short. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkEmptyMessage": {
+    "message": "エクスポートできる会話が見つかりませんでした。",
+    "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
+  },
+  "bulkListErrorMessage": {
+    "message": "会話一覧を読み取れませんでした: $error$",
+    "description": "Shown when a provider's conversation-list extraction fails before the bulk panel can render its selection list.",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkUnsupportedMessage": {
+    "message": "このページでは一括エクスポートを使えません。",
+    "description": "Shown when the current page's adapter does not support bulk export."
+  },
+  "bulkExportButtonLabel": {
+    "message": "選択した $count$ 件をエクスポート",
+    "description": "Export-button label with the current selected count.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bulkProgressMessage": {
+    "message": "$total$ 件中 $current$ 件目をエクスポート中: $title$",
+    "description": "In-progress line shown while a batch runs.",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "bulkSummarySaved": {
+    "message": "$total$ 件中 $succeeded$ 件を保存しました。",
+    "description": "Final summary line after a batch: how many succeeded.",
+    "placeholders": {
+      "succeeded": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "bulkSummaryFailed": {
+    "message": "$failed$ 件失敗しました。",
+    "description": "Appended to the summary line when some exports failed.",
+    "placeholders": {
+      "failed": {
+        "content": "$1"
+      }
+    }
+  },
+  "coachMarkTitle": {
+    "message": "ツールバーで Prompt Vault を見つける",
+    "description": "Heading of the first-run coach mark that points at the browser toolbar."
+  },
+  "coachMarkBody": {
+    "message": "ブラウザのツールバーにあるパズルピース（拡張機能）ボタンを押し、Prompt Vault をピン留めするとワンクリックで開けます。",
+    "description": "Body copy of the first-run coach mark, describing how to pin the extension."
+  },
+  "coachMarkCloseLabel": {
+    "message": "わかりました",
+    "description": "Label of the button that dismisses the first-run coach mark."
+  },
+  "coachMarkAriaLabel": {
+    "message": "Prompt Vault のセットアップのヒント",
+    "description": "Accessible name of the first-run coach mark dialog."
+  },
+  "optionsTitle": {
+    "message": "prompt-vault の設定",
+    "description": "Browser-tab title of the options page."
+  },
+  "optionsHeading": {
+    "message": "ツールバーアイコン",
+    "description": "Visible heading of the options page."
+  },
+  "optionsFormatsLabel": {
+    "message": "表示するエクスポート形式のアイコン",
+    "description": "Label above the format checklist on the options page."
+  },
+  "optionsBulkLabel": {
+    "message": "一括エクスポートのアイコンを表示",
+    "description": "Label for the bulk-icon toggle on the options page."
+  },
+  "optionsSavedNote": {
+    "message": "保存しました。",
+    "description": "Transient confirmation shown after a setting change is saved."
+  },
+  "optionsSaveFailedNote": {
+    "message": "保存できませんでした。もう一度お試しください。",
+    "description": "Shown when persisting a setting change to storage fails."
+  },
+  "optionsMinFormatNote": {
+    "message": "エクスポート形式は少なくとも 1 つ有効にしてください。",
+    "description": "Shown when the user tries to uncheck the last remaining format."
+  }
+}

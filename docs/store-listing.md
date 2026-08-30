@@ -21,6 +21,16 @@ per-locale and live in one file each — paste from the file for the locale you 
 | `ko` | [`store-listing/ko.md`](store-listing/ko.md) | `assets/store/ko/screenshot-*.png` |
 | `zh_CN` | [`store-listing/zh_CN.md`](store-listing/zh_CN.md) | none — falls back to the English set |
 | `zh_TW` | [`store-listing/zh_TW.md`](store-listing/zh_TW.md) | none — falls back to the English set |
+| `ja` | [`store-listing/ja.md`](store-listing/ja.md) | none — falls back to the English set |
+
+**A listing locale exists only if the package ships it.** The dashboard offers a localized
+listing for the locales the extension itself supports — "you will be able to provide a
+description, screenshots, and promotional video in the locales your extension supports"
+([source](https://developer.chrome.com/docs/webstore/cws-dashboard-listing), checked
+2026-08-30). So a listing locale is downstream of a `public/_locales/<locale>/messages.json`
+catalog, never a substitute for one; adding listing copy alone leaves the language absent from
+the dashboard and from the store page's language list. `test/i18n/message-keys.test.ts`
+enumerates the locale directories, so every catalog is gated the moment it is added.
 
 A change to what the product *does* is a change to every locale file — the store warns on
 localized metadata that describes a different feature set.
@@ -84,7 +94,7 @@ Data-use declarations:
 | Store icon | 128×128 PNG | Ready: `public/icons/icon128.png` |
 | Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
 | Screenshots (Korean listing) | same requirement, uploaded under the `ko` locale | Ready: `assets/store/ko/screenshot-0{1..5}-*.png` — the same five *views*, captured separately, so the content differs (Korean UI, Korean conversations, and a different selection count in shot 2) |
-| Screenshots (Chinese listings) | same requirement, per locale | None. The extension has no Chinese UI (`public/_locales` holds `en` and `ko` only), so a Chinese-UI capture is impossible; the `zh_CN`/`zh_TW` listings carry the description only and fall back to the English screenshot set |
+| Screenshots (`zh_CN`, `zh_TW`, `ja` listings) | same requirement, per locale | None captured. Those locales carry description copy only and fall back to the English set. A native-UI capture became possible when the catalogs shipped; it is optional, and doing it means re-running the whole five-shot sequence in that language |
 | Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
 
@@ -92,9 +102,9 @@ Data-use declarations:
 and the promotional video can each differ by locale, and a localized screenshot is shown ahead of
 the global one to a viewer in that language. The **store icon, category, small promo tile and
 marquee promo tile cannot be localized** — one set serves every locale, which is why the tile's
-wordmark stays English. So the Korean listing can carry its own Korean-UI screenshot set without
-disturbing the English one; it is optional, and until it exists the English set is what Korean
-viewers see. Keep the two sets describing the same features — the store warns on localized
+wordmark stays English. So a localized listing can carry its own native-UI screenshot set without
+disturbing the English one — `ko` does; `ja`, `zh_CN` and `zh_TW` do not yet. It is optional, and
+until a set exists the English one is what those viewers see. Keep the two sets describing the same features — the store warns on localized
 metadata that changes the described feature set.
 ([source](https://developer.chrome.com/docs/webstore/cws-dashboard-listing), checked 2026-08-11)
 
@@ -135,9 +145,11 @@ moves cover most of the frame without touching the user's own Chrome or any acco
 - Reorder the *capture profile's* language list so English (US) is first. That flips the
   `Accept-Language` header, which is enough for ChatGPT's UI and for Claude's page title and
   server-rendered strings on the next load.
-- Temporarily copy `public/_locales/en/messages.json` over `dist/_locales/ko/messages.json` and
-  reload the unpacked extension. `dist/` is gitignored, so this never reaches a tracked file.
-  Restore the file and reload again when finished.
+- Temporarily copy `public/_locales/en/messages.json` over the `dist/_locales/<locale>/messages.json`
+  the capture machine resolves to (`ko` here) and reload the unpacked extension. `dist/` is
+  gitignored, so this never reaches a tracked file. Restore the file and reload again when
+  finished. Five catalogs now ship (`en`, `ko`, `ja`, `zh_CN`, `zh_TW`), so overwrite the one
+  Chrome actually selects, not `ko` by habit.
 
 The Korean set needs none of that — it is what this machine produces untouched. Capture it
 *before* switching anything, or restore both settings first: the header order, and `dist/`'s own
@@ -182,8 +194,9 @@ account name out of frame, and it removes most of the Korean nav at the same tim
   order, and `assets/store/small-promo-440x280.png`
 - [ ] Add the `ko` locale, paste `docs/store-listing/ko.md`, and upload the five
   `assets/store/ko/screenshot-*.png` in the same order
-- [ ] Add the `zh_CN` and `zh_TW` locales, paste `docs/store-listing/zh_CN.md` and
-  `zh_TW.md`, and leave their screenshots empty so the English set is served
+- [ ] Add the `zh_CN`, `zh_TW` and `ja` locales, paste the matching
+  `docs/store-listing/<locale>.md`, and leave their screenshots empty so the English set
+  is served
 - [ ] Enter the single-purpose statement and permission justifications
 - [ ] Confirm the privacy-policy URL is publicly accessible, then enter it
 - [ ] Complete data-use certifications so they match the declarations above
