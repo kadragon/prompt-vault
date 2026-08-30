@@ -20,7 +20,7 @@ All processing is local — conversation data never leaves the browser.
 | `docs/eval-criteria.md` | When writing a Sprint Contract or evaluating a completed feature |
 | `docs/runbook.md` | For build, load-unpacked, test, and package commands |
 | `docs/live-dom-verification.md` | Before verifying selectors — or the loaded extension's own rendered UI — against the logged-in live page, or capturing a fixture |
-| `docs/store-listing.md` | Before preparing or updating a Chrome Web Store submission |
+| `docs/store-listing.md` (+ `docs/store-listing/{en,ko,zh_CN,zh_TW}.md`) | Before preparing or updating a Chrome Web Store submission; the per-locale files hold the summary and description copy |
 | `docs/harness-log.md` | When auditing the harness, or before changing a rule a past edit predicted |
 | `docs/PRIVACY.md` | Before changing data handling, permissions, or store privacy disclosures |
 

@@ -10,73 +10,20 @@ Developer Dashboard access.
 |-------|-------|
 | **Name** | Prompt Vault — AI Chat Backup |
 | **Category** | Productivity |
-| **Language** | English (default); Korean listing optional |
-| **Summary** (≤132 chars) | Back up ChatGPT, Claude & Gemini chats to local Markdown, PDF, JSON, or HTML files. 100% local — nothing leaves your browser. |
+| **Default language** | English |
 
-### Description (English)
+Name and category are shared by every locale. The summary, description and screenshots are
+per-locale and live in one file each — paste from the file for the locale you are editing:
 
-```
-Prompt Vault saves your AI chat conversations as local files so you own a durable,
-portable copy — no account, no cloud, no data leaving your browser.
+| Locale | File | Screenshots |
+|--------|------|-------------|
+| `en` (default) | [`store-listing/en.md`](store-listing/en.md) | `assets/store/screenshot-*.png` |
+| `ko` | [`store-listing/ko.md`](store-listing/ko.md) | `assets/store/ko/screenshot-*.png` |
+| `zh_CN` | [`store-listing/zh_CN.md`](store-listing/zh_CN.md) | none — falls back to the English set |
+| `zh_TW` | [`store-listing/zh_TW.md`](store-listing/zh_TW.md) | none — falls back to the English set |
 
-On a ChatGPT, Claude, or Gemini conversation page, export buttons appear in the header. One
-click saves the open conversation to your computer in the format you choose:
-
-• Markdown (.md) — clean, portable text with headings and code blocks preserved
-• PDF (.pdf) — selectable text, with Korean/CJK glyphs and monospace code blocks
-• JSON (.json) — structured, round-trippable data
-• HTML (.html) — a self-contained document you can open in any browser
-
-Need more than one conversation? Open the bulk-export panel, tick the conversations you
-want, and save the whole set in one format and one run. This works from the sidebar on
-ChatGPT, Claude and Gemini, from a project's conversation list on ChatGPT and Claude, and
-— on Claude — from the full history page at claude.ai/recents.
-
-Key points:
-• 100% local. The extension makes no network requests and sends nothing to any server.
-  Your conversations never leave your browser.
-• Least privilege. It runs only on ChatGPT (chatgpt.com), Claude (claude.ai) and
-  Gemini (gemini.google.com), and requests only the minimum permissions needed.
-• Fails loud, not short. When an export cannot be read, the extension shows an error
-  instead of downloading a half-empty file.
-• Choose your toolbar. The extension popup lets you show or hide each export format icon
-  and the bulk-export icon.
-• English and Korean UI follows your browser language.
-
-Supported providers: ChatGPT, Claude and Gemini. Bulk export is available on all three;
-project export is available on ChatGPT and Claude.
-```
-
-### Description (Korean, optional listing)
-
-```
-Prompt Vault는 AI와 나눈 대화를 내 컴퓨터에 파일로 남겨 둡니다. 계정도 클라우드도 필요
-없고, 대화 내용이 브라우저 밖으로 나가는 일도 없습니다.
-
-ChatGPT, Claude, Gemini 대화창 위쪽에 내보내기 버튼이 생깁니다. 원하는 형식을 한 번
-누르면 지금 보고 있는 대화가 그대로 파일이 됩니다.
-
-• Markdown (.md) — 제목과 코드 블록을 그대로 살린 가벼운 텍스트
-• PDF (.pdf) — 글자를 그대로 복사해 쓸 수 있고, 한글도 코드도 깨지지 않습니다
-• JSON (.json) — 다시 불러 쓰기 좋은 구조화 데이터
-• HTML (.html) — 브라우저만 있으면 바로 열리는 한 장짜리 문서
-
-여러 개를 한꺼번에 챙기고 싶다면 일괄 내보내기 창을 열고 원하는 대화만 골라 담으세요.
-ChatGPT, Claude, Gemini 모두 사이드바에서 되고, ChatGPT와 Claude는 프로젝트 대화
-목록에서도, Claude는 전체 기록 페이지(claude.ai/recents)에서도 됩니다.
-
-이런 점을 신경 썼습니다.
-• 전부 기기 안에서 처리합니다. 확장 프로그램은 어디로도 요청을 보내지 않습니다.
-• 권한은 꼭 필요한 만큼만. ChatGPT(chatgpt.com), Claude(claude.ai),
-  Gemini(gemini.google.com) 세 곳에서만 동작합니다.
-• 문제가 생기면 알려 드립니다. 대화를 읽어 오지 못하면 반쪽짜리 파일을 내려받는 대신
-  오류를 띄웁니다.
-• 툴바가 번잡하면 팝업에서 필요 없는 형식 아이콘과 일괄 내보내기 아이콘을 꺼 두세요.
-• 브라우저 언어에 맞춰 한국어나 영어로 나옵니다.
-
-지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 세 곳 모두에서 쓸 수
-있고, 프로젝트 단위 내보내기는 ChatGPT와 Claude에서 쓸 수 있습니다.
-```
+A change to what the product *does* is a change to every locale file — the store warns on
+localized metadata that describes a different feature set.
 
 ### Single-purpose statement (Privacy tab)
 
@@ -137,6 +84,7 @@ Data-use declarations:
 | Store icon | 128×128 PNG | Ready: `public/icons/icon128.png` |
 | Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
 | Screenshots (Korean listing) | same requirement, uploaded under the `ko` locale | Ready: `assets/store/ko/screenshot-0{1..5}-*.png` — the same five *views*, captured separately, so the content differs (Korean UI, Korean conversations, and a different selection count in shot 2) |
+| Screenshots (Chinese listings) | same requirement, per locale | None. The extension has no Chinese UI (`public/_locales` holds `en` and `ko` only), so a Chinese-UI capture is impossible; the `zh_CN`/`zh_TW` listings carry the description only and fall back to the English screenshot set |
 | Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
 
@@ -229,11 +177,13 @@ account name out of frame, and it removes most of the Korean nav at the same tim
 
 - [ ] Create or verify the Chrome Web Store developer account and complete registration payment
 - [ ] Upload `prompt-vault-v<version>.zip`
-- [ ] Paste the listing fields and select Productivity
+- [ ] Paste `docs/store-listing/en.md` into the default locale and select Productivity
 - [ ] Upload `public/icons/icon128.png`, the five `assets/store/screenshot-*.png` in numbered
   order, and `assets/store/small-promo-440x280.png`
-- [ ] Add the Korean locale to the listing, paste the Korean description, and upload the five
+- [ ] Add the `ko` locale, paste `docs/store-listing/ko.md`, and upload the five
   `assets/store/ko/screenshot-*.png` in the same order
+- [ ] Add the `zh_CN` and `zh_TW` locales, paste `docs/store-listing/zh_CN.md` and
+  `zh_TW.md`, and leave their screenshots empty so the English set is served
 - [ ] Enter the single-purpose statement and permission justifications
 - [ ] Confirm the privacy-policy URL is publicly accessible, then enter it
 - [ ] Complete data-use certifications so they match the declarations above
