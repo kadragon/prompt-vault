@@ -102,9 +102,9 @@ Data-use declarations:
 and the promotional video can each differ by locale, and a localized screenshot is shown ahead of
 the global one to a viewer in that language. The **store icon, category, small promo tile and
 marquee promo tile cannot be localized** — one set serves every locale, which is why the tile's
-wordmark stays English. So the Korean listing can carry its own Korean-UI screenshot set without
-disturbing the English one; it is optional, and until it exists the English set is what Korean
-viewers see. Keep the two sets describing the same features — the store warns on localized
+wordmark stays English. So a localized listing can carry its own native-UI screenshot set without
+disturbing the English one — `ko` does; `ja`, `zh_CN` and `zh_TW` do not yet. It is optional, and
+until a set exists the English one is what those viewers see. Keep the two sets describing the same features — the store warns on localized
 metadata that changes the described feature set.
 ([source](https://developer.chrome.com/docs/webstore/cws-dashboard-listing), checked 2026-08-11)
 

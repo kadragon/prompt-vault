@@ -67,9 +67,15 @@ whoever implemented must not verify their own work.
 
 ## Language Policy
 
-- User-facing UI strings: English first; Korean when i18n is added.
+- User-facing UI strings resolve through `chrome.i18n` from `src/strings.ts`. Five catalogs
+  ship (`en` default, plus `ko`, `ja`, `zh_CN`, `zh_TW`): a new or changed string is written in
+  English first and lands in ALL five, or `test/i18n/message-keys.test.ts` fails — an untranslated
+  key is a store listing promising a language the UI does not speak.
 - Korean *prose* shipped to users — store listing copy, release/announcement posts — goes through
   the `humanize-korean` skill before it lands. Drafting it inline reads as machine-translated.
+- Same standard, no skill, for the other locales: listing copy and UI catalogs are AUTHORED in the
+  target language, not translated line-by-line from `en`. Route each locale to its own reviewer and
+  hold the product claims fixed — the claims are the constraint, the phrasing is not.
 
 ## Maintenance
 
