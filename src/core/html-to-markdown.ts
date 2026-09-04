@@ -541,11 +541,14 @@ function linkDestination(href: string, inTable = false): string {
   // decision (`escapeCellPipes`), so it has to encode its own — and percent-encoding,
   // not a backslash, because neither reader unescapes a destination on the way back in.
   const piped = inTable ? spaced.replace(/\|/g, '%7C') : spaced;
-  // A `\` cannot survive in either form: inside the wrapper it escapes the punctuation
-  // after it, so a destination ending in one swallows the closing `>`; bare, a reader
-  // resolves `\%` to a literal `%` and the backslash is dropped, leaving a destination
-  // that silently differs from the page's. Encode before the form is chosen, so both get it.
-  const single = piped.replace(/\\/g, '%5C');
+  // A `\` before ASCII punctuation cannot survive in either form: inside the wrapper it
+  // escapes that punctuation, so a destination ending in one swallows the closing `>`;
+  // bare, a reader resolves `\%` to a literal `%` and the backslash is dropped, leaving a
+  // destination that silently differs from the page's. Encode before the form is chosen,
+  // so both get it. A `\` before anything else is not an escape to any reader and is left
+  // alone — encoding it would turn `…/docs\guide`, which a browser normalizes to a `/`,
+  // into a literal backslash segment that reaches a different target than the page's.
+  const single = piped.replace(/\\(?=[!-/:-@[-`{-~]|$)/g, '%5C');
   // A bare destination may hold an angle bracket anywhere but position 0, where CommonMark
   // forbids it outright — that one has no bare spelling and must take the wrapper. Balanced
   // parens decide the rest.

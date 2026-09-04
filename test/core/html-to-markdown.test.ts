@@ -413,6 +413,12 @@ describe('serialization fidelity', () => {
     expect(md('<table><tr><td><a href="https://e.com/a\\|b">t</a></td></tr></table>')).toBe(
       '| [t](https://e.com/a%5C%7Cb) |\n| --- |',
     );
+    // Only a `\` a reader would eat is encoded. Before a non-punctuation character it is
+    // not an escape to anyone, and encoding it would turn a path a browser normalizes to
+    // a `/` into a literal backslash segment aimed at a different target than the page's.
+    expect(md('<p><a href="https://e.com/docs\\guide">t</a></p>')).toBe(
+      '[t](https://e.com/docs\\guide)',
+    );
   });
 
   it('wraps a destination that starts with an angle bracket', () => {
