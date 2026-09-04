@@ -497,17 +497,22 @@ function serializeInlineElement(el: Element, inTable = false): string {
       // unbalanced paren truncates at it and one holding whitespace ends at the space
       // — `linkDestination` wraps the first and percent-encodes the second.
       const src = (el.getAttribute('src') ?? '').trim();
-      const alt = el.getAttribute('alt') ?? '';
-      if (src) return `![${alt}](${linkDestination(src, inTable)})`;
+      // Line breaks are collapsed for both branches below: inside `![...]` a newline would
+      // leave the closing `]` on a later line, and in the prose branch it would let a
+      // marker start a line of its own.
+      const alt = (el.getAttribute('alt') ?? '').trim().replace(/\s*[\r\n]+\s*/g, ' ');
+      // The alt is display text, not markup, and `![...]` protects nothing inside it: an
+      // unescaped alt corrupts the markup around it exactly as an unescaped destination
+      // did — a `|` splits the row the image sits in, and a `[`/`]` breaks the image out
+      // of its own brackets. Not `atLineStart`: here the `![` always precedes it.
+      if (src) return `![${escapeMarkdownText(alt)}](${linkDestination(src, inTable)})`;
       // No usable destination: keep the alt as prose rather than dropping it, the way
-      // the `a` case keeps its label. It is source text now, not markup, so it is
-      // escaped at this boundary — the surrounding `![...]` no longer protects it.
-      // Block markers are escaped too (`atLineStart`), because this chunk can be the
-      // first thing in its paragraph and an alt of `- item` would otherwise export as
-      // a list; line breaks are collapsed first so no marker can start a later line.
+      // the `a` case keeps its label. Block markers are escaped too (`atLineStart`),
+      // because this chunk can be the first thing in its paragraph and an alt of
+      // `- item` would otherwise export as a list.
       // A `-` that turns out to be mid-line is escaped needlessly and renders the
       // same, the trade-off `markdown-escape.ts` already documents.
-      return escapeMarkdownText(alt.trim().replace(/\s*[\r\n]+\s*/g, ' '), true);
+      return escapeMarkdownText(alt, true);
     }
     case 'br':
       return '\n';
@@ -535,19 +540,26 @@ function linkDestination(href: string, inTable = false): string {
   // tears the row it sits in. The destination is emitted after the cell-text escaping
   // decision (`escapeCellPipes`), so it has to encode its own — and percent-encoding,
   // not a backslash, because neither reader unescapes a destination on the way back in.
-  const single = inTable ? spaced.replace(/\|/g, '%7C') : spaced;
-  // A bare destination may hold an angle bracket, so leave one alone while it stays
-  // bare. Balanced parens are what decide that.
-  if (hasBalancedParens(single)) return single;
-  // The wrapper is now required, and three characters inside would defeat it: `<` and
-  // `>` close it early, and a `\` escapes the punctuation after it, so a destination
-  // ending in one swallows the closing `>` and the link never terminates. Percent-encode
-  // all three rather than emit a destination that truncates either way.
-  return `<${single.replace(/[\\<>]/g, (ch) => ANGLE_ESCAPES[ch])}>`;
+  const piped = inTable ? spaced.replace(/\|/g, '%7C') : spaced;
+  // A `\` before ASCII punctuation cannot survive in either form: inside the wrapper it
+  // escapes that punctuation, so a destination ending in one swallows the closing `>`;
+  // bare, a reader resolves `\%` to a literal `%` and the backslash is dropped, leaving a
+  // destination that silently differs from the page's. Encode before the form is chosen,
+  // so both get it. A `\` before anything else is not an escape to any reader and is left
+  // alone — encoding it would turn `…/docs\guide`, which a browser normalizes to a `/`,
+  // into a literal backslash segment that reaches a different target than the page's.
+  const single = piped.replace(/\\(?=[!-/:-@[-`{-~]|$)/g, '%5C');
+  // A bare destination may hold an angle bracket anywhere but position 0, where CommonMark
+  // forbids it outright — that one has no bare spelling and must take the wrapper. Balanced
+  // parens decide the rest.
+  if (hasBalancedParens(single) && !single.startsWith('<')) return single;
+  // The wrapper is now required, and `<`/`>` inside would close it early. Percent-encode
+  // both rather than emit a destination that truncates either way.
+  return `<${single.replace(/[<>]/g, (ch) => ANGLE_ESCAPES[ch])}>`;
 }
 
-// The three characters that cannot appear literally inside an angle destination.
-const ANGLE_ESCAPES: Record<string, string> = { '<': '%3C', '>': '%3E', '\\': '%5C' };
+// The two characters that cannot appear literally inside an angle destination.
+const ANGLE_ESCAPES: Record<string, string> = { '<': '%3C', '>': '%3E' };
 
 function hasBalancedParens(href: string): boolean {
   let depth = 0;

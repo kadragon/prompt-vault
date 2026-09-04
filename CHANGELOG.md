@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Escape an image alt beside a usable src, and encode a destination's leading `<` and its backslashes (2026-09-05)
 - [done] Japanese, Simplified Chinese and Traditional Chinese UI, plus their store listings
   (v1.14.0) (2026-08-30). The Chinese listing copy written first could never have been
   registered: the Web Store dashboard offers a localized listing only for the locales the
