@@ -29,14 +29,30 @@ let convTicks = 0;
 // re-render spuriously triggers (and then sticks) the bottom-right overlay.
 let lastHref = location.href;
 
+/**
+ * Drop the toolbar because the bootstrap itself decided to, and restart the coach mark's teardown
+ * grace with it. Every such gap is a re-mount rather than a departure, so the grace must start
+ * over — a normal gap already spends all but one tick of it, and an extra out-of-cadence tick
+ * would tear the card down mid-read for good (the once-only latch is spent by then).
+ *
+ * Both call sites go through here so that invariant cannot drift; a `removeButtons` the PAGE
+ * caused (a re-render over our node) is deliberately not routed here — that absence is real, and
+ * counting it is how the card leaves a page that no longer has a toolbar.
+ *
+ * Not covered by a test: the bootstrap has no test file (the grace itself is pinned in
+ * test/content/coach-mark.test.ts, which drives `resetCoachMarkAbsence` directly). Keep the two
+ * call sites here rather than inlining the pair.
+ */
+function dropToolbar(): void {
+  removeButtons(document);
+  resetCoachMarkAbsence();
+}
+
 function tick(): void {
   if (location.href !== lastHref) {
     lastHref = location.href;
     convTicks = 0;
-    removeButtons(document);
-    // The toolbar gap this opens is a re-mount, not a departure: restart the coach mark's
-    // teardown grace alongside the overlay-fallback grace above, so the two stay in lockstep.
-    resetCoachMarkAbsence();
+    dropToolbar();
   }
   // Conversation pages, project home pages and the full-history page all get a mounted
   // control, and all want the overlay-fallback grace (these SPAs render their mount points
@@ -71,7 +87,7 @@ function watchNavigation(): void {
  */
 function applySettings(settings: ToolbarSettings): void {
   if (!setToolbarSettings(settings)) return;
-  removeButtons(document);
+  dropToolbar();
   tick();
 }
 
