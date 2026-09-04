@@ -1,6 +1,12 @@
 import { isConversationPage, isProjectPage, isRecentsPage } from './page';
 import { removeButtons, setToolbarSettings, syncButtons } from './mount';
-import { armCoachMark, disarmCoachMark, removeCoachMark, syncCoachMark } from './coach-mark';
+import {
+  armCoachMark,
+  disarmCoachMark,
+  removeCoachMark,
+  resetCoachMarkAbsence,
+  syncCoachMark,
+} from './coach-mark';
 import { loadSettings, subscribeSettings, type ToolbarSettings } from '../settings/store';
 import { isCoachMarkDismissed, subscribeCoachMarkDismissed } from '../settings/onboarding';
 
@@ -28,6 +34,9 @@ function tick(): void {
     lastHref = location.href;
     convTicks = 0;
     removeButtons(document);
+    // The toolbar gap this opens is a re-mount, not a departure: restart the coach mark's
+    // teardown grace alongside the overlay-fallback grace above, so the two stay in lockstep.
+    resetCoachMarkAbsence();
   }
   // Conversation pages, project home pages and the full-history page all get a mounted
   // control, and all want the overlay-fallback grace (these SPAs render their mount points

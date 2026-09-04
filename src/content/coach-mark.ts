@@ -212,6 +212,19 @@ export const COACH_MARK_TEARDOWN_GRACE_TICKS = 6;
 let absentTicks = 0;
 
 /**
+ * Restart the teardown grace. The bootstrap calls this on an SPA href change, beside the
+ * `removeButtons` that opens the gap: the grace must strictly outlast the toolbar's own mount
+ * grace, and a normal gap already spends all but one tick of it. Without the reset a second href
+ * change inside the window — ChatGPT's `/` -> `/c/<id>` rewrite after the first message, a
+ * redirect — or an out-of-cadence `popstate` tick would carry the previous gap's count into the
+ * new one and tear the card down mid-read. Raising the constant cannot fix that; repeated href
+ * changes outrun any constant.
+ */
+export function resetCoachMarkAbsence(): void {
+  absentTicks = 0;
+}
+
+/**
  * One poll tick's worth of coach-mark upkeep: show the card when the toolbar is mounted and the
  * gate is armed, and tear it down once the toolbar has been gone for the grace above. The tick
  * owns this rather than each `removeButtons` call site, because the toolbar can also disappear

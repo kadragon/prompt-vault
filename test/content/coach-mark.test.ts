@@ -7,6 +7,7 @@ import {
   isCoachMarkVisible,
   maybeShowCoachMark,
   removeCoachMark,
+  resetCoachMarkAbsence,
   showCoachMark,
   syncCoachMark,
 } from '../../src/content/coach-mark';
@@ -53,6 +54,9 @@ let store: Record<string, unknown>;
 
 beforeEach(() => {
   store = installStorageMock();
+  // `absentTicks` is module state; without this a case inherits the previous one's count and the
+  // teardown grace it thinks it is spending is shorter than it looks.
+  resetCoachMarkAbsence();
 });
 
 describe('showCoachMark', () => {
@@ -373,6 +377,24 @@ describe('syncCoachMark (the poll tick)', () => {
     // src/content/index.ts waits MOUNT_GRACE_TICKS (6) for a provider header before falling back
     // to the overlay; a shorter teardown grace would delete the card inside that wait.
     expect(COACH_MARK_TEARDOWN_GRACE_TICKS).toBeGreaterThanOrEqual(6);
+  });
+
+  it('restarts the grace on each href change, so consecutive re-mounts cannot spend it', async () => {
+    const window = bareWindow();
+    const doc = docOf(window);
+    await armFromStorage();
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
+
+    // A normal gap spends all but one tick of the grace (the overlay fallback mounts on the 6th
+    // tick after an href change, so the card sees 5 absent ones). Two gaps back to back, with no
+    // successful mount between them, would tear the card down were the count carried over.
+    for (let round = 0; round < 3; round += 1) {
+      resetCoachMarkAbsence(); // what tick() does beside removeButtons on an href change
+      removeButtons(doc);
+      for (let i = 0; i < 5; i += 1) syncCoachMark(doc);
+    }
+    expect(isCoachMarkVisible(doc)).toBe(true);
   });
 
   it('unbinds the torn-down card, so a later outside press cannot persist a dismissal', async () => {
