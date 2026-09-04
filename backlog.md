@@ -30,20 +30,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
-### PR #92 review (coach-mark teardown, 2026-09-05)
-
-- [ ] *(accepted on PR #92 — no bootstrap test file exists, and building one was outside that
-      contract)*
-      [TEST] Nothing catches the removal of `resetCoachMarkAbsence()` from `dropToolbar()` in
-      `src/content/index.ts`. The teardown grace itself is pinned in
-      `test/content/coach-mark.test.ts`, which drives the reset directly, but no test exercises
-      `tick()` or `applySettings`, so the two call sites the fix actually depends on are
-      uncovered — deleting either leaves the suite green while the coach mark goes back to being
-      torn down mid-read on a second href change. Either stand up a bootstrap test (the module
-      runs `watchNavigation()` and a `setInterval` on import, so it needs a seam) or extract the
-      href-change branch's work into a module the tests already import. Found by the PR #92
-      review round.
-
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
