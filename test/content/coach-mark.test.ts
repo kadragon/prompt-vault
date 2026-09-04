@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import {
   COACH_MARK_ID,
+  COACH_MARK_TEARDOWN_GRACE_TICKS,
   armCoachMark,
   isCoachMarkVisible,
   maybeShowCoachMark,
@@ -320,7 +321,13 @@ describe('the once-only gate across an SPA route change', () => {
   });
 });
 
-describe('syncCoachMark (one poll tick)', () => {
+// The bootstrap polls `syncCoachMark`; a teardown only lands once the toolbar has been absent for
+// the whole grace, so a test that wants one has to spend it.
+function tickPastTeardownGrace(doc: Document): void {
+  for (let i = 0; i < COACH_MARK_TEARDOWN_GRACE_TICKS; i += 1) syncCoachMark(doc);
+}
+
+describe('syncCoachMark (the poll tick)', () => {
   it('tears the card down when the toolbar it explains is gone', async () => {
     const window = bareWindow();
     const doc = docOf(window);
@@ -332,10 +339,40 @@ describe('syncCoachMark (one poll tick)', () => {
     // What #76 hit: the toolbar goes (route change, non-conversation page, an expanded report
     // opening over it) while the `position: fixed` card stays on top of whatever replaced it.
     removeButtons(doc);
-    syncCoachMark(doc);
+    tickPastTeardownGrace(doc);
     expect(isCoachMarkVisible(doc)).toBe(false);
     // Not a dismissal: the user may never have read the card, so nothing is persisted.
     expect(store[STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('rides out the re-mount gap of an SPA href change', async () => {
+    const window = bareWindow();
+    const doc = docOf(window);
+    await armFromStorage();
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
+
+    // `tick()` drops the toolbar on every href change and the provider re-renders its header
+    // asynchronously. Tearing down on the first absent tick would delete the card mid-read, and
+    // the spent latch would never bring it back. Tick counts here are literal on purpose: derived
+    // from the constant they would pass against any grace at all, pinning nothing.
+    removeButtons(doc);
+    syncCoachMark(doc);
+    expect(isCoachMarkVisible(doc)).toBe(true);
+
+    // The re-mount lands inside the grace: the card survives, and the counter starts over, so the
+    // next gap gets the whole grace again rather than the remainder of the last one.
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
+    removeButtons(doc);
+    for (let i = 0; i < 5; i += 1) syncCoachMark(doc);
+    expect(isCoachMarkVisible(doc)).toBe(true);
+  });
+
+  it('grants the toolbar at least the bootstrap\'s own mount grace before tearing down', () => {
+    // src/content/index.ts waits MOUNT_GRACE_TICKS (6) for a provider header before falling back
+    // to the overlay; a shorter teardown grace would delete the card inside that wait.
+    expect(COACH_MARK_TEARDOWN_GRACE_TICKS).toBeGreaterThanOrEqual(6);
   });
 
   it('unbinds the torn-down card, so a later outside press cannot persist a dismissal', async () => {
@@ -345,7 +382,7 @@ describe('syncCoachMark (one poll tick)', () => {
     doc.body.appendChild(createButtons(doc, 'overlay'));
     syncCoachMark(doc);
     removeButtons(doc);
-    syncCoachMark(doc);
+    tickPastTeardownGrace(doc);
 
     doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }) as unknown as Event);
     await flush();
@@ -356,7 +393,7 @@ describe('syncCoachMark (one poll tick)', () => {
     const window = bareWindow();
     const doc = docOf(window);
     await armFromStorage();
-    syncCoachMark(doc);
+    tickPastTeardownGrace(doc);
     expect(isCoachMarkVisible(doc)).toBe(false);
   });
 
@@ -367,7 +404,7 @@ describe('syncCoachMark (one poll tick)', () => {
     doc.body.appendChild(createButtons(doc, 'overlay'));
     syncCoachMark(doc);
     removeButtons(doc);
-    syncCoachMark(doc);
+    tickPastTeardownGrace(doc);
 
     // The latch was spent by the first show; a re-mounted toolbar must not buy a second card.
     doc.body.appendChild(createButtons(doc, 'overlay'));

@@ -12,7 +12,9 @@ import { markCoachMarkDismissed } from '../settings/onboarding';
 import { CONTAINER_ID } from './mount';
 
 // Stable id on the card, deliberately distinct from mount.ts's `CONTAINER_ID`: `removeButtons()`
-// wipes that id on every SPA href change, which would silently delete the coach mark mid-read.
+// wipes that id on every SPA href change, and a shared id would silently delete the coach mark
+// mid-read. `syncCoachMark` below tears the card down on the toolbar's absence rather than on that
+// call, so the same re-render gap is ridden out there by a grace counter.
 export const COACH_MARK_ID = 'prompt-vault-coach-mark';
 
 /** Whether the coach mark is currently mounted in `doc`. */
@@ -197,10 +199,23 @@ export function maybeShowCoachMark(doc: Document): void {
 }
 
 /**
+ * Consecutive ticks the toolbar must stay absent before the card is torn down. Mirrors the
+ * `MOUNT_GRACE_TICKS` grace in src/content/index.ts, and for the same reason: on an SPA href
+ * change the bootstrap drops the toolbar and the provider re-renders its header asynchronously,
+ * so a tick or two with no container is an ordinary re-mount gap, not a departure. Tearing down
+ * on the first absent tick would delete a card mid-read — and because the once-only latch is
+ * already spent, it would never come back.
+ */
+export const COACH_MARK_TEARDOWN_GRACE_TICKS = 6;
+
+// Consecutive `syncCoachMark` ticks that found no toolbar. Reset the moment one is mounted.
+let absentTicks = 0;
+
+/**
  * One poll tick's worth of coach-mark upkeep: show the card when the toolbar is mounted and the
- * gate is armed, and tear it down when the toolbar is gone. The tick owns this rather than each
- * `removeButtons` call site, because the toolbar can also disappear without one — the page
- * re-renders over it, or the route leaves a mountable page entirely.
+ * gate is armed, and tear it down once the toolbar has been gone for the grace above. The tick
+ * owns this rather than each `removeButtons` call site, because the toolbar can also disappear
+ * without one — the page re-renders over it, or the route leaves a mountable page entirely.
  *
  * The teardown is not a dismissal: the user may never have read the card, so nothing is
  * persisted. The once-only latch is spent by the show itself, so the card does not come back
@@ -208,8 +223,11 @@ export function maybeShowCoachMark(doc: Document): void {
  */
 export function syncCoachMark(doc: Document): void {
   if (doc.getElementById(CONTAINER_ID)) {
+    absentTicks = 0;
     maybeShowCoachMark(doc);
     return;
   }
+  absentTicks += 1;
+  if (absentTicks < COACH_MARK_TEARDOWN_GRACE_TICKS) return;
   removeCoachMark(doc);
 }
