@@ -509,7 +509,7 @@ describe('syncButtons on Claude’s /recents history page', () => {
 
   it('mounts one container carrying the right track’s name across an SPA route change', () => {
     // The three tracks share `CONTAINER_ID`, so a route change is structural rather than
-    // cosmetic. Driven exactly as the bootstrap does it (src/content/index.ts: on an href
+    // cosmetic. Driven exactly as the bootstrap does it (src/content/bootstrap.ts: on an href
     // change, drop the previous page's container, then sync), because that removal is what
     // keeps a stale track's trigger from being re-positioned into the new page's mount.
     const doc = docWithClaudeAppShell();

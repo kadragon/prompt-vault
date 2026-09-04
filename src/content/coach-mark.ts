@@ -163,8 +163,9 @@ export function showCoachMark(doc: Document): HTMLDivElement {
 
 // --- Once-only gate -------------------------------------------------------------------------
 //
-// Lives here, beside the card, so the bootstrap (src/content/index.ts) and the tests exercise the
-// SAME gate rather than a hand-copied one. The bootstrap owns only the storage read and the poll.
+// Lives here, beside the card, so the bootstrap and the tests exercise the SAME gate rather than a
+// hand-copied one. The bootstrap owns only the storage read (src/content/index.ts) and the poll
+// that drives it (src/content/bootstrap.ts).
 
 // Starts disarmed so nothing can render before the stored flag has been read — and so a storage
 // failure (which `isCoachMarkDismissed` resolves as dismissed) simply leaves it disarmed.
@@ -200,7 +201,7 @@ export function maybeShowCoachMark(doc: Document): void {
 
 /**
  * Consecutive ticks the toolbar must stay absent before the card is torn down. Mirrors the
- * `MOUNT_GRACE_TICKS` grace in src/content/index.ts, and for the same reason: on an SPA href
+ * `MOUNT_GRACE_TICKS` grace in src/content/bootstrap.ts, and for the same reason: on an SPA href
  * change the bootstrap drops the toolbar and the provider re-renders its header asynchronously,
  * so a tick or two with no container is an ordinary re-mount gap, not a departure. Tearing down
  * on the first absent tick would delete a card mid-read — and because the once-only latch is

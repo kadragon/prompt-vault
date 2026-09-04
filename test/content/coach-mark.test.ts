@@ -274,7 +274,7 @@ describe('dismiss paths', () => {
 
 // The gate below is the REAL one from src/content/coach-mark.ts (the same function the bootstrap
 // calls on every poll tick); only the storage read that arms it is re-stated, exactly as
-// src/content/index.ts does it.
+// src/content/bootstrap.ts does it.
 async function armFromStorage(): Promise<void> {
   if (await isCoachMarkDismissed()) return;
   armCoachMark();
@@ -374,7 +374,7 @@ describe('syncCoachMark (the poll tick)', () => {
   });
 
   it('grants the toolbar at least the bootstrap\'s own mount grace before tearing down', () => {
-    // src/content/index.ts waits MOUNT_GRACE_TICKS (6) for a provider header before falling back
+    // src/content/bootstrap.ts waits MOUNT_GRACE_TICKS (6) for a provider header before falling back
     // to the overlay; a shorter teardown grace would delete the card inside that wait.
     expect(COACH_MARK_TEARDOWN_GRACE_TICKS).toBeGreaterThanOrEqual(6);
   });
