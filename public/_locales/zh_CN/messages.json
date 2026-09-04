@@ -51,6 +51,22 @@
     "message": "这个对话没有任何消息，没有可导出的内容。",
     "description": "Shown when extraction returns a conversation with no messages."
   },
+  "pdfFontLoadFailedMessage": {
+    "message": "无法从扩展程序加载 PDF 字体。请刷新页面后重试。",
+    "description": "Shown when the PDF exporter cannot read its font faces out of the extension package."
+  },
+  "pdfMissingGlyphsMessage": {
+    "message": "PDF 已保存，但内置字体缺少的字符会显示为空方框（共 $count$ 个）：$samples$。导出为 Markdown 或 HTML 可以保留它们。",
+    "description": "Shown after a PDF export that succeeded but contains characters the embedded font cannot draw, so they appear as empty boxes. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "samples": {
+        "content": "$2"
+      }
+    }
+  },
   "downloadBulkLabel": {
     "message": "批量",
     "description": "Label for the toolbar button that opens the bulk-export panel."

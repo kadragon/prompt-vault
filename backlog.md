@@ -116,29 +116,15 @@ The larger hazard that measurement exposed is filed above.)*
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
 
+### PDF font loading + glyph warning (2026-09-05)
 
-- [ ] *(out of scope for PR #77 — a different loading architecture for the PDF fonts)*
-      [REFACTOR] Stop base64-inlining the PDF faces. Measured on PR #77: embedding
-      `Jetendard-Bold.ttf` alongside Regular takes the lazily-imported PDF chunk from 7,220 kB to
-      13,399 kB (gzip 3.32 MB → 6.29 MB), because `?inline` turns each 4.6 MB TTF into base64
-      inside one JS module — so every export parses ~13 MB of script and decodes ~6 MB of base64
-      before the first PDF byte. Two options: subset each face to the glyph coverage a chat export
-      needs, or declare the `.ttf` files as `web_accessible_resources` and `fetch(chrome.runtime
-      .getURL(...))` them at export time (an extension-internal request, so Golden Principle #1 is
-      untouched). Worth settling before the next Web Store submission. Found by the PR #77 review
-      panel (code-review).
-
-
-- [ ] [FIX] PDF export still draws tofu boxes for characters no NFKC form can rescue.
-      `src/export/pdf-charmap.ts` substitutes every missing character whose NFKC form the embedded
-      Jetendard faces can draw (1821 of them), but the ones with no usable decomposition still
-      export as empty boxes with no visible error — which sits against Golden Principle #4
-      ("fail loud on extraction"). Both-face census over the shipped fonts: Kana U+3040–30FF
-      192/192 missing, Miscellaneous Symbols 249/256, Dingbats 178/192 (so ✅ ❌ and every emoji),
-      Arrows 77/112, Math Operators 137/256. A Japanese conversation exports as a page of boxes.
-      Two candidate fixes, neither cheap: embed a wider face (the family is already 9 MB), or
-      detect unmapped-and-uncovered code points at export time and surface a warning. Found by the
-      qa-verifier pass on the ℃ fix (branch `fix/pdf-missing-glyph-fallbacks`, 2026-08-28).
+- [ ] [TEST] `test/content/mount.test.ts` has no harness for a SUCCESSFUL export — no adapter
+      extraction is stubbed anywhere in the file, so every export test drives a failure branch.
+      That left the one seam this sprint added to `runExport` (alert when `saveConversation`
+      reports undrawable characters) covered only by its message-shaping helper
+      (`missingGlyphsAlert`) and by the load-unpacked verification. A stubbed adapter +
+      `vi.mock` of `../../src/content/save-conversation` would close it and unlock the other
+      success-path assertions this file cannot make today.
 
 ## Next (roadmap — not v1)
 

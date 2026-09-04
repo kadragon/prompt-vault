@@ -81,3 +81,30 @@ export function deriveNfkcFallbacks(hasGlyph) {
   }
   return table;
 }
+
+/**
+ * Derive the code-point ranges BOTH embedded faces can draw, as sorted, inclusive
+ * `[start, end]` pairs. This is the complement of the fallback table above: the table
+ * says what to rewrite, this says what is left that still cannot be drawn — the
+ * characters that reach the PDF as tofu boxes, which the exporter has to warn about
+ * (AGENTS.md #4).
+ *
+ * Both faces, intersected, for the reason the fallback rule uses both: a bold Markdown
+ * run is laid out with the Bold file, so a glyph only one face carries still boxes in
+ * `**strong**` text.
+ *
+ * @param {ReadonlyArray<Iterable<number>>} characterSets one code-point set per face
+ * @returns {Array<[number, number]>}
+ */
+export function deriveCoverageRanges(characterSets) {
+  const sets = characterSets.map((set) => new Set(set));
+  const covered = [...sets[0]].filter((cp) => sets.every((set) => set.has(cp))).sort((a, b) => a - b);
+  /** @type {Array<[number, number]>} */
+  const ranges = [];
+  for (const cp of covered) {
+    const last = ranges[ranges.length - 1];
+    if (last && cp === last[1] + 1) last[1] = cp;
+    else ranges.push([cp, cp]);
+  }
+  return ranges;
+}

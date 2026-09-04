@@ -26,6 +26,7 @@ import {
   bulkLoadMoreProgressMessage,
   bulkProgressMessage,
   bulkSummaryMessage,
+  pdfMissingGlyphsMessage,
 } from '../strings';
 
 // Stable id so the panel mounts at most once and tests can locate it.
@@ -553,24 +554,62 @@ async function runBatch(doc: Document, args: RunBatchArgs): Promise<void> {
   }
 }
 
-/** Render the batch summary line plus, when present, the list of failed titles. */
+/**
+ * Render the batch summary line, then the failed titles and — separately — the titles
+ * that saved with characters the font could not draw. Two lists, two colours: a
+ * failure means no file, a warning means a file with tofu boxes in it. Collapsing them
+ * would either hide the warnings or overstate them as failures.
+ */
 function renderSummary(doc: Document, status: HTMLElement, summary: BulkExportSummary): void {
   status.textContent = '';
+  const hasDetail = summary.failed.length > 0 || summary.warnings.length > 0;
   const line = doc.createElement('div');
   line.textContent = bulkSummaryMessage(summary.succeeded, summary.total, summary.failed.length);
-  Object.assign(line.style, { fontWeight: '600', marginBottom: summary.failed.length ? '6px' : '0' });
+  Object.assign(line.style, { fontWeight: '600', marginBottom: hasDetail ? '6px' : '0' });
   status.appendChild(line);
 
-  if (summary.failed.length > 0) {
-    const failList = doc.createElement('ul');
-    Object.assign(failList.style, { margin: '0', paddingLeft: '18px', color: '#b00020' });
-    for (const failure of summary.failed) {
-      const item = doc.createElement('li');
-      item.textContent = `${failure.title}: ${failure.error}`;
-      failList.appendChild(item);
-    }
-    status.appendChild(failList);
+  appendDetailList(
+    doc,
+    status,
+    '#b00020',
+    summary.failed.map((failure) => `${failure.title}: ${failure.error}`),
+  );
+  appendDetailList(
+    doc,
+    status,
+    '#8a6100',
+    // `title: message`, the same shape the failure lines use, so one string serves both
+    // the single-export alert and this list.
+    summary.warnings.map(
+      (warning) =>
+        `${warning.title}: ${pdfMissingGlyphsMessage(warning.unsupported.length, sampleOf(warning.unsupported))}`,
+    ),
+  );
+}
+
+// How many undrawable characters each warning names — enough to recognise what went
+// missing, short enough that one line stays readable.
+const MISSING_GLYPH_SAMPLE_LIMIT = 10;
+
+function sampleOf(unsupported: readonly string[]): string {
+  return unsupported.slice(0, MISSING_GLYPH_SAMPLE_LIMIT).join(' ');
+}
+
+function appendDetailList(
+  doc: Document,
+  status: HTMLElement,
+  color: string,
+  lines: readonly string[],
+): void {
+  if (lines.length === 0) return;
+  const list = doc.createElement('ul');
+  Object.assign(list.style, { margin: '0', paddingLeft: '18px', color });
+  for (const text of lines) {
+    const item = doc.createElement('li');
+    item.textContent = text;
+    list.appendChild(item);
   }
+  status.appendChild(list);
 }
 
 function messageOf(error: unknown): string {

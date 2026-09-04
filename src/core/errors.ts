@@ -4,8 +4,11 @@
 // visible error to the user — never a silent or empty download.
 
 export class ExtractionError extends Error {
-  constructor(message: string) {
-    super(message);
+  // `options` carries the underlying failure as `cause` where there is one (e.g. the
+  // font fetch in src/export/fonts/jetendard.ts): the message shown to the user is
+  // deliberately non-technical, so the original error would otherwise be lost.
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'ExtractionError';
     // Restore the prototype chain so `instanceof ExtractionError` holds after the
     // TypeScript ES-target down-level of `extends Error`.

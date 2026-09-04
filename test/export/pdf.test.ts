@@ -4,7 +4,13 @@ import { describe, it, expect } from 'vitest';
 import { Window } from 'happy-dom';
 import { htmlToMarkdown } from '../../src/core/html-to-markdown';
 import type { Conversation } from '../../src/core/conversation';
-import { PDF_FONT, PDF_FONT_FEATURES, pdfFilename, toPdfDocDefinition } from '../../src/export/pdf';
+import {
+  collectUnsupportedChars,
+  PDF_FONT,
+  PDF_FONT_FEATURES,
+  pdfFilename,
+  toPdfDocDefinition,
+} from '../../src/export/pdf';
 
 // fontkit ships no type declarations, so it is required untyped and narrowed here.
 // It is what pdfkit (and therefore pdfmake) uses to lay text out, so laying a string
@@ -18,7 +24,7 @@ const fontkit = createRequire(import.meta.url)('fontkit') as {
   openSync(path: string): FontkitFont;
 };
 const jetendard = fontkit.openSync(
-  fileURLToPath(new URL('../../src/export/fonts/Jetendard-Regular.ttf', import.meta.url)),
+  fileURLToPath(new URL('../../public/fonts/Jetendard-Regular.ttf', import.meta.url)),
 );
 const glyphNames = (text: string, features?: unknown): string[] =>
   jetendard.layout(text, features).glyphs.map((g) => g.name);
@@ -343,5 +349,52 @@ describe('pdfFilename', () => {
   it('keeps the filename within the UTF-8 byte budget for a long CJK title', () => {
     const name = pdfFilename(conversation({ title: '가'.repeat(100) }), date);
     expect(new TextEncoder().encode(name).length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('collectUnsupportedChars', () => {
+  // The reproducing test for the tofu-box bug: before this function existed, a
+  // conversation made of these characters exported as a page of empty boxes with
+  // nothing anywhere to say so (AGENTS.md #4).
+  it('reports the characters no embedded face can draw', () => {
+    const def = toPdfDocDefinition(
+      conversation({ messages: [{ role: 'assistant', content: 'kana あ ア emoji 😀 han 中' }] }),
+    );
+    expect(collectUnsupportedChars(def)).toEqual(['あ', 'ア', '中', '😀']);
+  });
+
+  it('reports nothing for a conversation the font fully covers', () => {
+    const def = toPdfDocDefinition(
+      conversation({ title: '냉장고 설정', messages: [{ role: 'user', content: 'LG → 약 · 중 ±1' }] }),
+    );
+    expect(collectUnsupportedChars(def)).toEqual([]);
+  });
+
+  it('ignores characters ./pdf-charmap already substitutes away', () => {
+    // `℃` and `※` have no glyph, but the exporter rewrites them to `°C` and `*`
+    // before this runs — warning about them would point at text that renders fine.
+    const def = toPdfDocDefinition(
+      conversation({ messages: [{ role: 'user', content: '온도 -1.0℃ ※ 참고' }] }),
+    );
+    expect(collectUnsupportedChars(def)).toEqual([]);
+  });
+
+  it('finds undrawable characters in the title and in nested nodes', () => {
+    // Prose runs, code blocks, list items and table cells all nest arbitrarily deep,
+    // so a walk that only read the top level would under-report.
+    const def = toPdfDocDefinition(
+      conversation({
+        title: 'あ',
+        messages: [{ role: 'user', content: '| ア |\n| --- |\n| 中 |\n\n- 😀\n\n```\nア\n```' }],
+      }),
+    );
+    expect(collectUnsupportedChars(def)).toEqual(['あ', 'ア', '中', '😀']);
+  });
+
+  it('deduplicates and sorts, so one repeated character is reported once', () => {
+    const def = toPdfDocDefinition(
+      conversation({ messages: [{ role: 'user', content: 'ア ア ア あ' }] }),
+    );
+    expect(collectUnsupportedChars(def)).toEqual(['あ', 'ア']);
   });
 });

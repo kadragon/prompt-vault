@@ -63,6 +63,10 @@ Nothing else is persisted.
   analytics service, or third party. The extension makes no network requests of its own.
   (The only data that may leave your device is your toolbar-icon preference, and only via
   Chrome Sync as described above — never any conversation content.)
+  For completeness: the PDF exporter does read its two font files out of the extension's own
+  package, over a `chrome-extension://` address, the first time you export a PDF. That address
+  is the installed extension on your own computer — it is not a server, nothing is sent, and
+  no request ever leaves your device.
 - It does **not** track your browsing, build a profile, or use cookies or advertising
   identifiers.
 - It does **not** sell or share your data with anyone.
@@ -75,8 +79,10 @@ Nothing else is persisted.
   export buttons can appear on, and read the conversation from, ChatGPT, Claude and Gemini
   conversation pages. The extension runs on no other sites. The Gemini grant is scoped to the
   `gemini.google.com` subdomain only — it gives no access to Search, Gmail, or any other Google
-  service. Three separate things limit this access. The extension makes no network requests at all —
-  there is no such code in it. It requests no `host_permissions`, so it holds no cross-origin
+  service. Three separate things limit this access. The extension makes no request to any server —
+  the only address it ever reads from is its own package (see the PDF font note above), and an
+  automated check in the source tree fails the build on anything else. It requests no
+  `host_permissions`, so it holds no cross-origin
   fetch or cookie access to these sites from a background context; its only reach is the script
   running inside a page you already have open. And its settings page ships a Content Security Policy
   that permits images, fonts, media, styles and scripts only from inside the extension package,

@@ -51,6 +51,22 @@
     "message": "この会話にはメッセージがないため、エクスポートできる内容がありません。",
     "description": "Shown when extraction returns a conversation with no messages."
   },
+  "pdfFontLoadFailedMessage": {
+    "message": "拡張機能から PDF 用フォントを読み込めませんでした。ページを再読み込みしてからもう一度お試しください。",
+    "description": "Shown when the PDF exporter cannot read its font faces out of the extension package."
+  },
+  "pdfMissingGlyphsMessage": {
+    "message": "PDF は保存しましたが、内蔵フォントにない文字が空の四角として入っています（全 $count$ 種）: $samples$。Markdown か HTML なら文字のまま残せます。",
+    "description": "Shown after a PDF export that succeeded but contains characters the embedded font cannot draw, so they appear as empty boxes. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "samples": {
+        "content": "$2"
+      }
+    }
+  },
   "downloadBulkLabel": {
     "message": "一括",
     "description": "Label for the toolbar button that opens the bulk-export panel."

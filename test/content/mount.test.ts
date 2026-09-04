@@ -5,6 +5,7 @@ import {
   createButtons,
   createProjectTrigger,
   createRecentsTrigger,
+  missingGlyphsAlert,
   removeButtons,
   setToolbarSettings,
   syncButtons,
@@ -840,5 +841,28 @@ describe('setToolbarSettings', () => {
     expect(setToolbarSettings(custom)).toBe(true); // differs from default → changed
     expect(setToolbarSettings({ formats: { ...custom.formats }, bulk: custom.bulk })).toBe(false); // equal value → no change
     expect(setToolbarSettings({ ...custom, bulk: false })).toBe(true); // bulk flip → changed
+  });
+});
+
+// The PDF exporter reports back the characters the embedded font could not draw; this
+// is the text the user sees for them. The click-to-alert wiring itself is one `if` in
+// the private `runExport`, and there is no harness here for a SUCCESSFUL export (no
+// adapter extraction is stubbed anywhere in this file) — the end-to-end path is covered
+// by the load-unpacked verification instead.
+describe('missingGlyphsAlert', () => {
+  it('names the count and shows the characters themselves', () => {
+    const text = missingGlyphsAlert(['あ', 'ア', '😀']);
+    expect(text).toContain('(count: 3)');
+    expect(text).toContain('あ ア 😀');
+  });
+
+  it('caps the sample but still reports the true count', () => {
+    // A whole Japanese conversation contributes hundreds of distinct characters; the
+    // alert has to stay readable while still saying how bad it is.
+    const many = Array.from({ length: 30 }, (_, i) => String.fromCodePoint(0x3042 + i));
+    const text = missingGlyphsAlert(many);
+    expect(text).toContain('(count: 30)');
+    expect(text).toContain(many.slice(0, 10).join(' '));
+    expect(text).not.toContain(many[10]);
   });
 });

@@ -20,9 +20,14 @@ function target(title: string): BulkTarget {
 const NOW = new Date(2026, 6, 17);
 
 // A save spy plus a no-wait sleep spy, so the loop runs with no real downloads/timers.
-function deps(save: (c: Conversation, f: ExportFormat, now: Date) => Promise<void>) {
+// `save` may resolve to nothing — the undrawable-character list saveConversation now
+// returns is only interesting to the tests that exercise it, so the rest read as before.
+function deps(save: (c: Conversation, f: ExportFormat, now: Date) => Promise<void | string[]>) {
   const sleep = vi.fn<(ms: number) => Promise<void>>().mockResolvedValue(undefined);
-  return { save: vi.fn(save), sleep };
+  return {
+    save: vi.fn(async (c: Conversation, f: ExportFormat, now: Date) => (await save(c, f, now)) ?? []),
+    sleep,
+  };
 }
 
 describe('bulkExport', () => {
@@ -37,8 +42,24 @@ describe('bulkExport', () => {
     const summary = await bulkExport(targets, 'md', NOW, { save, sleep });
 
     expect(saved).toEqual(['a', 'b', 'c']);
-    expect(summary).toEqual({ total: 3, succeeded: 3, failed: [] });
+    expect(summary).toEqual({ total: 3, succeeded: 3, failed: [], warnings: [] });
     expect(save).toHaveBeenCalledWith(conversation('a'), 'md', NOW);
+  });
+
+  it('records a save that could not draw every character as a warning, not a failure', () => {
+    // The file IS there — reporting it as a failure would be wrong, and reporting
+    // nothing would let a whole Japanese batch look clean while every page was tofu
+    // boxes (AGENTS.md #4).
+    const { save, sleep } = deps((c) => Promise.resolve(c.title === 'b' ? ['あ', '😀'] : []));
+
+    return bulkExport([target('a'), target('b')], 'pdf', NOW, { save, sleep }).then((summary) => {
+      expect(summary).toEqual({
+        total: 2,
+        succeeded: 2,
+        failed: [],
+        warnings: [{ title: 'b', unsupported: ['あ', '😀'] }],
+      });
+    });
   });
 
   it('captures a mid-list SAVE failure and still exports the remaining targets', async () => {
@@ -118,7 +139,7 @@ describe('bulkExport', () => {
   it('returns an empty summary and never saves or sleeps for no targets', async () => {
     const { save, sleep } = deps(() => Promise.resolve());
     const summary = await bulkExport([], 'pdf', NOW, { save, sleep });
-    expect(summary).toEqual({ total: 0, succeeded: 0, failed: [] });
+    expect(summary).toEqual({ total: 0, succeeded: 0, failed: [], warnings: [] });
     expect(save).not.toHaveBeenCalled();
     expect(sleep).not.toHaveBeenCalled();
   });

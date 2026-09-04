@@ -21,6 +21,7 @@ import {
   DOWNLOAD_PROJECT_BULK_LABEL,
   DOWNLOAD_RECENTS_BULK_ARIA_LABEL,
   EXPORT_FAILED_MESSAGE,
+  pdfMissingGlyphsMessage,
   EXPORT_NO_ADAPTER_MESSAGE,
 } from '../strings';
 import { assertConversationNonEmpty } from './guard';
@@ -407,7 +408,14 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
     const conversation = await adapter.extract();
     assertConversationNonEmpty(conversation);
     // Produce+save lives in the headless saver so the bulk driver reuses it.
-    await saveConversation(conversation, format, new Date());
+    const unsupported = await saveConversation(conversation, format, new Date());
+    // The file is already downloaded and worth keeping, but it contains tofu boxes —
+    // say so rather than let the user find them (AGENTS.md #4). The alert renders in
+    // the page's own fonts, so the sample characters display here even though the
+    // embedded PDF face could not draw them.
+    if (unsupported.length > 0) {
+      alert(missingGlyphsAlert(unsupported));
+    }
   } catch (error) {
     // ExtractionError carries a user-actionable message; anything else is
     // unexpected and gets the generic fallback.
@@ -416,6 +424,19 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
     exportInFlight = false;
     buttons.forEach((b) => (b.disabled = false));
   }
+}
+
+// How many of the undrawable characters the warning names. Enough to recognise what
+// went missing (a kana run, an emoji), short enough that the alert stays readable when
+// a whole Japanese conversation contributed hundreds of them.
+const MISSING_GLYPH_SAMPLE_LIMIT = 10;
+
+/** The warning text for characters the PDF could not draw, with a bounded sample. */
+export function missingGlyphsAlert(unsupported: readonly string[]): string {
+  return pdfMissingGlyphsMessage(
+    unsupported.length,
+    unsupported.slice(0, MISSING_GLYPH_SAMPLE_LIMIT).join(' '),
+  );
 }
 
 /**

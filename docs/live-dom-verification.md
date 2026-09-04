@@ -215,7 +215,9 @@ extension context**. This extension has no such context: no background service w
 mechanically enforced over every JS/TS file in it by `test/privacy/no-external-network.test.ts`
 (`SCAN_DIRS: ['src']`; `src/options/index.html` sits outside *that* half's file-type filter and is
 covered by the HTML halves instead) — no `chrome.tabs`/`scripting`/`cookies`, downloads via
-`URL.createObjectURL` + `<a download>`, PDF font base64-embedded. `npm run build` is `vite build`
+`URL.createObjectURL` + `<a download>`, PDF font base64-embedded. (That last clause was true when
+this was measured; the faces have since moved to `web_accessible_resources` and are read at export
+time over a `chrome-extension://` URL — a same-package address, so the conclusion is unchanged.) `npm run build` is `vite build`
 only, so crxjs HMR — the one plausible build-time consumer — never applies to a shipped artifact.
 
 The one non-obvious dependency, checked because it is the part that *could* have broken: crxjs

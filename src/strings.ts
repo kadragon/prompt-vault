@@ -27,6 +27,20 @@ export const EXPORT_NO_ADAPTER_MESSAGE = m('exportNoAdapterMessage');
 // Generic fallback for an unexpected export failure that is not an ExtractionError.
 export const EXPORT_FAILED_MESSAGE = m('exportFailedMessage');
 
+// Shown (fail-loud) when the PDF exporter cannot read its font faces out of the
+// extension package, so pdfmake would otherwise fall back to a face with no Hangul or
+// CJK coverage and render a whole page of tofu boxes (AGENTS.md #4).
+export const PDF_FONT_LOAD_FAILED_MESSAGE = m('pdfFontLoadFailedMessage');
+
+/**
+ * Shown after a PDF export that succeeded but contains characters no embedded face can
+ * draw — they are in the file as empty boxes. Non-blocking: the PDF is still worth
+ * having, and staying silent about it is the AGENTS.md #4 violation.
+ */
+export function pdfMissingGlyphsMessage(count: number, samples: string): string {
+  return m('pdfMissingGlyphsMessage', [String(count), samples]);
+}
+
 // Shown (fail-loud) when extraction returns a conversation with no messages, so
 // there is nothing worth downloading (AGENTS.md #4).
 export const EXPORT_EMPTY_MESSAGE = m('exportEmptyMessage');

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Load the PDF faces as extension resources, and warn on characters they cannot draw (2026-09-05)
 - [done] Cover the coach mark's teardown-grace reset by extracting the content bootstrap into a testable module (2026-09-05)
 - [done] Remove the first-run coach mark when the toolbar it explains is gone (2026-09-05)
 - [done] Escape an image alt beside a usable src, and encode a destination's leading `<` and its backslashes (2026-09-05)

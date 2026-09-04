@@ -81,7 +81,7 @@ const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 describe('openBulkPanel', () => {
   it('lists every conversation as a checkbox row with its title', () => {
     const doc = freshDoc();
-    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     const panel = panelOf(doc);
     expect(checkboxes(panel)).toHaveLength(CONVS.length + 1); // +1 for select-all
     expect(panel.textContent).toContain('Alpha');
@@ -91,7 +91,7 @@ describe('openBulkPanel', () => {
 
   it('is idempotent — a second open does not stack a second panel', () => {
     const doc = freshDoc();
-    const d = deps({ total: 0, succeeded: 0, failed: [] });
+    const d = deps({ total: 0, succeeded: 0, failed: [], warnings: [] });
     openBulkPanel(doc, d);
     openBulkPanel(doc, d);
     expect(doc.querySelectorAll(`#${BULK_PANEL_ID}`)).toHaveLength(1);
@@ -99,7 +99,7 @@ describe('openBulkPanel', () => {
 
   it('shows the empty state (no actionable list) when the sidebar lists nothing', () => {
     const doc = freshDoc();
-    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }, []));
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }, []));
     const panel = panelOf(doc);
     expect(panel.textContent).toContain('No conversations were found to export');
     expect(checkboxes(panel)).toHaveLength(0);
@@ -122,7 +122,7 @@ describe('openBulkPanel', () => {
 
   it('disables Export until at least one conversation is selected', () => {
     const doc = freshDoc();
-    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     const panel = panelOf(doc);
     expect(buttonByText(panel, 'Export 0 selected').disabled).toBe(true);
 
@@ -132,7 +132,7 @@ describe('openBulkPanel', () => {
 
   it('select-all checks every conversation and updates the Export count', () => {
     const doc = freshDoc();
-    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     const panel = panelOf(doc);
     check(checkboxes(panel)[0]); // the select-all box
     expect(checkboxes(panel).every((b) => b.checked)).toBe(true);
@@ -142,7 +142,7 @@ describe('openBulkPanel', () => {
   it('unchecks select-all once Load more appends new (unchecked) rows', async () => {
     const doc = freshDoc();
     const more: SidebarConversation[] = [...CONVS, { id: 'd', title: 'Delta', url: 'https://chatgpt.com/c/d' }];
-    const d = { ...deps({ total: 0, succeeded: 0, failed: [] }), loadMore: () => Promise.resolve(more) };
+    const d = { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }), loadMore: () => Promise.resolve(more) };
     openBulkPanel(doc, d);
     const panel = panelOf(doc);
 
@@ -158,7 +158,7 @@ describe('openBulkPanel', () => {
 
   it('runs the batch for exactly the selected conversations in the chosen format', async () => {
     const doc = freshDoc();
-    const d = deps({ total: 2, succeeded: 2, failed: [] });
+    const d = deps({ total: 2, succeeded: 2, failed: [], warnings: [] });
     openBulkPanel(doc, d);
     const panel = panelOf(doc);
 
@@ -180,6 +180,7 @@ describe('openBulkPanel', () => {
       total: 2,
       succeeded: 1,
       failed: [{ title: 'Beta', error: 'Timed out opening' }],
+      warnings: [],
     };
     openBulkPanel(doc, deps(summary));
     const panel = panelOf(doc);
@@ -196,9 +197,33 @@ describe('openBulkPanel', () => {
     expect(buttonByText(panel, 'Close')).toBeTruthy();
   });
 
+  it('lists a warned title separately from the failed ones', async () => {
+    // A failure means no file; a warning means a file with tofu boxes in it. The
+    // panel has to say both, and say which is which.
+    const doc = freshDoc();
+    const summary: BulkExportSummary = {
+      total: 2,
+      succeeded: 2,
+      failed: [],
+      warnings: [{ title: 'Beta', unsupported: ['あ', 'ア', '😀'] }],
+    };
+    openBulkPanel(doc, deps(summary));
+    const panel = panelOf(doc);
+
+    check(checkboxes(panel)[1]);
+    check(checkboxes(panel)[2]);
+    buttonByText(panel, 'Export 2 selected').click();
+    await flush();
+
+    expect(panel.textContent).toContain('Saved 2 of 2.');
+    expect(panel.textContent).toContain('Beta:');
+    expect(panel.textContent).toContain('(count: 3)');
+    expect(panel.textContent).toContain('あ ア 😀');
+  });
+
   it('shows no Load more button when deps.loadMore is absent', () => {
     const doc = freshDoc();
-    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     expect(() => buttonByText(panelOf(doc), 'Load more')).toThrow();
   });
 
@@ -209,7 +234,7 @@ describe('openBulkPanel', () => {
       { id: 'd', title: 'Delta', url: 'https://chatgpt.com/c/d' },
       { id: 'e', title: 'Epsilon', url: 'https://chatgpt.com/c/e' },
     ];
-    const d = { ...deps({ total: 0, succeeded: 0, failed: [] }), loadMore: () => Promise.resolve(more) };
+    const d = { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }), loadMore: () => Promise.resolve(more) };
     openBulkPanel(doc, d);
     const panel = panelOf(doc);
 
@@ -231,7 +256,7 @@ describe('openBulkPanel', () => {
 
   it('Load more that reveals nothing new settles into a disabled done state', async () => {
     const doc = freshDoc();
-    const d = { ...deps({ total: 0, succeeded: 0, failed: [] }), loadMore: () => Promise.resolve(CONVS) };
+    const d = { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }), loadMore: () => Promise.resolve(CONVS) };
     openBulkPanel(doc, d);
     const panel = panelOf(doc);
 
@@ -245,7 +270,7 @@ describe('openBulkPanel', () => {
   it('warns instead of latching done when Load more reports the list may be incomplete', async () => {
     const doc = freshDoc();
     const d: BulkPanelDeps = {
-      ...deps({ total: 0, succeeded: 0, failed: [] }),
+      ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }),
       loadMore: (_onProgress, onIncomplete) => {
         onIncomplete?.();
         return Promise.resolve(CONVS); // nothing new surfaced
@@ -274,7 +299,7 @@ describe('openBulkPanel', () => {
     const doc = freshDoc();
     let call = 0;
     const d: BulkPanelDeps = {
-      ...deps({ total: 0, succeeded: 0, failed: [] }),
+      ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }),
       loadMore: (_onProgress, onIncomplete) => {
         call += 1;
         if (call === 1) onIncomplete?.(); // first walk gave up with a page still owed
@@ -298,7 +323,7 @@ describe('openBulkPanel', () => {
   it('surfaces a rejected Load more in the status line and re-enables the button', async () => {
     const doc = freshDoc();
     const d = {
-      ...deps({ total: 0, succeeded: 0, failed: [] }),
+      ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }),
       loadMore: () => Promise.reject(new Error('Timed out loading the conversation list')),
     };
     openBulkPanel(doc, d);
@@ -355,7 +380,7 @@ describe('openBulkPanel', () => {
         onProgress = cb;
         return new Promise<SidebarConversation[]>((r) => (resolveLoad = r));
       },
-      run: deps({ total: 0, succeeded: 0, failed: [] }).run,
+      run: deps({ total: 0, succeeded: 0, failed: [], warnings: [] }).run,
     };
     openBulkPanel(doc, d);
     const panel = panelOf(doc);
@@ -410,14 +435,14 @@ describe('openBulkPanel', () => {
 
   it('closes on Cancel', () => {
     const doc = freshDoc();
-    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     buttonByText(panelOf(doc), 'Cancel').click();
     expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
   });
 
   it('closes on Escape via a document-level listener (focus need not be inside the panel)', () => {
     const doc = freshDoc();
-    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [] }));
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     expect(doc.getElementById(BULK_PANEL_ID)).not.toBeNull();
     pressEscape(doc);
     expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
@@ -439,7 +464,7 @@ describe('openBulkPanel', () => {
     expect(doc.getElementById(BULK_PANEL_ID)).not.toBeNull();
 
     // Once the batch settles, the repurposed Close works again.
-    d.resolve({ total: 1, succeeded: 1, failed: [] });
+    d.resolve({ total: 1, succeeded: 1, failed: [], warnings: [] });
     await flush();
     buttonByText(panel, 'Close').click();
     expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
