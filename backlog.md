@@ -30,6 +30,20 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### PR #92 review (coach-mark teardown, 2026-09-05)
+
+- [ ] *(accepted on PR #92 — no bootstrap test file exists, and building one was outside that
+      contract)*
+      [TEST] Nothing catches the removal of `resetCoachMarkAbsence()` from `dropToolbar()` in
+      `src/content/index.ts`. The teardown grace itself is pinned in
+      `test/content/coach-mark.test.ts`, which drives the reset directly, but no test exercises
+      `tick()` or `applySettings`, so the two call sites the fix actually depends on are
+      uncovered — deleting either leaves the suite green while the coach mark goes back to being
+      torn down mid-read on a second href change. Either stand up a bootstrap test (the module
+      runs `watchNavigation()` and a `setInterval` on import, so it needs a seam) or extract the
+      href-change branch's work into a module the tests already import. Found by the PR #92
+      review round.
+
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
@@ -115,17 +129,6 @@ The larger hazard that measurement exposed is filed above.)*
       nodes with a byte-identical id and text (QA's PROBE4: resolves at 455 ms with the outgoing
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
-
-
-- [ ] *(out of scope for PR #76 — pre-existing, and the fix belongs one level up in the tick)*
-      [FIX] The coach mark outlives the toolbar it explains. `maybeShowCoachMark` gates on
-      `CONTAINER_ID`, but nothing removes an already-shown card when `removeButtons` fires — on a
-      route change, on a non-conversation page, or (new in #76) when ChatGPT's expanded
-      deep-research report opens over the page. The card is `position: fixed`, `z-index`
-      2147483647 (`src/content/coach-mark.ts:47-58`), so it floats over whatever replaced the
-      toolbar and swallows the first outside `pointerdown`. Fix altitude: have the tick in
-      `src/content/index.ts` call `removeCoachMark(document)` whenever the container is absent,
-      rather than patching each removal site. Found by the PR #76 review panel (code-review).
 
 
 - [ ] *(out of scope for PR #77 — a different loading architecture for the PDF fonts)*
