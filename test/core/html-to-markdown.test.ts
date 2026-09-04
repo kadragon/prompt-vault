@@ -405,6 +405,36 @@ describe('serialization fidelity', () => {
     expect(md('<p><a href="https://e.com/a)b\\-c">t</a></p>')).toBe('[t](<https://e.com/a)b%5C-c>)');
   });
 
+  it('percent-encodes a backslash in a bare destination too', () => {
+    // The balanced-paren path returns before the wrapper's encoding, so a `\` used to
+    // reach the reader intact — and a CommonMark reader resolves `\%` to a literal `%`,
+    // dropping the backslash and silently changing the destination the page carried.
+    expect(md('<p><a href="https://e.com/a\\-b">t</a></p>')).toBe('[t](https://e.com/a%5C-b)');
+    expect(md('<table><tr><td><a href="https://e.com/a\\|b">t</a></td></tr></table>')).toBe(
+      '| [t](https://e.com/a%5C%7Cb) |\n| --- |',
+    );
+  });
+
+  it('wraps a destination that starts with an angle bracket', () => {
+    // CommonMark forbids a bare destination from starting with `<`, and the unclosed
+    // angle form fails too, so the position-0 case has no valid spelling until the
+    // wrapper takes it and percent-encodes the bracket.
+    expect(md('<p><a href="<https://e.com/a">t</a></p>')).toBe('[t](<%3Chttps://e.com/a>)');
+    expect(md('<p><img src="<https://e.com/a" alt="q"></p>')).toBe('![q](<%3Chttps://e.com/a>)');
+  });
+
+  it('escapes an image alt that sits beside a usable destination', () => {
+    // The alt is display text inside `![...]`, so it corrupts the markup around it exactly
+    // as an unescaped destination did: a `|` splits the row it sits in, and a `[`/`]`
+    // breaks the image out of its own brackets.
+    expect(md('<table><tr><td><img src="https://e.com/a" alt="x|y"></td></tr></table>')).toBe(
+      '| ![x\\|y](https://e.com/a) |\n| --- |',
+    );
+    expect(md('<p><img src="https://e.com/a" alt="a]b"></p>')).toBe('![a\\]b](https://e.com/a)');
+    // A line break inside the alt would leave the closing `]` on a later line.
+    expect(md('<p><img src="https://e.com/a" alt="a&#10;b"></p>')).toBe('![a b](https://e.com/a)');
+  });
+
   it('escapes an anchor label that falls back to the href', () => {
     // An anchor whose content is an icon serializes to no label and the href stands in
     // for it. As visible text it is prose: a `|` would split the row it sits in, and a
