@@ -1,6 +1,6 @@
 import { isConversationPage, isProjectPage, isRecentsPage } from './page';
 import { removeButtons, setToolbarSettings, syncButtons } from './mount';
-import { armCoachMark, disarmCoachMark, removeCoachMark, maybeShowCoachMark } from './coach-mark';
+import { armCoachMark, disarmCoachMark, removeCoachMark, syncCoachMark } from './coach-mark';
 import { loadSettings, subscribeSettings, type ToolbarSettings } from '../settings/store';
 import { isCoachMarkDismissed, subscribeCoachMarkDismissed } from '../settings/onboarding';
 
@@ -36,7 +36,7 @@ function tick(): void {
     isConversationPage(location.href) || isProjectPage(location.href) || isRecentsPage(location.href);
   convTicks = mountable ? convTicks + 1 : 0;
   syncButtons(document, location.href, { allowOverlayFallback: convTicks >= MOUNT_GRACE_TICKS });
-  maybeShowCoachMark(document);
+  syncCoachMark(document);
 }
 
 /**
@@ -91,7 +91,7 @@ isCoachMarkDismissed()
   .then((dismissed) => {
     if (dismissed) return;
     armCoachMark();
-    maybeShowCoachMark(document);
+    syncCoachMark(document);
   })
   .catch(() => undefined);
 

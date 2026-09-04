@@ -7,6 +7,7 @@ import {
   maybeShowCoachMark,
   removeCoachMark,
   showCoachMark,
+  syncCoachMark,
 } from '../../src/content/coach-mark';
 import { CONTAINER_ID, createButtons, removeButtons } from '../../src/content/mount';
 import { isCoachMarkDismissed } from '../../src/settings/onboarding';
@@ -315,6 +316,62 @@ describe('the once-only gate across an SPA route change', () => {
     // And a whole new page load (the arming read run again) sees the persisted flag.
     await armFromStorage();
     maybeShowCoachMark(doc);
+    expect(isCoachMarkVisible(doc)).toBe(false);
+  });
+});
+
+describe('syncCoachMark (one poll tick)', () => {
+  it('tears the card down when the toolbar it explains is gone', async () => {
+    const window = bareWindow();
+    const doc = docOf(window);
+    await armFromStorage();
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
+    expect(isCoachMarkVisible(doc)).toBe(true);
+
+    // What #76 hit: the toolbar goes (route change, non-conversation page, an expanded report
+    // opening over it) while the `position: fixed` card stays on top of whatever replaced it.
+    removeButtons(doc);
+    syncCoachMark(doc);
+    expect(isCoachMarkVisible(doc)).toBe(false);
+    // Not a dismissal: the user may never have read the card, so nothing is persisted.
+    expect(store[STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('unbinds the torn-down card, so a later outside press cannot persist a dismissal', async () => {
+    const window = bareWindow();
+    const doc = docOf(window);
+    await armFromStorage();
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
+    removeButtons(doc);
+    syncCoachMark(doc);
+
+    doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }) as unknown as Event);
+    await flush();
+    expect(store[STORAGE_KEY]).toBeUndefined();
+  });
+
+  it('is a no-op on a page that never mounted a toolbar', async () => {
+    const window = bareWindow();
+    const doc = docOf(window);
+    await armFromStorage();
+    syncCoachMark(doc);
+    expect(isCoachMarkVisible(doc)).toBe(false);
+  });
+
+  it('does not resurrect the card when the toolbar re-mounts', async () => {
+    const window = bareWindow();
+    const doc = docOf(window);
+    await armFromStorage();
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
+    removeButtons(doc);
+    syncCoachMark(doc);
+
+    // The latch was spent by the first show; a re-mounted toolbar must not buy a second card.
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
     expect(isCoachMarkVisible(doc)).toBe(false);
   });
 });

@@ -195,3 +195,21 @@ export function maybeShowCoachMark(doc: Document): void {
   coachMarkArmed = false;
   showCoachMark(doc);
 }
+
+/**
+ * One poll tick's worth of coach-mark upkeep: show the card when the toolbar is mounted and the
+ * gate is armed, and tear it down when the toolbar is gone. The tick owns this rather than each
+ * `removeButtons` call site, because the toolbar can also disappear without one — the page
+ * re-renders over it, or the route leaves a mountable page entirely.
+ *
+ * The teardown is not a dismissal: the user may never have read the card, so nothing is
+ * persisted. The once-only latch is spent by the show itself, so the card does not come back
+ * later in this page's session either way.
+ */
+export function syncCoachMark(doc: Document): void {
+  if (doc.getElementById(CONTAINER_ID)) {
+    maybeShowCoachMark(doc);
+    return;
+  }
+  removeCoachMark(doc);
+}

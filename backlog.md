@@ -117,17 +117,6 @@ The larger hazard that measurement exposed is filed above.)*
       Recorded so the limit is on the record rather than rediscovered.
 
 
-- [ ] *(out of scope for PR #76 — pre-existing, and the fix belongs one level up in the tick)*
-      [FIX] The coach mark outlives the toolbar it explains. `maybeShowCoachMark` gates on
-      `CONTAINER_ID`, but nothing removes an already-shown card when `removeButtons` fires — on a
-      route change, on a non-conversation page, or (new in #76) when ChatGPT's expanded
-      deep-research report opens over the page. The card is `position: fixed`, `z-index`
-      2147483647 (`src/content/coach-mark.ts:47-58`), so it floats over whatever replaced the
-      toolbar and swallows the first outside `pointerdown`. Fix altitude: have the tick in
-      `src/content/index.ts` call `removeCoachMark(document)` whenever the container is absent,
-      rather than patching each removal site. Found by the PR #76 review panel (code-review).
-
-
 - [ ] *(out of scope for PR #77 — a different loading architecture for the PDF fonts)*
       [REFACTOR] Stop base64-inlining the PDF faces. Measured on PR #77: embedding
       `Jetendard-Bold.ttf` alongside Regular takes the lazily-imported PDF chunk from 7,220 kB to
