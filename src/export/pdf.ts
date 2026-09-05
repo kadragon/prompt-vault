@@ -18,6 +18,7 @@ import type { Conversation, Role } from '../core/conversation';
 import { buildExportFilename } from './filename';
 import { renderMarkdown } from './markdown-pdf';
 import { substituteUnsupportedChars } from './pdf-charmap';
+import { COVERED_RANGES } from './pdf-coverage-generated';
 
 // The embedded font family name, referenced by the vfs/fonts registration in the
 // content layer. Kept here so the pure doc definition names the same family the
@@ -125,6 +126,70 @@ function withCharFallbacks<T>(node: T): T {
         : withCharFallbacks(value);
   }
   return copy as T;
+}
+
+/**
+ * The characters in a built document definition that no embedded face can draw, sorted
+ * and deduplicated. They reach the PDF as tofu boxes, so the content layer warns about
+ * them rather than shipping a silently degraded file (AGENTS.md #4).
+ *
+ * Runs on the finished, already-substituted definition — the answer is what survives
+ * ./pdf-charmap, not what the source text happened to contain. Pure and DOM-free like
+ * the rest of this module: it reports, it does not mutate.
+ */
+export function collectUnsupportedChars(doc: TDocumentDefinitions): string[] {
+  const found = new Set<string>();
+  collectFrom(doc.content, found);
+  return [...found].sort();
+}
+
+// Same structural walk as withCharFallbacks, and it relies on the same invariant:
+// every user-visible string sits under a `text` key. test/export/pdf.test.ts pins that
+// ("emits no visible text outside a `text` property for the walk to miss"), so the two
+// walks cannot drift apart without a test failing.
+function collectFrom(node: unknown, found: Set<string>): void {
+  if (Array.isArray(node)) {
+    for (const child of node) collectFrom(child, found);
+    return;
+  }
+  if (node === null || typeof node !== 'object') return;
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'text' && typeof value === 'string') {
+      for (const char of value) {
+        if (!isDrawable(char)) found.add(char);
+      }
+    } else {
+      collectFrom(value, found);
+    }
+  }
+}
+
+/**
+ * Whether the embedded faces carry a glyph for `codePoint`, by binary search over the
+ * generated ranges. Exported so test/export/pdf-charmap.test.ts can cross-check the
+ * committed table against fontkit's own answer — the table is derived from
+ * `face.characterSet` while ./pdf-charmap is derived from `hasGlyphForCodePoint`, and
+ * nothing else pins those two APIs to each other.
+ */
+export function isCodePointCovered(codePoint: number): boolean {
+  let low = 0;
+  let high = COVERED_RANGES.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const [start, end] = COVERED_RANGES[mid];
+    if (codePoint < start) high = mid - 1;
+    else if (codePoint > end) low = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+// Whitespace is exempt: a space, tab or newline is laid out, never drawn, so an
+// uncovered one is not a tofu box and warning about it would be noise the user cannot
+// act on.
+function isDrawable(char: string): boolean {
+  if (/\s/.test(char)) return true;
+  return isCodePointCovered(char.codePointAt(0) as number);
 }
 
 // Flatten any newlines in the title so it stays a single heading line.

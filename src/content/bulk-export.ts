@@ -27,7 +27,7 @@ export interface BulkTarget {
 
 export interface BulkExportDeps {
   /** Produce+save one conversation. Defaults to the real headless saver. */
-  save?: (conversation: Conversation, format: ExportFormat, now: Date) => Promise<void>;
+  save?: (conversation: Conversation, format: ExportFormat, now: Date) => Promise<string[]>;
   /** Wait between items. Injectable so tests need no real timers. */
   sleep?: (ms: number) => Promise<void>;
   /** Delay applied between (not after) items. */
@@ -45,6 +45,17 @@ export interface BulkFailure {
   error: string;
 }
 
+/**
+ * One target that saved, but whose file could not render every character (PDF only —
+ * see saveConversation). Separate from BulkFailure because the file IS there and is
+ * worth keeping; without this the whole batch would report clean while every page was
+ * tofu boxes, which is the silent degradation AGENTS.md #4 forbids.
+ */
+export interface BulkWarning {
+  title: string;
+  unsupported: string[];
+}
+
 export interface BulkExportSummary {
   total: number;
   /**
@@ -56,6 +67,11 @@ export interface BulkExportSummary {
    */
   succeeded: number;
   failed: BulkFailure[];
+  /**
+   * Items that saved with characters the embedded font could not draw. A subset of
+   * `succeeded` — a warned item still counts as a success, because the file exists.
+   */
+  warnings: BulkWarning[];
 }
 
 /**
@@ -65,6 +81,9 @@ export interface BulkExportSummary {
  * one bad conversation never silently aborts the batch nor gets silently skipped
  * (per-item fail-loud, AGENTS.md #4). `sleep(delayMs)` runs BETWEEN items only (not
  * after the last). Returns the summary for the caller to surface; performs no `alert`.
+ *
+ * A save that succeeds but could not render every character lands in `warnings[]`
+ * while still counting as a success — the file is there, it just has tofu boxes in it.
  *
  * Note: `succeeded` counts saves dispatched without error, not downloads confirmed on
  * disk (see `BulkExportSummary.succeeded`).
@@ -78,6 +97,7 @@ export async function bulkExport(
   const { save = saveConversation, sleep = defaultSleep, delayMs = DEFAULT_DELAY_MS, onProgress } = deps;
 
   const failed: BulkFailure[] = [];
+  const warnings: BulkWarning[] = [];
   let succeeded = 0;
 
   for (let i = 0; i < targets.length; i++) {
@@ -85,15 +105,16 @@ export async function bulkExport(
     onProgress?.(i, targets.length, target.title);
     try {
       const conversation = await target.produce();
-      await save(conversation, format, now);
+      const unsupported = await save(conversation, format, now);
       succeeded++;
+      if (unsupported.length > 0) warnings.push({ title: target.title, unsupported });
     } catch (error) {
       failed.push({ title: target.title, error: messageOf(error) });
     }
     if (i < targets.length - 1) await sleep(delayMs);
   }
 
-  return { total: targets.length, succeeded, failed };
+  return { total: targets.length, succeeded, failed, warnings };
 }
 
 function messageOf(error: unknown): string {

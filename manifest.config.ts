@@ -75,6 +75,25 @@ export default defineManifest({
   // via URL.createObjectURL + an `<a download>` (no permission needed); `downloads` would
   // only be added if a future ticket switches to the chrome.downloads API.
   permissions: ['storage'],
+  // The two PDF font faces, read at export time over a `chrome-extension://` URL
+  // (src/export/fonts/jetendard.ts). They used to ride into the PDF chunk as base64
+  // via Vite's `?inline`, which cost 13,399 kB of script per export; shipping them as
+  // package resources instead means the bytes are fetched, not parsed.
+  //
+  // `matches` is the same three-host list the content script uses, and that scope is
+  // the whole least-privilege story here (Golden Principle #2): a web-accessible
+  // resource is readable by any page the `matches` list admits, and a fixed
+  // `chrome-extension://<id>/...` URL that resolves is also an extension-detection
+  // signal for that page. Narrow it to the origins that actually need the fonts —
+  // never `<all_urls>` — and keep `resources` to the two faces, never a directory
+  // wildcard that could later admit source. Held by
+  // test/privacy/manifest-least-privilege.test.ts.
+  web_accessible_resources: [
+    {
+      resources: ['fonts/Jetendard-Regular.ttf', 'fonts/Jetendard-Bold.ttf'],
+      matches: HOSTS,
+    },
+  ],
   // Explicit CSP for extension pages — the PRIMARY control against subresource egress from the
   // options page, with the HTML half of test/privacy/no-external-network.test.ts as the static
   // backup. MV3's default (`script-src 'self'; object-src 'self'`) restricts executable code only,

@@ -21,6 +21,7 @@ import {
   DOWNLOAD_PROJECT_BULK_LABEL,
   DOWNLOAD_RECENTS_BULK_ARIA_LABEL,
   EXPORT_FAILED_MESSAGE,
+  pdfMissingGlyphsMessage,
   EXPORT_NO_ADAPTER_MESSAGE,
 } from '../strings';
 import { assertConversationNonEmpty } from './guard';
@@ -407,7 +408,14 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
     const conversation = await adapter.extract();
     assertConversationNonEmpty(conversation);
     // Produce+save lives in the headless saver so the bulk driver reuses it.
-    await saveConversation(conversation, format, new Date());
+    const unsupported = await saveConversation(conversation, format, new Date());
+    // The file is already downloaded and worth keeping, but it contains tofu boxes —
+    // say so rather than let the user find them (AGENTS.md #4). The alert renders in
+    // the page's own fonts, so the sample characters display here even though the
+    // embedded PDF face could not draw them.
+    if (unsupported.length > 0) {
+      alert(pdfMissingGlyphsMessage(unsupported));
+    }
   } catch (error) {
     // ExtractionError carries a user-actionable message; anything else is
     // unexpected and gets the generic fallback.

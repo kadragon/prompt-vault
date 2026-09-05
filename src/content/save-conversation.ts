@@ -20,23 +20,29 @@ export type ExportFormat = 'md' | 'pdf' | 'json' | 'html';
  * `doc` defaults to the live document and is injectable for tests. Throws on failure
  * (e.g. PDF generation) — the caller decides how to surface it (fail-loud, AGENTS.md
  * #4). No network primitive (Golden Principle #1).
+ *
+ * Resolves to the characters the saved file could not render — only the PDF path can
+ * produce any, and it is empty in the ordinary case. This module stays headless and
+ * prompt-free: reporting the degradation is the UI layer's job, exactly as with the
+ * errors it throws.
  */
 export async function saveConversation(
   conversation: Conversation,
   format: ExportFormat,
   now: Date,
   doc: Document = document,
-): Promise<void> {
+): Promise<string[]> {
   if (format === 'pdf') {
-    // pdfmake + the embedded CJK font are heavy; load them only on demand so an
-    // ordinary page visit never pays for them (@crxjs code-splits this import).
+    // pdfmake is heavy; load it only on demand so an ordinary page visit never pays
+    // for it (@crxjs code-splits this import).
     const { downloadPdf } = await import('./pdf-download');
-    await downloadPdf(conversation, now);
-    return;
+    return await downloadPdf(conversation, now);
   }
   // The text formats are lightweight (no heavy deps), so render + download eagerly.
   const { filename, text, mimeType } = renderTextExport(conversation, format, now);
   downloadTextFile(doc, filename, text, mimeType);
+  // The text formats embed no font — every character survives as-is.
+  return [];
 }
 
 /**

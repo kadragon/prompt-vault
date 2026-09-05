@@ -11,7 +11,11 @@ import {
 } from '../../src/content/mount';
 import { BULK_PANEL_ID } from '../../src/content/bulk-panel';
 import { DEFAULT_SETTINGS } from '../../src/settings/store';
-import { BULK_UNSUPPORTED_MESSAGE, EXPORT_NO_ADAPTER_MESSAGE } from '../../src/strings';
+import {
+  BULK_UNSUPPORTED_MESSAGE,
+  EXPORT_NO_ADAPTER_MESSAGE,
+  pdfMissingGlyphsMessage,
+} from '../../src/strings';
 import { chatgptAdapter } from '../../src/adapters/chatgpt';
 import { claudeAdapter } from '../../src/adapters/claude';
 
@@ -840,5 +844,29 @@ describe('setToolbarSettings', () => {
     expect(setToolbarSettings(custom)).toBe(true); // differs from default → changed
     expect(setToolbarSettings({ formats: { ...custom.formats }, bulk: custom.bulk })).toBe(false); // equal value → no change
     expect(setToolbarSettings({ ...custom, bulk: false })).toBe(true); // bulk flip → changed
+  });
+});
+
+// The PDF exporter reports back the characters the embedded font could not draw; this
+// is the text the user sees for them. Shared verbatim with the bulk-panel warning list,
+// so it is asserted once here rather than at both call sites. The click-to-alert wiring
+// itself is one `if` in the private `runExport`, and there is no harness in this file
+// for a SUCCESSFUL export (no adapter extraction is stubbed anywhere in it) — that path
+// is covered by the load-unpacked verification instead.
+describe('pdfMissingGlyphsMessage', () => {
+  it('names the count and shows the characters themselves', () => {
+    const text = pdfMissingGlyphsMessage(['あ', 'ア', '😀']);
+    expect(text).toContain('3 distinct');
+    expect(text).toContain('あ ア 😀');
+  });
+
+  it('caps the sample but still reports the true count', () => {
+    // A whole Japanese conversation contributes hundreds of distinct characters; the
+    // alert has to stay readable while still saying how bad it is.
+    const many = Array.from({ length: 30 }, (_, i) => String.fromCodePoint(0x3042 + i));
+    const text = pdfMissingGlyphsMessage(many);
+    expect(text).toContain('30 distinct');
+    expect(text).toContain(many.slice(0, 10).join(' '));
+    expect(text).not.toContain(many[10]);
   });
 });

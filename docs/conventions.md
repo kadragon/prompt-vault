@@ -84,6 +84,14 @@ Rules agents get wrong on this project. Not a restatement of the linter.
 - No `fetch`/`XMLHttpRequest`/`sendBeacon`/`navigator.sendBeacon`/`WebSocket`/`EventSource` to any
   external origin anywhere in `src/`. The download uses `URL.createObjectURL` + an `<a download>`
   (or the `downloads` API) — all local. Any PR adding a network call there is rejected by default.
+- **The one carve-out: `fetch(chrome.runtime.getURL(...))`, in `src/export/fonts/jetendard.ts`
+  only.** That URL is `chrome-extension://` — the installed package itself — so it can reach
+  nothing outside the extension and cannot exfiltrate. It exists because the two PDF font faces
+  ship as `web_accessible_resources` instead of base64 inside the JS bundle (13,399 kB → 1,003 kB
+  of script per export). Both halves of the rule are mechanical and both must hold: the gate's
+  `fetch()` pattern rejects every OTHER argument shape, and `FETCH_ALLOWED_FILES` pins which file
+  may hold a `fetch(` at all — so the carve-out cannot spread by copy-paste. Widening either is a
+  privacy decision, not a refactor.
 - `test/privacy/no-external-network.test.ts` enforces this in two halves. Every JS/TS file
   (`.tsx?|jsx?|mjs|cjs`) under `src/` is read and scanned for the forbidden primitives. Every
   `.html` file under `src/` is checked twice: each `<script>` must load a relative in-tree `src=`

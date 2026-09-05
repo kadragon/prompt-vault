@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 
 // Golden principle #1 (local-only, no exfiltration) enforced mechanically:
 // no external-network primitive may appear anywhere in the extension source.
@@ -18,8 +18,17 @@ const SCAN_DIRS = ['src'];
 // avoid matching unrelated identifiers; bare token for XMLHttpRequest (its mere
 // presence in these paths is the smell). navigator.sendBeacon is covered by the
 // sendBeacon( pattern.
+//
+// The `fetch()` rule carries ONE carve-out, narrowed by argument shape rather than by
+// path: `fetch(chrome.runtime.getURL(...))` is allowed. That URL is `chrome-extension://`
+// — the extension's own package — so it can reach nothing outside the installed
+// extension and cannot exfiltrate. It exists for the two PDF font faces, which ship as
+// package resources instead of base64 inside the JS bundle
+// (src/export/fonts/jetendard.ts). Any other argument shape — a variable, a string, a
+// template — still fails, and FETCH_ALLOWED_FILES below independently pins how many
+// files may hold a fetch at all, so the carve-out cannot spread by copy-paste.
 const FORBIDDEN: ReadonlyArray<{ name: string; pattern: RegExp }> = [
-  { name: 'fetch()', pattern: /\bfetch\s*\(/ },
+  { name: 'fetch()', pattern: /\bfetch\s*\(\s*(?!chrome\s*\.\s*runtime\s*\.\s*getURL\s*\()/ },
   { name: 'XMLHttpRequest', pattern: /\bXMLHttpRequest\b/ },
   { name: 'sendBeacon()', pattern: /\bsendBeacon\s*\(/ },
   // Outbound channels the extension-pages CSP does not reach: a content script runs in the
@@ -28,6 +37,10 @@ const FORBIDDEN: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   { name: 'WebSocket', pattern: /\bWebSocket\b/ },
   { name: 'EventSource', pattern: /\bEventSource\b/ },
 ];
+
+// The only files under src/ permitted to contain a `fetch(` at all — see the
+// carve-out note on FORBIDDEN. Repo-relative, forward slashes, sorted.
+const FETCH_ALLOWED_FILES: ReadonlyArray<string> = ['src/export/fonts/jetendard.ts'];
 
 // Cover every JS/TS module flavor, not just .ts(x): a future non-TS file in a
 // guarded path must not slip a network call past the gate.
@@ -139,8 +152,9 @@ function scanForViolations(rawSource: string, label: string): string[] {
 // be a module the JS/TS half above actually reads, i.e. a relative path inside the tree.
 // A remote `src` would be egress that neither half sees; an out-of-tree one loads code
 // nothing scanned. Together the two halves read every executable-code file type present
-// in `src/` — not every file (the `.ttf`/`.txt` under `src/export/fonts` are inert), and
-// a future `.json`/`.vue`/`.svelte` would reopen the gap.
+// in `src/` — not every file, and a future `.json`/`.vue`/`.svelte` would reopen the gap.
+// (Non-code assets are outside `src/` entirely: the font faces and their licence live in
+// `public/fonts/`, which ships verbatim and executes nothing.)
 //
 // Scope note: this checks `<script>` only. Every OTHER remote subresource in HTML is covered
 // by findSubresourceViolations below, and blocked at runtime by the extension-pages CSP in
@@ -613,6 +627,19 @@ describe('privacy invariant: no external-network primitives anywhere in src/', (
       scanForViolations(readFileSync(file, 'utf8'), relative(REPO_ROOT, file)),
     );
     expect(violations, `external-network primitive(s) found:\n${violations.join('\n')}`).toEqual([]);
+  });
+
+  // The FORBIDDEN carve-out above says which fetch SHAPE is allowed; this says WHERE.
+  // Both are needed: without this, the allowed shape could be pasted into any module
+  // and the gate would stay green, and a `chrome-extension://` URL reached from an
+  // arbitrary file is a wider surface than one reached from the font loader alone.
+  // Adding a file here is a deliberate act that shows up in review.
+  it('confines every fetch call to the font loader', () => {
+    const withFetch = files
+      .filter((file) => /\bfetch\s*\(/.test(stripCommentsAndStrings(readFileSync(file, 'utf8'))))
+      .map((file) => relative(REPO_ROOT, file).split(sep).join('/'))
+      .sort();
+    expect(withFetch).toEqual(FETCH_ALLOWED_FILES);
   });
 });
 

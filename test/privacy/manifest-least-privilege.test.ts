@@ -90,6 +90,29 @@ describe('least-privilege manifest', () => {
     }
   });
 
+  it('exposes only the two font faces as web-accessible resources', () => {
+    // A web-accessible resource is readable by every page the entry's `matches`
+    // admits, and a `chrome-extension://<id>/...` URL that resolves is also an
+    // extension-detection signal for that page. Two things therefore have to stay
+    // narrow: WHAT is exposed (the two .ttf faces the PDF exporter reads, never a
+    // directory wildcard that could later admit source) and TO WHOM (the same hosts
+    // the content script already runs on, never `<all_urls>`).
+    //
+    // This asserts the hand-declared entry only. crxjs adds its own generated entry
+    // for the content-script loader chunk at build time, derived from the same HOSTS
+    // array, which is why this reads the config object rather than dist/manifest.json.
+    const declaredResources = declared.web_accessible_resources as
+      | Array<{ resources?: string[]; matches?: string[] }>
+      | undefined;
+    expect(declaredResources).toHaveLength(1);
+    expect(declaredResources?.[0]?.resources).toEqual([
+      'fonts/Jetendard-Regular.ttf',
+      'fonts/Jetendard-Bold.ttf',
+    ]);
+    const contentScripts = declared.content_scripts as Array<{ matches?: string[] }> | undefined;
+    expect(declaredResources?.[0]?.matches).toEqual(contentScripts?.[0]?.matches);
+  });
+
   it('declares no host it cannot reach — chat.openai.com is redirect-only', () => {
     // A host that grants access to nothing is not "the minimum needed" (golden principle
     // #2): it costs a line in the install-time host warning and a row in the Web Store

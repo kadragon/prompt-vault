@@ -51,6 +51,22 @@
     "message": "這則對話沒有任何訊息，沒有東西可以匯出。",
     "description": "Shown when extraction returns a conversation with no messages."
   },
+  "pdfFontLoadFailedMessage": {
+    "message": "無法從擴充功能載入 PDF 字型。請重新整理頁面後再試一次。",
+    "description": "Shown when the PDF exporter cannot read its font faces out of the extension package."
+  },
+  "pdfMissingGlyphsMessage": {
+    "message": "PDF 已儲存，但內建字型缺少的 $count$ 種字元會顯示為空方框：$samples$。匯出為 Markdown 或 HTML 就能保留。",
+    "description": "Shown after a PDF export that succeeded but contains characters the embedded font cannot draw, so they appear as empty boxes. $count$ is how many DISTINCT characters were affected, not how many times they occur — say so, or a conversation with 800 kana drawn from 20 distinct ones reads as barely affected. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "samples": {
+        "content": "$2"
+      }
+    }
+  },
   "downloadBulkLabel": {
     "message": "批次",
     "description": "Label for the toolbar button that opens the bulk-export panel."

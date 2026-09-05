@@ -7,12 +7,15 @@ import {
   substituteUnsupportedChars,
 } from '../../src/export/pdf-charmap';
 import { NFKC_FALLBACKS } from '../../src/export/pdf-charmap-generated';
-import { deriveNfkcFallbacks } from '../../scripts/pdf-charmap-rule.mjs';
+import { COVERED_RANGES } from '../../src/export/pdf-coverage-generated';
+import { isCodePointCovered } from '../../src/export/pdf';
+import { deriveCoverageRanges, deriveNfkcFallbacks } from '../../scripts/pdf-charmap-rule.mjs';
 
 // fontkit ships no type declarations, so it is required untyped and narrowed here.
 // It is the same shaper pdfkit (and therefore pdfmake) uses, so asking it which code
 // points the embedded files can draw is the same question the PDF renderer asks.
 interface FontkitFont {
+  characterSet: number[];
   hasGlyphForCodePoint(codePoint: number): boolean;
   layout(text: string, features?: unknown): { glyphs: Array<{ id: number; name: string }> };
 }
@@ -20,7 +23,7 @@ const fontkit = createRequire(import.meta.url)('fontkit') as {
   openSync(path: string): FontkitFont;
 };
 const FACES = ['Jetendard-Regular.ttf', 'Jetendard-Bold.ttf'].map((name) =>
-  fontkit.openSync(fileURLToPath(new URL(`../../src/export/fonts/${name}`, import.meta.url))),
+  fontkit.openSync(fileURLToPath(new URL(`../../public/fonts/${name}`, import.meta.url))),
 );
 // Both faces, not just Regular: a bold Markdown run is laid out with the Bold file,
 // so a glyph only one face carries still exports as a tofu box in `**strong**` text.
@@ -166,5 +169,64 @@ describe('substituteUnsupportedChars', () => {
     for (const face of FACES) {
       expect(face.layout(substituted).glyphs.filter((g) => g.id === 0)).toEqual([]);
     }
+  });
+});
+
+describe('the PDF coverage table', () => {
+  it('matches what the embedded fonts actually cover', () => {
+    // The same drift guarantee the fallback table has: re-derive from the .ttf files
+    // and compare. A font swap that changes coverage must regenerate this table, or
+    // the exporter's undrawable-character warning would be answering from a stale map
+    // — under-warning (silent tofu) or over-warning (noise on characters that render).
+    const derived = deriveCoverageRanges(FACES.map((face) => face.characterSet));
+    expect(COVERED_RANGES).toEqual(derived);
+  });
+
+  it('is ascending and has no adjacent or overlapping ranges', () => {
+    // collectUnsupportedChars binary-searches this table, which is only correct on a
+    // sorted, disjoint list. Adjacent ranges would also mean the generator failed to
+    // merge, which is a silent size regression rather than a wrong answer.
+    for (const [start, end] of COVERED_RANGES) expect(start).toBeLessThanOrEqual(end);
+    for (let i = 1; i < COVERED_RANGES.length; i++) {
+      expect(COVERED_RANGES[i][0]).toBeGreaterThan(COVERED_RANGES[i - 1][1] + 1);
+    }
+  });
+
+  it('answers what the shaper answers, for named characters either side of the boundary', () => {
+    // Reads the committed table (isCodePointCovered) and checks it against fontkit —
+    // NOT fontkit against itself. Anchored on real characters so a generator bug that
+    // produced a self-consistent but wrong table still fails.
+    for (const char of ['A', '한', '→', '±']) {
+      expect(isCodePointCovered(char.codePointAt(0) as number)).toBe(true);
+      expect(hasGlyph(char.codePointAt(0) as number)).toBe(true);
+    }
+    for (const char of ['あ', 'ア', '😀', '✅', '中']) {
+      expect(isCodePointCovered(char.codePointAt(0) as number)).toBe(false);
+      expect(hasGlyph(char.codePointAt(0) as number)).toBe(false);
+    }
+  });
+
+  it('agrees with the shaper across the whole scanned range', () => {
+    // The two tables in this module come from DIFFERENT fontkit APIs: the coverage
+    // ranges from `face.characterSet`, the NFKC fallbacks from
+    // `face.hasGlyphForCodePoint`. They agree on the two faces shipped today, but that
+    // is an observation about these files, not a guarantee about the API pair — and if
+    // a future face made them diverge, collectUnsupportedChars would silently under- or
+    // over-warn with every other test still green. Sweep the range the fallback rule
+    // itself scans and pin the equivalence.
+    const disagreements: number[] = [];
+    for (const [from, to] of [
+      [0x0020, 0xd7ff],
+      [0xe000, 0xffff],
+      [0x10000, 0x1ffff],
+    ]) {
+      for (let cp = from; cp <= to; cp++) {
+        if (isCodePointCovered(cp) !== hasGlyph(cp)) disagreements.push(cp);
+      }
+    }
+    expect(
+      disagreements.slice(0, 20),
+      `${disagreements.length} code point(s) where the committed table and fontkit disagree`,
+    ).toEqual([]);
   });
 });
