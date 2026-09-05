@@ -63,7 +63,7 @@ data handling change.
 |-----------------------|---------------|
 | `storage` | Persists toolbar and bulk-export visibility preferences through `chrome.storage.sync`, and a single local flag recording that the one-time toolbar-pinning tip was dismissed through `chrome.storage.local`. No conversation content is stored. |
 | Host access `https://chatgpt.com/*`, `https://claude.ai/*`, `https://gemini.google.com/*` | Injects export controls into ChatGPT, Claude and Gemini, and reads conversations selected by the user for local export. These are the only sites on which the extension runs. Each host corresponds to one registered adapter in `src/adapters/`. The Gemini entry is scoped to the `gemini.google.com` subdomain, not `google.com`, so it grants no access to any other Google service. The access comes solely from `content_scripts.matches` — the manifest declares no `host_permissions`, so the extension holds no cross-origin fetch or cookie access on these hosts. |
-| Remote code | Not used. All executable code and the PDF font are bundled in the extension package. |
+| Remote code | Not used. All executable code and the two PDF font files are bundled in the extension package. |
 | Conversation content | Processed locally only after an export action; not retained by the extension or transmitted to the developer or a third party. |
 
 Data-use declarations:
@@ -208,4 +208,8 @@ account name out of frame, and it removes most of the Korean nav at the same tim
 - `package.json` is the extension-version source of truth. The generated manifest and ZIP
   filename derive from it; bump before each resubmission.
 - Update this document and `docs/PRIVACY.md` before submission if permissions, supported
-  providers, storage, network behavior, or export behavior changes.
+  providers, storage, network behavior, or export behavior changes, and hold every locale's
+  local-only bullet to exactly `docs/PRIVACY.md`'s claim — nothing sent to any server, conversations
+  never leave the browser. Not more: "nothing leaves your device" is false (the toolbar preference
+  travels through Chrome Sync), and an unqualified "no network requests" is too (the PDF exporter
+  reads its two font files over `chrome-extension://`; PRIVACY.md always qualifies that phrase).

@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { Window } from 'happy-dom';
+import type { Conversation } from '../../src/core/conversation';
 import {
   CONTAINER_ID,
   createButtons,
@@ -13,18 +14,36 @@ import { BULK_PANEL_ID } from '../../src/content/bulk-panel';
 import { DEFAULT_SETTINGS } from '../../src/settings/store';
 import {
   BULK_UNSUPPORTED_MESSAGE,
+  DOWNLOAD_PDF_ARIA_LABEL,
+  EXPORT_EMPTY_MESSAGE,
   EXPORT_NO_ADAPTER_MESSAGE,
   pdfMissingGlyphsMessage,
 } from '../../src/strings';
 import { chatgptAdapter } from '../../src/adapters/chatgpt';
 import { claudeAdapter } from '../../src/adapters/claude';
+import { saveConversation } from '../../src/content/save-conversation';
+
+// The headless saver is the one seam between the toolbar and a real download. Mocked for the
+// whole file so the single-export tests below can drive `runExport` to a SUCCESSFUL finish
+// without pdfmake or an object URL; every other test in this file stops before reaching it.
+vi.mock('../../src/content/save-conversation', () => ({ saveConversation: vi.fn() }));
 
 // setToolbarSettings mutates module state; reset to the all-on default after every test so
 // the filtering cases below never leak into the syncButtons tests that assume a full toolbar.
 afterEach(() => {
   setToolbarSettings(DEFAULT_SETTINGS);
   vi.unstubAllGlobals();
+  vi.restoreAllMocks(); // spies only — the module-mock `vi.fn()` below keeps its calls and queued results
+  vi.mocked(saveConversation).mockReset();
 });
+
+// `alert` is stubbed on `globalThis` because that is what the bare call resolves against, not the
+// per-test happy-dom window.
+function stubAlert(): ReturnType<typeof vi.fn> {
+  const alerts = vi.fn();
+  vi.stubGlobal('alert', alerts);
+  return alerts;
+}
 
 const CONV_URL = 'https://chatgpt.com/c/abc-123';
 const NON_CONV_URL = 'https://chatgpt.com/';
@@ -599,16 +618,9 @@ describe('syncButtons on Claude’s /recents history page', () => {
 // Every bulk trigger is fail-loud (AGENTS.md #4): a click that cannot be serviced must say so
 // visibly and open nothing, rather than showing an empty panel. The three `open*BulkExport`
 // functions are module-private, so each case is driven the way a user reaches them — mount the
-// trigger through `syncButtons`, then click its button. `alert` is stubbed on `globalThis`
-// because that is what the bare call resolves against, not the per-test happy-dom window.
+// trigger through `syncButtons`, then click its button.
 describe('bulk-export triggers when the click cannot be serviced', () => {
   const NO_ADAPTER_LOCATION = { href: 'https://example.com/', origin: 'https://example.com', pathname: '/' };
-
-  function stubAlert(): ReturnType<typeof vi.fn> {
-    const alerts = vi.fn();
-    vi.stubGlobal('alert', alerts);
-    return alerts;
-  }
 
   /**
    * Temporarily remove one of an adapter's paired bulk members and return the restore. Deleting
@@ -847,12 +859,117 @@ describe('setToolbarSettings', () => {
   });
 });
 
+// A single export, driven as a user reaches it (mount via `syncButtons`, click a format button).
+// Extraction is stubbed on the adapter `pickAdapter(location.href)` resolves to; the saver is the
+// file-level mock above — the one place the toolbar's SUCCESS path is observable in a unit test.
+describe('single export through a toolbar button', () => {
+  const CHATGPT_LOCATION = { href: CONV_URL, origin: 'https://chatgpt.com', pathname: '/c/abc-123' };
+
+  const conversation: Conversation = {
+    title: 'Glyph check',
+    provider: 'chatgpt',
+    url: CONV_URL,
+    messages: [{ role: 'user', content: 'こんにちは' }],
+  };
+
+  function toolbarButtons(doc: Document): HTMLButtonElement[] {
+    return Array.from(doc.getElementById(CONTAINER_ID)?.querySelectorAll('button') ?? []);
+  }
+
+  /** The PDF button, found by its accessible name so a reordered or filtered toolbar cannot silently retarget the click. */
+  function pdfButton(doc: Document): HTMLButtonElement {
+    const button = toolbarButtons(doc).find((b) => b.getAttribute('aria-label') === DOWNLOAD_PDF_ARIA_LABEL);
+    expect(button).toBeDefined();
+    return button!;
+  }
+
+  function mountAndArm(extracted: Conversation = conversation) {
+    const doc = docWithHeader();
+    syncButtons(doc, CONV_URL);
+    const alerts = stubAlert();
+    vi.stubGlobal('location', CHATGPT_LOCATION);
+    const extract = vi.spyOn(chatgptAdapter, 'extract').mockResolvedValue(extracted);
+    const buttons = toolbarButtons(doc);
+    return { doc, alerts, extract, buttons, pdf: pdfButton(doc), save: vi.mocked(saveConversation) };
+  }
+
+  /** Every export, however it ends, must hand the toolbar back — the `finally` in `runExport`. */
+  async function expectToolbarIdle(buttons: HTMLButtonElement[]): Promise<void> {
+    await vi.waitFor(() => expect(buttons.every((b) => !b.disabled)).toBe(true));
+  }
+
+  it('hands the extracted conversation and the clicked format to the saver, and stays silent when every character drew', async () => {
+    const { alerts, extract, buttons, pdf, save } = mountAndArm();
+    save.mockResolvedValue([]);
+
+    pdf.click();
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(conversation, 'pdf', expect.any(Date));
+    await expectToolbarIdle(buttons);
+    expect(alerts).not.toHaveBeenCalled();
+  });
+
+  it('alerts the undrawable characters the saver reports, after the file has been kept', async () => {
+    const { alerts, buttons, pdf, save } = mountAndArm();
+    save.mockResolvedValue(['あ', 'ア']);
+
+    pdf.click();
+    await vi.waitFor(() => expect(alerts).toHaveBeenCalledTimes(1));
+
+    expect(alerts).toHaveBeenCalledWith(pdfMissingGlyphsMessage(['あ', 'ア']));
+    // "Kept" is an ordering claim: the saver ran, and ran before the warning — a pre-flight check
+    // that alerted and skipped the download would produce the same single alert.
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.invocationCallOrder[0]).toBeLessThan(alerts.mock.invocationCallOrder[0]);
+    await expectToolbarIdle(buttons);
+  });
+
+  it('disables the toolbar while the export is in flight and re-enables it after, swallowing a click on a re-mounted toolbar', async () => {
+    const { doc, extract, buttons, pdf, save } = mountAndArm();
+    let finish!: (unsupported: string[]) => void;
+    save.mockReturnValue(new Promise<string[]>((resolve) => (finish = resolve)));
+
+    pdf.click();
+    try {
+      await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+      expect(buttons.every((b) => b.disabled)).toBe(true);
+
+      // An SPA header re-render mid-run drops the disabled buttons and `syncButtons` mounts fresh,
+      // ENABLED ones — so the disabled attribute cannot be what stops a second export here. Only
+      // the module-level in-flight guard can. (A click on the disabled originals would be
+      // swallowed by happy-dom itself and prove nothing.)
+      doc.getElementById(CONTAINER_ID)?.remove();
+      syncButtons(doc, CONV_URL);
+      const remounted = pdfButton(doc);
+      expect(remounted.disabled).toBe(false);
+      remounted.click();
+    } finally {
+      finish([]); // always release the module-level in-flight guard, or every later export test is swallowed
+    }
+    await expectToolbarIdle(buttons);
+    // Asserted after the first export has fully settled, so a second export that had slipped past
+    // the guard would by now have reached both spies whatever `runExport` awaits before extracting.
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses an empty conversation at the export chokepoint, never reaching the saver', async () => {
+    const { alerts, buttons, pdf, save } = mountAndArm({ ...conversation, messages: [] });
+
+    pdf.click();
+    await vi.waitFor(() => expect(alerts).toHaveBeenCalledWith(EXPORT_EMPTY_MESSAGE));
+
+    expect(save).not.toHaveBeenCalled();
+    await expectToolbarIdle(buttons);
+  });
+});
+
 // The PDF exporter reports back the characters the embedded font could not draw; this
 // is the text the user sees for them. Shared verbatim with the bulk-panel warning list,
-// so it is asserted once here rather than at both call sites. The click-to-alert wiring
-// itself is one `if` in the private `runExport`, and there is no harness in this file
-// for a SUCCESSFUL export (no adapter extraction is stubbed anywhere in it) — that path
-// is covered by the load-unpacked verification instead.
+// so it is asserted once here rather than at both call sites; the click-to-alert wiring
+// is pinned by the single-export harness above.
 describe('pdfMissingGlyphsMessage', () => {
   it('names the count and shows the characters themselves', () => {
     const text = pdfMissingGlyphsMessage(['あ', 'ア', '😀']);

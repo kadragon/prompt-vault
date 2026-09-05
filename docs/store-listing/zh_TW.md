@@ -29,7 +29,7 @@ Gemini 都可以從側邊欄開；ChatGPT 和 Claude 還能從專案的對話清
 頁（claude.ai/recents）。
 
 幾件值得一提的事：
-• 全程在本機處理。擴充功能不發任何網路請求，也不把內容送到任何伺服器，對話不會離開瀏覽器。
+• 全程在本機處理。擴充功能不連任何伺服器，對話不會離開瀏覽器。
 • 權限只拿必要的。只在 ChatGPT (chatgpt.com)、Claude (claude.ai)、Gemini
   (gemini.google.com) 上運作。
 • 讀不到就報錯。抓不到對話內容時會直接顯示錯誤，不會丟給你一個殘缺的檔案。

@@ -116,25 +116,11 @@ The larger hazard that measurement exposed is filed above.)*
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
 
-### PDF font loading + glyph warning (2026-09-05)
+### PR #95 — Align the store listings' local-only claim with PRIVACY.md (2026-09-05)
 
-- [ ] [DOCS] The store listing copy still carries the blanket claim `docs/PRIVACY.md` was
-      reworded away from on 2026-09-05 — "The extension makes no network requests and sends
-      nothing to any server" (`docs/store-listing/en.md`, `zh_CN.md`, `zh_TW.md`; `ko`/`ja` not
-      checked for the same line). PRIVACY.md now says the extension makes no request to any
-      *server* and reads only from its own package, because the PDF exporter fetches its faces
-      over `chrome-extension://`. Two user-facing privacy statements disagreeing is the problem;
-      either bring each locale's listing in line (AUTHORED per locale, product claim held fixed
-      — AGENTS.md → Language Policy) or record why the shorter claim is still accurate. Due
-      before the next Web Store submission, not before merge. Found by the PR #94 review panel.
-
-- [ ] [TEST] `test/content/mount.test.ts` has no harness for a SUCCESSFUL export — no adapter
-      extraction is stubbed anywhere in the file, so every export test drives a failure branch.
-      That left the one seam this sprint added to `runExport` (alert when `saveConversation`
-      reports undrawable characters) covered only by its message-shaping helper
-      (`missingGlyphsAlert`) and by the load-unpacked verification. A stubbed adapter +
-      `vi.mock` of `../../src/content/save-conversation` would close it and unlock the other
-      success-path assertions this file cannot make today.
+- [ ] [doc] `docs/PRIVACY.md` still reads `Last updated: 2026-08-12` although PR #94 (2026-09-05) changed its network-behaviour text (the `chrome-extension://` font note); the policy promises the date is revised before a data-practice change ships, and `docs/store-listing.md` tells the submitter to enter "the local policy dated 2026-08-12". Revise both before the next Web Store submission. (source: code-review) — docs/PRIVACY.md:3
+- [ ] [debt] No shared `Conversation` test fixture — `test/content/mount.test.ts`, `save-conversation.test.ts`, `bulk-export.test.ts`, `guard.test.ts` and the `test/export` files each hand-roll one; a required field added to the model means nine ad-hoc patches. Promote the overrides-style factory from `save-conversation.test.ts` to `test/fixtures/conversation.ts`. (source: code-review) — test/content/mount.test.ts:870
+- [ ] [constraint] `test/adapters/chatgpt/load-more.test.ts` (`idsUpTo(20)` assertion) failed once in three consecutive `npm test` runs on an untouched file during the PR #95 verification — a timing-sensitive fake; reproduce under `--repeat` and pin the flake. (source: contract) — test/adapters/chatgpt/load-more.test.ts
 
 ## Next (roadmap — not v1)
 

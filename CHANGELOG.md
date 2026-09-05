@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Align the store listings' local-only claim with PRIVACY.md, and cover the toolbar's successful-export path (2026-09-05) → docs/store-listing.md
 - [done] Load the PDF faces as extension resources, and warn on characters they cannot draw (2026-09-05)
 - [done] Cover the coach mark's teardown-grace reset by extracting the content bootstrap into a testable module (2026-09-05)
 - [done] Remove the first-run coach mark when the toolbar it explains is gone (2026-09-05)
