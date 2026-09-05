@@ -31,7 +31,7 @@ ChatGPT, Claude, and Gemini; from a project's conversation list on ChatGPT and C
 on Claude, from the full history page at claude.ai/recents.
 
 Key points:
-• 100% local. The extension makes no network requests and sends nothing to any server. Your
+• 100% local. The extension talks to no server and sends nothing off your device. Your
   conversations never leave your browser.
 • Least privilege. It runs only on ChatGPT (chatgpt.com), Claude (claude.ai) and Gemini
   (gemini.google.com), and asks for the minimum permissions those need.

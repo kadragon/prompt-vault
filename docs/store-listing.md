@@ -209,3 +209,7 @@ account name out of frame, and it removes most of the Korean nav at the same tim
   filename derive from it; bump before each resubmission.
 - Update this document and `docs/PRIVACY.md` before submission if permissions, supported
   providers, storage, network behavior, or export behavior changes.
+- The listing's local-only bullet must not claim more than `docs/PRIVACY.md` does. Since
+  PR #94 (2026-09-05) the PDF exporter reads its two font files out of the extension package over a
+  `chrome-extension://` address, so "makes no network requests" is no longer the wording —
+  the held claim is: nothing is sent to any server, and conversations never leave the browser.
