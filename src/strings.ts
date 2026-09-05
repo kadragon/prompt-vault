@@ -32,13 +32,28 @@ export const EXPORT_FAILED_MESSAGE = m('exportFailedMessage');
 // CJK coverage and render a whole page of tofu boxes (AGENTS.md #4).
 export const PDF_FONT_LOAD_FAILED_MESSAGE = m('pdfFontLoadFailedMessage');
 
+// How many of the undrawable characters the warning names. Enough to recognise what
+// went missing (a kana run, an emoji), short enough that the alert stays readable when
+// a whole Japanese conversation contributed hundreds of them.
+const MISSING_GLYPH_SAMPLE_LIMIT = 10;
+
 /**
  * Shown after a PDF export that succeeded but contains characters no embedded face can
  * draw — they are in the file as empty boxes. Non-blocking: the PDF is still worth
  * having, and staying silent about it is the AGENTS.md #4 violation.
+ *
+ * `unsupported` is the deduplicated set collectUnsupportedChars returns, so the count
+ * is of DISTINCT characters — the catalogs say so, because a conversation with 800
+ * kana drawn from 20 distinct ones would otherwise read as barely affected.
+ *
+ * Lives here, not at either call site: the single-export alert and the bulk-panel
+ * summary must not drift into sampling differently for the same file.
  */
-export function pdfMissingGlyphsMessage(count: number, samples: string): string {
-  return m('pdfMissingGlyphsMessage', [String(count), samples]);
+export function pdfMissingGlyphsMessage(unsupported: readonly string[]): string {
+  return m('pdfMissingGlyphsMessage', [
+    String(unsupported.length),
+    unsupported.slice(0, MISSING_GLYPH_SAMPLE_LIMIT).join(' '),
+  ]);
 }
 
 // Shown (fail-loud) when extraction returns a conversation with no messages, so

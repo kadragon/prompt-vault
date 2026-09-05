@@ -217,7 +217,7 @@ describe('openBulkPanel', () => {
 
     expect(panel.textContent).toContain('Saved 2 of 2.');
     expect(panel.textContent).toContain('Beta:');
-    expect(panel.textContent).toContain('(count: 3)');
+    expect(panel.textContent).toContain('3 distinct');
     expect(panel.textContent).toContain('あ ア 😀');
   });
 

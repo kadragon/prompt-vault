@@ -5,14 +5,17 @@ import {
   createButtons,
   createProjectTrigger,
   createRecentsTrigger,
-  missingGlyphsAlert,
   removeButtons,
   setToolbarSettings,
   syncButtons,
 } from '../../src/content/mount';
 import { BULK_PANEL_ID } from '../../src/content/bulk-panel';
 import { DEFAULT_SETTINGS } from '../../src/settings/store';
-import { BULK_UNSUPPORTED_MESSAGE, EXPORT_NO_ADAPTER_MESSAGE } from '../../src/strings';
+import {
+  BULK_UNSUPPORTED_MESSAGE,
+  EXPORT_NO_ADAPTER_MESSAGE,
+  pdfMissingGlyphsMessage,
+} from '../../src/strings';
 import { chatgptAdapter } from '../../src/adapters/chatgpt';
 import { claudeAdapter } from '../../src/adapters/claude';
 
@@ -845,14 +848,15 @@ describe('setToolbarSettings', () => {
 });
 
 // The PDF exporter reports back the characters the embedded font could not draw; this
-// is the text the user sees for them. The click-to-alert wiring itself is one `if` in
-// the private `runExport`, and there is no harness here for a SUCCESSFUL export (no
-// adapter extraction is stubbed anywhere in this file) — the end-to-end path is covered
-// by the load-unpacked verification instead.
-describe('missingGlyphsAlert', () => {
+// is the text the user sees for them. Shared verbatim with the bulk-panel warning list,
+// so it is asserted once here rather than at both call sites. The click-to-alert wiring
+// itself is one `if` in the private `runExport`, and there is no harness in this file
+// for a SUCCESSFUL export (no adapter extraction is stubbed anywhere in it) — that path
+// is covered by the load-unpacked verification instead.
+describe('pdfMissingGlyphsMessage', () => {
   it('names the count and shows the characters themselves', () => {
-    const text = missingGlyphsAlert(['あ', 'ア', '😀']);
-    expect(text).toContain('(count: 3)');
+    const text = pdfMissingGlyphsMessage(['あ', 'ア', '😀']);
+    expect(text).toContain('3 distinct');
     expect(text).toContain('あ ア 😀');
   });
 
@@ -860,8 +864,8 @@ describe('missingGlyphsAlert', () => {
     // A whole Japanese conversation contributes hundreds of distinct characters; the
     // alert has to stay readable while still saying how bad it is.
     const many = Array.from({ length: 30 }, (_, i) => String.fromCodePoint(0x3042 + i));
-    const text = missingGlyphsAlert(many);
-    expect(text).toContain('(count: 30)');
+    const text = pdfMissingGlyphsMessage(many);
+    expect(text).toContain('30 distinct');
     expect(text).toContain(many.slice(0, 10).join(' '));
     expect(text).not.toContain(many[10]);
   });

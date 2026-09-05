@@ -580,19 +580,8 @@ function renderSummary(doc: Document, status: HTMLElement, summary: BulkExportSu
     '#8a6100',
     // `title: message`, the same shape the failure lines use, so one string serves both
     // the single-export alert and this list.
-    summary.warnings.map(
-      (warning) =>
-        `${warning.title}: ${pdfMissingGlyphsMessage(warning.unsupported.length, sampleOf(warning.unsupported))}`,
-    ),
+    summary.warnings.map((warning) => `${warning.title}: ${pdfMissingGlyphsMessage(warning.unsupported)}`),
   );
-}
-
-// How many undrawable characters each warning names — enough to recognise what went
-// missing, short enough that one line stays readable.
-const MISSING_GLYPH_SAMPLE_LIMIT = 10;
-
-function sampleOf(unsupported: readonly string[]): string {
-  return unsupported.slice(0, MISSING_GLYPH_SAMPLE_LIMIT).join(' ');
 }
 
 function appendDetailList(

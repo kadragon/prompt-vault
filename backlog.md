@@ -118,6 +118,16 @@ The larger hazard that measurement exposed is filed above.)*
 
 ### PDF font loading + glyph warning (2026-09-05)
 
+- [ ] [DOCS] The store listing copy still carries the blanket claim `docs/PRIVACY.md` was
+      reworded away from on 2026-09-05 — "The extension makes no network requests and sends
+      nothing to any server" (`docs/store-listing/en.md`, `zh_CN.md`, `zh_TW.md`; `ko`/`ja` not
+      checked for the same line). PRIVACY.md now says the extension makes no request to any
+      *server* and reads only from its own package, because the PDF exporter fetches its faces
+      over `chrome-extension://`. Two user-facing privacy statements disagreeing is the problem;
+      either bring each locale's listing in line (AUTHORED per locale, product claim held fixed
+      — AGENTS.md → Language Policy) or record why the shorter claim is still accurate. Due
+      before the next Web Store submission, not before merge. Found by the PR #94 review panel.
+
 - [ ] [TEST] `test/content/mount.test.ts` has no harness for a SUCCESSFUL export — no adapter
       extraction is stubbed anywhere in the file, so every export test drives a failure branch.
       That left the one seam this sprint added to `runExport` (alert when `saveConversation`

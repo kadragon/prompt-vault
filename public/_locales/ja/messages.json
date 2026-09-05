@@ -56,8 +56,8 @@
     "description": "Shown when the PDF exporter cannot read its font faces out of the extension package."
   },
   "pdfMissingGlyphsMessage": {
-    "message": "PDF は保存しましたが、内蔵フォントにない文字が空の四角として入っています（全 $count$ 種）: $samples$。Markdown か HTML なら文字のまま残せます。",
-    "description": "Shown after a PDF export that succeeded but contains characters the embedded font cannot draw, so they appear as empty boxes. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "message": "PDF は保存しましたが、内蔵フォントにない文字 $count$ 種が空の四角として入っています: $samples$。Markdown か HTML なら文字のまま残せます。",
+    "description": "Shown after a PDF export that succeeded but contains characters the embedded font cannot draw, so they appear as empty boxes. $count$ is how many DISTINCT characters were affected, not how many times they occur — say so, or a conversation with 800 kana drawn from 20 distinct ones reads as barely affected. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
     "placeholders": {
       "count": {
         "content": "$1"

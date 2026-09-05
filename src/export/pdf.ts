@@ -164,12 +164,14 @@ function collectFrom(node: unknown, found: Set<string>): void {
   }
 }
 
-// Binary search over the 241 generated ranges. Whitespace is exempt: a space, tab or
-// newline is laid out, never drawn, so an uncovered one is not a tofu box and warning
-// about it would be noise the user cannot act on.
-function isDrawable(char: string): boolean {
-  if (/\s/.test(char)) return true;
-  const codePoint = char.codePointAt(0) as number;
+/**
+ * Whether the embedded faces carry a glyph for `codePoint`, by binary search over the
+ * generated ranges. Exported so test/export/pdf-charmap.test.ts can cross-check the
+ * committed table against fontkit's own answer — the table is derived from
+ * `face.characterSet` while ./pdf-charmap is derived from `hasGlyphForCodePoint`, and
+ * nothing else pins those two APIs to each other.
+ */
+export function isCodePointCovered(codePoint: number): boolean {
   let low = 0;
   let high = COVERED_RANGES.length - 1;
   while (low <= high) {
@@ -180,6 +182,14 @@ function isDrawable(char: string): boolean {
     else return true;
   }
   return false;
+}
+
+// Whitespace is exempt: a space, tab or newline is laid out, never drawn, so an
+// uncovered one is not a tofu box and warning about it would be noise the user cannot
+// act on.
+function isDrawable(char: string): boolean {
+  if (/\s/.test(char)) return true;
+  return isCodePointCovered(char.codePointAt(0) as number);
 }
 
 // Flatten any newlines in the title so it stays a single heading line.

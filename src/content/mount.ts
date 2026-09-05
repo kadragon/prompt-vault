@@ -414,7 +414,7 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
     // the page's own fonts, so the sample characters display here even though the
     // embedded PDF face could not draw them.
     if (unsupported.length > 0) {
-      alert(missingGlyphsAlert(unsupported));
+      alert(pdfMissingGlyphsMessage(unsupported));
     }
   } catch (error) {
     // ExtractionError carries a user-actionable message; anything else is
@@ -424,19 +424,6 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
     exportInFlight = false;
     buttons.forEach((b) => (b.disabled = false));
   }
-}
-
-// How many of the undrawable characters the warning names. Enough to recognise what
-// went missing (a kana run, an emoji), short enough that the alert stays readable when
-// a whole Japanese conversation contributed hundreds of them.
-const MISSING_GLYPH_SAMPLE_LIMIT = 10;
-
-/** The warning text for characters the PDF could not draw, with a bounded sample. */
-export function missingGlyphsAlert(unsupported: readonly string[]): string {
-  return pdfMissingGlyphsMessage(
-    unsupported.length,
-    unsupported.slice(0, MISSING_GLYPH_SAMPLE_LIMIT).join(' '),
-  );
 }
 
 /**

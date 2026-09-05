@@ -8,6 +8,7 @@ import {
 } from '../../src/export/pdf-charmap';
 import { NFKC_FALLBACKS } from '../../src/export/pdf-charmap-generated';
 import { COVERED_RANGES } from '../../src/export/pdf-coverage-generated';
+import { isCodePointCovered } from '../../src/export/pdf';
 import { deriveCoverageRanges, deriveNfkcFallbacks } from '../../scripts/pdf-charmap-rule.mjs';
 
 // fontkit ships no type declarations, so it is required untyped and narrowed here.
@@ -191,11 +192,41 @@ describe('the PDF coverage table', () => {
     }
   });
 
-  it('agrees with the shaper on characters either side of the boundary', () => {
-    // Anchored on real characters rather than on the table's own numbers, so a
-    // generator bug that produced a self-consistent but wrong table still fails.
-    const covers = (char: string) => hasGlyph(char.codePointAt(0) as number);
-    for (const char of ['A', '한', '→', '±']) expect(covers(char)).toBe(true);
-    for (const char of ['あ', 'ア', '😀', '✅', '中']) expect(covers(char)).toBe(false);
+  it('answers what the shaper answers, for named characters either side of the boundary', () => {
+    // Reads the committed table (isCodePointCovered) and checks it against fontkit —
+    // NOT fontkit against itself. Anchored on real characters so a generator bug that
+    // produced a self-consistent but wrong table still fails.
+    for (const char of ['A', '한', '→', '±']) {
+      expect(isCodePointCovered(char.codePointAt(0) as number)).toBe(true);
+      expect(hasGlyph(char.codePointAt(0) as number)).toBe(true);
+    }
+    for (const char of ['あ', 'ア', '😀', '✅', '中']) {
+      expect(isCodePointCovered(char.codePointAt(0) as number)).toBe(false);
+      expect(hasGlyph(char.codePointAt(0) as number)).toBe(false);
+    }
+  });
+
+  it('agrees with the shaper across the whole scanned range', () => {
+    // The two tables in this module come from DIFFERENT fontkit APIs: the coverage
+    // ranges from `face.characterSet`, the NFKC fallbacks from
+    // `face.hasGlyphForCodePoint`. They agree on the two faces shipped today, but that
+    // is an observation about these files, not a guarantee about the API pair — and if
+    // a future face made them diverge, collectUnsupportedChars would silently under- or
+    // over-warn with every other test still green. Sweep the range the fallback rule
+    // itself scans and pin the equivalence.
+    const disagreements: number[] = [];
+    for (const [from, to] of [
+      [0x0020, 0xd7ff],
+      [0xe000, 0xffff],
+      [0x10000, 0x1ffff],
+    ]) {
+      for (let cp = from; cp <= to; cp++) {
+        if (isCodePointCovered(cp) !== hasGlyph(cp)) disagreements.push(cp);
+      }
+    }
+    expect(
+      disagreements.slice(0, 20),
+      `${disagreements.length} code point(s) where the committed table and fontkit disagree`,
+    ).toEqual([]);
   });
 });

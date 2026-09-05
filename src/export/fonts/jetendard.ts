@@ -19,9 +19,13 @@
 // exfiltrate. `test/privacy/no-external-network.test.ts` pins both the shape and this
 // file as the sole call site.
 //
-// This module has no DOM dependency and is loaded lazily — only via
-// src/content/pdf-download.ts, which the button reaches through a dynamic import on
-// the PDF action.
+// Note what this module DOES depend on, since the rest of src/export/ depends on
+// nothing browser-shaped: `chrome.runtime.getURL` and `fetch`. It touches no DOM, but it
+// is not runnable outside an extension context, and its unit test stubs both globals
+// (test/export/jetendard.test.ts). It sits here rather than in src/content/ because what
+// it produces is font data for the exporter, not UI; pdf-download.ts owns the pdfmake
+// registration that consumes it and is the only importer, reaching it through a dynamic
+// import on the PDF action.
 
 import { ExtractionError } from '../../core/errors';
 import { PDF_FONT_LOAD_FAILED_MESSAGE } from '../../strings';

@@ -152,8 +152,9 @@ function scanForViolations(rawSource: string, label: string): string[] {
 // be a module the JS/TS half above actually reads, i.e. a relative path inside the tree.
 // A remote `src` would be egress that neither half sees; an out-of-tree one loads code
 // nothing scanned. Together the two halves read every executable-code file type present
-// in `src/` — not every file (the `.ttf`/`.txt` under `src/export/fonts` are inert), and
-// a future `.json`/`.vue`/`.svelte` would reopen the gap.
+// in `src/` — not every file, and a future `.json`/`.vue`/`.svelte` would reopen the gap.
+// (Non-code assets are outside `src/` entirely: the font faces and their licence live in
+// `public/fonts/`, which ships verbatim and executes nothing.)
 //
 // Scope note: this checks `<script>` only. Every OTHER remote subresource in HTML is covered
 // by findSubresourceViolations below, and blocked at runtime by the extension-pages CSP in

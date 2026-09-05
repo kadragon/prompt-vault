@@ -66,6 +66,13 @@ async function registerFonts(): Promise<void> {
 export async function downloadPdf(conversation: Conversation, now: Date): Promise<string[]> {
   await ensureFontsRegistered();
   const docDefinition = toPdfDocDefinition(conversation);
+  // Collect BEFORE createPdf: pdfmake mutates the definition it is handed, hanging its
+  // own layout state off the nodes (`_inlines`, `_margin`, injected `listMarker` nodes
+  // that carry their own `text`, and an `item.font` back-reference into fontkit). The
+  // collector documents its input as the definition this module built, so read it while
+  // that is still what it is — walking pdfmake's internals could report characters the
+  // user never typed, or follow a cyclic font graph.
+  const unsupported = collectUnsupportedChars(docDefinition);
   await pdfMake.createPdf(docDefinition).download(pdfFilename(conversation, now));
-  return collectUnsupportedChars(docDefinition);
+  return unsupported;
 }
