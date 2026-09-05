@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import type { Conversation } from '../../src/core/conversation';
+import { conversation as makeConversation } from '../fixtures/conversation';
 import {
   CONTAINER_ID,
   createButtons,
@@ -865,12 +866,11 @@ describe('setToolbarSettings', () => {
 describe('single export through a toolbar button', () => {
   const CHATGPT_LOCATION = { href: CONV_URL, origin: 'https://chatgpt.com', pathname: '/c/abc-123' };
 
-  const conversation: Conversation = {
+  const conversation: Conversation = makeConversation({
     title: 'Glyph check',
-    provider: 'chatgpt',
     url: CONV_URL,
     messages: [{ role: 'user', content: 'こんにちは' }],
-  };
+  });
 
   function toolbarButtons(doc: Document): HTMLButtonElement[] {
     return Array.from(doc.getElementById(CONTAINER_ID)?.querySelectorAll('button') ?? []);

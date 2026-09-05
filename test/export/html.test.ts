@@ -1,19 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { Conversation } from '../../src/core/conversation';
+import { conversation } from '../fixtures/conversation';
 import { htmlFilename, toHtml } from '../../src/export/html';
-
-function conversation(overrides: Partial<Conversation> = {}): Conversation {
-  return {
-    title: 'My chat',
-    provider: 'chatgpt',
-    url: 'https://chatgpt.com/c/abc',
-    messages: [
-      { role: 'user', content: 'Hello' },
-      { role: 'assistant', content: 'Hi there' },
-    ],
-    ...overrides,
-  };
-}
 
 describe('toHtml', () => {
   it('emits a self-contained HTML5 document (doctype + charset + title)', () => {

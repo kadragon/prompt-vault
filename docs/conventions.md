@@ -213,3 +213,10 @@ Rules agents get wrong on this project. Not a restatement of the linter.
   at. Corollary: when a shape is unmeasured (here, whether a landing batch moves `scrollTop`), model
   BOTH outcomes rather than picking one; a single arbitrary choice will silently stop testing
   whichever guard the other shape covered.
+- **A "gives up before X" timing assertion runs on fake timers.** Real-timer jitter only ever
+  lengthens a round, so a "waits past X" assertion cannot flake under wall-clock time, but its
+  negative twin can: on a loaded machine the loader grows patient enough to land the page it was
+  asserted to drop (ChatGPT `load-more`, PR #95 — 5 ms scaled rounds stretched past a 1.5× gap and
+  20 ids became 25). `vi.useFakeTimers()` + `vi.runAllTimersAsync()` fires the loader's dwell and
+  the fixture's fetch in scheduled order, so the production values run unscaled and the relation
+  under test is exact.

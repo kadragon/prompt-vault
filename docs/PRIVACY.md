@@ -1,6 +1,6 @@
 # Privacy Policy — Prompt Vault (AI Chat Backup)
 
-_Last updated: 2026-08-12_
+_Last updated: 2026-09-05_
 
 Prompt Vault is a browser extension that backs up your AI chat conversations to local
 files (Markdown, PDF, JSON, HTML). This policy explains what the extension does and does
