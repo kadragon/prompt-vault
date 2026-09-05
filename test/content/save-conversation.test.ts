@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Window } from 'happy-dom';
 import type { Conversation } from '../../src/core/conversation';
+import { conversation } from '../fixtures/conversation';
 import { toMarkdown } from '../../src/export/markdown';
 import { toJson } from '../../src/export/json';
 import { toHtml } from '../../src/export/html';
@@ -10,19 +11,6 @@ import { saveConversation } from '../../src/content/save-conversation';
 // it so the test asserts delegation without generating a real PDF.
 const downloadPdf = vi.fn<(c: Conversation, now: Date) => Promise<void>>().mockResolvedValue(undefined);
 vi.mock('../../src/content/pdf-download', () => ({ downloadPdf: (c: Conversation, now: Date) => downloadPdf(c, now) }));
-
-function conversation(overrides: Partial<Conversation> = {}): Conversation {
-  return {
-    title: 'My chat',
-    provider: 'chatgpt',
-    url: 'https://chatgpt.com/c/abc',
-    messages: [
-      { role: 'user', content: 'Hello' },
-      { role: 'assistant', content: 'Hi there' },
-    ],
-    ...overrides,
-  };
-}
 
 function bodyDoc(): Document {
   const window = new Window();
