@@ -116,6 +116,12 @@ The larger hazard that measurement exposed is filed above.)*
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
 
+### PR #95 — Align the store listings' local-only claim with PRIVACY.md (2026-09-05)
+
+- [ ] [doc] `docs/PRIVACY.md` still reads `Last updated: 2026-08-12` although PR #94 (2026-09-05) changed its network-behaviour text (the `chrome-extension://` font note); the policy promises the date is revised before a data-practice change ships, and `docs/store-listing.md` tells the submitter to enter "the local policy dated 2026-08-12". Revise both before the next Web Store submission. (source: code-review) — docs/PRIVACY.md:3
+- [ ] [debt] No shared `Conversation` test fixture — `test/content/mount.test.ts`, `save-conversation.test.ts`, `bulk-export.test.ts`, `guard.test.ts` and the `test/export` files each hand-roll one; a required field added to the model means nine ad-hoc patches. Promote the overrides-style factory from `save-conversation.test.ts` to `test/fixtures/conversation.ts`. (source: code-review) — test/content/mount.test.ts:870
+- [ ] [constraint] `test/adapters/chatgpt/load-more.test.ts` (`idsUpTo(20)` assertion) failed once in three consecutive `npm test` runs on an untouched file during the PR #95 verification — a timing-sensitive fake; reproduce under `--repeat` and pin the flake. (source: contract) — test/adapters/chatgpt/load-more.test.ts
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*
