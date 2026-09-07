@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Date the privacy policy, share one Conversation test fixture, and pin the ChatGPT load-more flake on fake timers (2026-09-05) → docs/conventions.md
 - [done] Align the store listings' local-only claim with PRIVACY.md, and cover the toolbar's successful-export path (2026-09-05) → docs/store-listing.md
 - [done] Load the PDF faces as extension resources, and warn on characters they cannot draw (2026-09-05)
 - [done] Cover the coach mark's teardown-grace reset by extracting the content bootstrap into a testable module (2026-09-05)

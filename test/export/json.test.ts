@@ -1,19 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Conversation } from '../../src/core/conversation';
+import { conversation } from '../fixtures/conversation';
 import { jsonFilename, toJson } from '../../src/export/json';
-
-function conversation(overrides: Partial<Conversation> = {}): Conversation {
-  return {
-    title: 'My chat',
-    provider: 'chatgpt',
-    url: 'https://chatgpt.com/c/abc',
-    messages: [
-      { role: 'user', content: 'Hello' },
-      { role: 'assistant', content: 'Hi there' },
-    ],
-    ...overrides,
-  };
-}
 
 describe('toJson', () => {
   it('serializes the full conversation as pretty-printed JSON with a trailing newline', () => {

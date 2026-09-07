@@ -491,17 +491,31 @@ describe('loadMoreConversations (history sidebar)', () => {
     // only a walk that judged parity waits it out — and the difference shows in the rows
     // returned, not merely in whether a warning fired. Without the size the same re-run gives
     // up one page short; with it the page lands.
-    const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
-    const dwellMs = (stepDelayMs / SCALE) * (stableRounds ?? 0);
-    const gapMs = dwellMs * 1.5;
-    const opts = { stepDelayMs: stepDelayMs / SCALE, stableRounds, maxSteps };
-    const lazy = { pageSize: 5, pages: 5, preloadedPages: 3, fetchMs: (page: number) => (page === 4 ? gapMs : 0) };
+    //
+    // Fake timers, unlike the patience tests above. The `without` half asserts that the walk
+    // gives up BEFORE the page lands, and real-timer jitter only ever lengthens a round: on a
+    // loaded machine the scaled 5 ms rounds stretched past the 1.5× gap, the loader waited the
+    // page in, and 20 ids became 25 (reproduced by adding 3 ms to every `delay`). Virtual time
+    // fires the loader's dwell and the fixture's fetch in scheduled order, so the production
+    // values run unscaled and the relation under test — dwell < gap < pending budget — is exact.
+    vi.useFakeTimers();
+    try {
+      const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+      const dwellMs = stepDelayMs * (stableRounds ?? 0);
+      const gapMs = dwellMs * 1.5;
+      const opts = { stepDelayMs, stableRounds, maxSteps };
+      const lazy = { pageSize: 5, pages: 5, preloadedPages: 3, fetchMs: (page: number) => (page === 4 ? gapMs : 0) };
 
-    const withSize = await loadMoreConversations(makeLazyRoot(lazy).root, { ...opts, knownPageSize: 5 });
-    expect(withSize.map((c) => c.id)).toEqual(idsUpTo(25));
+      const withSize = loadMoreConversations(makeLazyRoot(lazy).root, { ...opts, knownPageSize: 5 });
+      await vi.runAllTimersAsync();
+      expect((await withSize).map((c) => c.id)).toEqual(idsUpTo(25));
 
-    const without = await loadMoreConversations(makeLazyRoot(lazy).root, opts);
-    expect(without.map((c) => c.id)).toEqual(idsUpTo(20));
+      const without = loadMoreConversations(makeLazyRoot(lazy).root, opts);
+      await vi.runAllTimersAsync();
+      expect((await without).map((c) => c.id)).toEqual(idsUpTo(20));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reports no page size for a history whose only increment is a short final page', async () => {

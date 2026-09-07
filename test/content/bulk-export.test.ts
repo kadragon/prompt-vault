@@ -2,19 +2,13 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Conversation } from '../../src/core/conversation';
 import type { ExportFormat } from '../../src/content/save-conversation';
 import { bulkExport, type BulkTarget } from '../../src/content/bulk-export';
+import { conversation } from '../fixtures/conversation';
 
-function conversation(title: string): Conversation {
-  return {
-    title,
-    provider: 'chatgpt',
-    url: `https://chatgpt.com/c/${title}`,
-    messages: [{ role: 'user', content: 'hi' }],
-  };
-}
+const chat = (title: string): Conversation => conversation({ title, url: `https://chatgpt.com/c/${title}` });
 
 /** A target that produces the given conversation successfully (the common case). */
 function target(title: string): BulkTarget {
-  return { title, produce: () => Promise.resolve(conversation(title)) };
+  return { title, produce: () => Promise.resolve(chat(title)) };
 }
 
 const NOW = new Date(2026, 6, 17);
@@ -43,7 +37,7 @@ describe('bulkExport', () => {
 
     expect(saved).toEqual(['a', 'b', 'c']);
     expect(summary).toEqual({ total: 3, succeeded: 3, failed: [], warnings: [] });
-    expect(save).toHaveBeenCalledWith(conversation('a'), 'md', NOW);
+    expect(save).toHaveBeenCalledWith(chat('a'), 'md', NOW);
   });
 
   it('records a save that could not draw every character as a warning, not a failure', () => {

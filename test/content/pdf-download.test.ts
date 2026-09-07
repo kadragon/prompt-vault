@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { conversation } from '../fixtures/conversation';
 
 // pdfmake and the font loader are both stubbed: this file is about the registration
 // guard in pdf-download.ts, not about producing a real PDF. `vi.mock` is hoisted, so the
@@ -24,12 +25,7 @@ vi.mock('../../src/export/fonts/jetendard', async (importOriginal) => ({
 }));
 
 const NOW = new Date(2026, 6, 17);
-const CONVERSATION = {
-  title: 'My chat',
-  provider: 'chatgpt' as const,
-  url: 'https://chatgpt.com/c/abc',
-  messages: [{ role: 'user' as const, content: 'Hello' }],
-};
+const CONVERSATION = conversation({ messages: [{ role: 'user', content: 'Hello' }] });
 
 // The registration guard is module state, so every test needs a fresh module instance.
 async function freshDownloadPdf(): Promise<typeof import('../../src/content/pdf-download').downloadPdf> {

@@ -1,19 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { Conversation } from '../../src/core/conversation';
+import { conversation } from '../fixtures/conversation';
 import { markdownFilename, toMarkdown } from '../../src/export/markdown';
-
-function conversation(overrides: Partial<Conversation> = {}): Conversation {
-  return {
-    title: 'My chat',
-    provider: 'chatgpt',
-    url: 'https://chatgpt.com/c/abc',
-    messages: [
-      { role: 'user', content: 'Hello' },
-      { role: 'assistant', content: 'Hi there' },
-    ],
-    ...overrides,
-  };
-}
 
 describe('toMarkdown', () => {
   it('composes a title heading and role-labeled sections in order', () => {

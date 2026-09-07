@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { Window } from 'happy-dom';
 import { htmlToMarkdown } from '../../src/core/html-to-markdown';
 import type { Conversation } from '../../src/core/conversation';
+import { conversation } from '../fixtures/conversation';
 import {
   collectUnsupportedChars,
   PDF_FONT,
@@ -28,19 +29,6 @@ const jetendard = fontkit.openSync(
 );
 const glyphNames = (text: string, features?: unknown): string[] =>
   jetendard.layout(text, features).glyphs.map((g) => g.name);
-
-function conversation(overrides: Partial<Conversation> = {}): Conversation {
-  return {
-    title: 'My chat',
-    provider: 'chatgpt',
-    url: 'https://chatgpt.com/c/abc',
-    messages: [
-      { role: 'user', content: 'Hello' },
-      { role: 'assistant', content: 'Hi there' },
-    ],
-    ...overrides,
-  };
-}
 
 // The content array is typed as Content (a broad union); tests know each node we
 // emit is a text node, so narrow to read `.text`/`.style`.
