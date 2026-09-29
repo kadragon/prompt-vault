@@ -1,6 +1,22 @@
 import type { Conversation, Message } from '../../core/conversation';
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
+import {
+  ERR_GEMINI_MESSAGE_LIST_MISSING,
+  ERR_GEMINI_MESSAGE_LIST_UNSCROLLABLE,
+  ERR_GEMINI_NO_MESSAGES,
+  ERR_GEMINI_OPEN_LINK_MISSING,
+  ERR_GEMINI_OPEN_TIMED_OUT,
+  ERR_GEMINI_OPEN_URL_MALFORMED,
+  ERR_GEMINI_RESPONSE_UNREADABLE,
+  ERR_GEMINI_SIDEBAR_COLLAPSED,
+  ERR_GEMINI_SIDEBAR_LINKS_UNREADABLE,
+  ERR_GEMINI_SIDEBAR_MISSING,
+  ERR_GEMINI_STILL_GENERATING,
+  ERR_SCROLL_TO_START_TIMED_OUT,
+  ERR_TURNS_UNREADABLE,
+  errGeminiExchangesDroppedMessage,
+} from '../../strings';
 import { htmlToMarkdown } from '../../core/html-to-markdown';
 import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import {
@@ -217,9 +233,7 @@ function resolveSidebarScroller(root: ParentNode = document): Element | null {
 function requireSidebarScroller(root: ParentNode = document): Element {
   const scroller = resolveSidebarScroller(root);
   if (!scroller) {
-    throw new ExtractionError(
-      'Could not find Gemini’s conversation sidebar. Gemini’s markup may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_GEMINI_SIDEBAR_MISSING);
   }
   return scroller;
 }
@@ -238,10 +252,7 @@ function assertSidebarExpanded(scroller: Element): void {
   const rows = scroller.querySelectorAll(selectors.sidebarConversationRow).length;
   if (rows === 0) return;
   if (scroller.querySelector(selectors.sidebarConversationLink)) return;
-  throw new ExtractionError(
-    'Gemini’s conversation sidebar is collapsed, so its conversation links cannot be read. ' +
-      'Open the sidebar (the menu button at the top left) and try again.',
-  );
+  throw new ExtractionError(ERR_GEMINI_SIDEBAR_COLLAPSED);
 }
 
 /**
@@ -276,10 +287,7 @@ function collectSidebarConversations(anchors: Iterable<Element>, origin: string)
     if (!acc.has(resolved.id)) acc.set(resolved.id, { id: resolved.id, title: sidebarTitle(anchor), url: resolved.url });
   }
   if (seen > 0 && acc.size === 0) {
-    throw new ExtractionError(
-      'Could not read any Gemini sidebar conversation link: their URLs are not the expected ' +
-        '/app/<id> shape. Gemini’s markup may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_GEMINI_SIDEBAR_LINKS_UNREADABLE);
   }
   return [...acc.values()];
 }
@@ -504,7 +512,7 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
   const target = resolveConversationHref(url, location.origin);
   if (!target) {
-    throw new ExtractionError('Could not open a selected Gemini conversation: its URL is malformed. It was skipped.');
+    throw new ExtractionError(ERR_GEMINI_OPEN_URL_MALFORMED);
   }
 
   if (location.pathname === `/app/${target.id}` && hasRenderedMessages()) return;
@@ -515,10 +523,7 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   // "Load more" performs. One pass, not a loop: the walk already runs to the end of the port.
   const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, timeoutMs));
   if (!anchor) {
-    throw new ExtractionError(
-      'Could not open a selected Gemini conversation: its sidebar link was not found, ' +
-        'even after scrolling the conversation list. It was skipped.',
-    );
+    throw new ExtractionError(ERR_GEMINI_OPEN_LINK_MISSING);
   }
 
   const beforeSignature = messageSignature();
@@ -526,9 +531,7 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   const beforeExchanges = new Set(renderedExchanges());
   anchor.click();
   if (await waitForOpenedConversation(target.id, beforeSignature, beforeExchanges, pollMs, timeoutMs)) return;
-  throw new ExtractionError(
-    'Timed out opening a selected Gemini conversation. It may be loading slowly; it was skipped.',
-  );
+  throw new ExtractionError(ERR_GEMINI_OPEN_TIMED_OUT);
 }
 
 /**
@@ -699,10 +702,7 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
       : readSnapshot(root);
 
   if (messages.length === 0) {
-    throw new ExtractionError(
-      'No messages found on the page. The conversation may not have loaded, or Gemini’s ' +
-        'markup changed — extraction selectors need updating.',
-    );
+    throw new ExtractionError(ERR_GEMINI_NO_MESSAGES);
   }
 
   return {
@@ -761,10 +761,7 @@ export async function collectPagedExchanges(doc: Document, options: WalkOptions 
   try {
     const seen = await walkToTop(doc, container, stepDelayMs, options.maxSteps, stepPx);
     if (!seen.reachedTop) {
-      throw new ExtractionError(
-        'Timed out scrolling back to the start of the conversation. It may be unusually ' +
-          'long; try again, or report if this persists.',
-      );
+      throw new ExtractionError(ERR_SCROLL_TO_START_TIMED_OUT);
     }
     return readSnapshot(doc, seen.maxRendered);
   } finally {
@@ -789,13 +786,7 @@ export async function collectPagedExchanges(doc: Document, options: WalkOptions 
 function readUnwalkable(doc: Document, missingContainer: boolean): Message[] {
   const rendered = doc.querySelectorAll(selectors.exchange).length;
   if (rendered >= INITIAL_PAGE_SIZE) {
-    throw new ExtractionError(
-      missingContainer
-        ? 'Could not find Gemini’s message list to scroll, so older messages in this ' +
-          'conversation may not have loaded. Gemini’s markup may have changed — please report this.'
-        : 'Gemini’s message list cannot be scrolled right now, so older messages in this ' +
-          'conversation may not have loaded. Bring the conversation into view and try again.',
-    );
+    throw new ExtractionError(missingContainer ? ERR_GEMINI_MESSAGE_LIST_MISSING : ERR_GEMINI_MESSAGE_LIST_UNSCROLLABLE);
   }
   return readSnapshot(doc);
 }
@@ -916,11 +907,7 @@ function readSnapshot(root: ParentNode, minExpected = 0): Message[] {
 
   const exchanges = Array.from(root.querySelectorAll(selectors.exchange));
   if (exchanges.length < minExpected) {
-    throw new ExtractionError(
-      `Only ${exchanges.length} of ${minExpected} loaded exchanges are still on the page — ` +
-        'Gemini removed some while they were being read. Scroll through the whole ' +
-        'conversation and try again.',
-    );
+    throw new ExtractionError(errGeminiExchangesDroppedMessage(exchanges.length, minExpected));
   }
 
   const messages: Message[] = [];
@@ -943,9 +930,7 @@ function readSnapshot(root: ParentNode, minExpected = 0): Message[] {
 function assertNotStreaming(root: ParentNode): void {
   for (const markdown of Array.from(root.querySelectorAll(selectors.assistantMarkdown))) {
     if (markdown.getAttribute(selectors.streamingAttr) === 'true') {
-      throw new ExtractionError(
-        'Gemini is still generating a response. Wait for it to finish, then export again.',
-      );
+      throw new ExtractionError(ERR_GEMINI_STILL_GENERATING);
     }
   }
 }
@@ -996,10 +981,7 @@ function readExchange(exchange: Element): Message[] {
 }
 
 function unreadableExchangeError(): ExtractionError {
-  return new ExtractionError(
-    'Some conversation turns could not be read (empty or malformed). The conversation may ' +
-      'still be loading — wait for it to finish, then try again.',
-  );
+  return new ExtractionError(ERR_TURNS_UNREADABLE);
 }
 
 /**
@@ -1016,11 +998,7 @@ function unreadableExchangeError(): ExtractionError {
  * 2026-07-29. Which shapes, if any, DO render no container at all remains unmeasured.
  */
 function unreadableResponseError(): ExtractionError {
-  return new ExtractionError(
-    'This conversation contains a response this extension could not read — it may be a kind ' +
-      'Gemini renders outside its normal text area, or Gemini’s markup may have changed. ' +
-      'Please report this.',
-  );
+  return new ExtractionError(ERR_GEMINI_RESPONSE_UNREADABLE);
 }
 
 /**

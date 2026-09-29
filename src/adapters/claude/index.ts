@@ -9,6 +9,43 @@ import {
 } from '../../core/sidebar';
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
+import {
+  ERR_CLAUDE_ARTIFACT_AND_ATTACHMENT,
+  ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE,
+  ERR_CLAUDE_ARTIFACT_ORPHAN,
+  ERR_CLAUDE_ARTIFACT_ROOT_UNRECOGNIZED,
+  ERR_CLAUDE_COMPLETION_MARKER_MISSING,
+  ERR_CLAUDE_NOT_RECENTS_PAGE,
+  ERR_CLAUDE_NO_MESSAGES,
+  ERR_CLAUDE_OPEN_LINK_MISSING,
+  ERR_CLAUDE_OPEN_TIMED_OUT,
+  ERR_CLAUDE_OPEN_URL_MALFORMED,
+  ERR_CLAUDE_PROJECT_HOME_HISTORY_UNAVAILABLE,
+  ERR_CLAUDE_PROJECT_HOME_MISMATCH,
+  ERR_CLAUDE_PROJECT_HOME_TIMED_OUT,
+  ERR_CLAUDE_PROJECT_HOME_URL_MISSING,
+  ERR_CLAUDE_PROJECT_LIST_MISSING,
+  ERR_CLAUDE_PROJECT_OPEN_LINK_MISSING,
+  ERR_CLAUDE_PROJECT_OPEN_TIMED_OUT,
+  ERR_CLAUDE_PROJECT_OPEN_URL_MALFORMED,
+  ERR_CLAUDE_PROJECT_ROW_MALFORMED,
+  ERR_CLAUDE_RECENTS_HISTORY_UNAVAILABLE,
+  ERR_CLAUDE_RECENTS_LINKS_INCOMPLETE,
+  ERR_CLAUDE_RECENTS_LINK_MISSING,
+  ERR_CLAUDE_RECENTS_LIST_MISSING,
+  ERR_CLAUDE_RECENTS_RETURN_TIMED_OUT,
+  ERR_CLAUDE_RECENTS_ROW_MALFORMED,
+  ERR_CLAUDE_SIDEBAR_MISSING,
+  ERR_CLAUDE_STREAMING_SETTLE_TIMED_OUT,
+  ERR_CLAUDE_TURN_INDEX_MISSING,
+  ERR_SCROLL_TO_START_TIMED_OUT,
+  ERR_TURNS_UNREADABLE,
+  errClaudeFirstTurnsNeverLoadedMessage,
+  errClaudeLastTurnsNeverLoadedMessage,
+  errClaudeLinksUnreadableMessage,
+  errClaudeTurnGapMessage,
+  errClaudeUnreadableRowsMessage,
+} from '../../strings';
 import { blockToMarkdown, htmlToMarkdown } from '../../core/html-to-markdown';
 import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
@@ -224,10 +261,7 @@ function readRowMarkers(el: Element): { artifact: string; files: string } | null
   // AND a well-formed card AND a named tile, all in one subtree. Gating it would instead make
   // the check depend on `role="article"` surviving the very markup change that triggered it.
   if (markers.artifact && markers.files) {
-    throw new ExtractionError(
-      'A Claude message carries both an artifact card and a file attachment, which its markup ' +
-        'has never done. Its author could not be determined — please report this.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_ARTIFACT_AND_ATTACHMENT);
   }
   return markers;
 }
@@ -252,9 +286,7 @@ function resolveSidebar(root: ParentNode = document): Element | null {
 function requireSidebar(root: ParentNode = document): Element {
   const sidebar = resolveSidebar(root);
   if (!sidebar) {
-    throw new ExtractionError(
-      'Could not find Claude’s conversation sidebar. Claude’s markup may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_SIDEBAR_MISSING);
   }
   return sidebar;
 }
@@ -326,10 +358,7 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
     // gone too. Both are markup this adapter no longer recognizes, and both fail loud. Off a
     // project route (a caller probing an arbitrary document) an empty list stays honest.
     if (onProjectRoute) {
-      throw new ExtractionError(
-        'Could not find the Claude project conversation list on a project page. ' +
-          'Claude’s markup may have changed — please report this.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_PROJECT_LIST_MISSING);
     }
     return [];
   }
@@ -339,10 +368,7 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
   for (const row of rows) {
     const rowLinks = Array.from(row.querySelectorAll(selectors.projectConversationLink));
     if (rowLinks.length !== 1) {
-      throw new ExtractionError(
-        'Could not read the Claude project conversation list: a table row did not contain exactly one ' +
-          'conversation link. Claude’s markup may have changed — please report this.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_PROJECT_ROW_MALFORMED);
     }
     links.push(rowLinks[0]);
   }
@@ -394,10 +420,7 @@ function collectNavigationConversations(
     if (!acc.has(resolved.id)) acc.set(resolved.id, { id: resolved.id, title, url: resolved.url });
   }
   if (seen > 0 && acc.size === 0) {
-    throw new ExtractionError(
-      `Could not read any Claude ${surface} conversation link: their URLs or titles are missing. ` +
-        'Claude’s markup may have changed — please report this.',
-    );
+    throw new ExtractionError(errClaudeLinksUnreadableMessage(surface));
   }
   return [...acc.values()];
 }
@@ -429,7 +452,7 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
   const target = resolveConversationHref(url, location.origin);
   if (!target) {
-    throw new ExtractionError('Could not open a selected Claude conversation: its URL is malformed. It was skipped.');
+    throw new ExtractionError(ERR_CLAUDE_OPEN_URL_MALFORMED);
   }
 
   if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
@@ -442,18 +465,13 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   // walks to the end of the port itself, so a second pass could only repeat the first.
   const anchor = findSidebarAnchor(target.id) ?? (await revealSidebarAnchor(target.id, pollMs, timeoutMs));
   if (!anchor) {
-    throw new ExtractionError(
-      'Could not open a selected Claude conversation: its sidebar link was not found, ' +
-        'even after scrolling the recent-chat list. It was skipped.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_OPEN_LINK_MISSING);
   }
 
   const beforeSignature = messageSignature();
   anchor.click();
   if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
-  throw new ExtractionError(
-    'Timed out opening a selected Claude conversation. It may be loading slowly; it was skipped.',
-  );
+  throw new ExtractionError(ERR_CLAUDE_OPEN_TIMED_OUT);
 }
 
 /**
@@ -539,7 +557,7 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
   const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
   const target = resolveConversationHref(url, location.origin);
   if (!target) {
-    throw new ExtractionError('Could not open a selected Claude project conversation: its URL is malformed. It was skipped.');
+    throw new ExtractionError(ERR_CLAUDE_PROJECT_OPEN_URL_MALFORMED);
   }
 
   if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
@@ -553,18 +571,13 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
 
   const anchor = findProjectConversationAnchor(target.id);
   if (!anchor) {
-    throw new ExtractionError(
-      'Could not open a selected Claude project conversation: its table link was not found. ' +
-        'The project list may need to render first. It was skipped.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_PROJECT_OPEN_LINK_MISSING);
   }
 
   const beforeSignature = messageSignature();
   anchor.click();
   if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
-  throw new ExtractionError(
-    'Timed out opening a selected Claude project conversation. It may be loading slowly; it was skipped.',
-  );
+  throw new ExtractionError(ERR_CLAUDE_PROJECT_OPEN_TIMED_OUT);
 }
 
 function findProjectConversationAnchor(id: string): HTMLAnchorElement | null {
@@ -581,9 +594,7 @@ function findProjectConversationAnchor(id: string): HTMLAnchorElement | null {
 /** Return to the cached measured project home before opening another project member. */
 async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeoutMs: number): Promise<void> {
   if (!homeUrl) {
-    throw new ExtractionError(
-      'Could not return to the Claude project home: no measured project-home URL is available. It was skipped.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_PROJECT_HOME_URL_MISSING);
   }
   const homePath = new URL(homeUrl, location.origin).pathname;
   // Only navigate when the page actually left the project home. Firing `back()` while already
@@ -598,7 +609,7 @@ async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeo
   if (currentPageUrlPath() !== homePath) {
     const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
     if (!historyObject?.back) {
-      throw new ExtractionError('Could not return to the Claude project home: browser history is unavailable. It was skipped.');
+      throw new ExtractionError(ERR_CLAUDE_PROJECT_HOME_HISTORY_UNAVAILABLE);
     }
     rewind = historyObject.back.bind(historyObject);
     rewind();
@@ -631,7 +642,7 @@ async function returnToProjectHome(homeUrl: string | null, pollMs: number, timeo
       lastBackAt = Date.now();
     }
   }
-  throw new ExtractionError('Timed out returning to the Claude project home. It may be loading slowly; it was skipped.');
+  throw new ExtractionError(ERR_CLAUDE_PROJECT_HOME_TIMED_OUT);
 }
 
 /** Optional project-track return hook used by the generic bulk driver after the batch. */
@@ -641,7 +652,7 @@ async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = 
   if (location.pathname === targetPath && resolveProjectTable(document)) return;
   await returnToProjectHome(homeUrl, pollMs, timeoutMs);
   if (location.pathname !== targetPath) {
-    throw new ExtractionError('Returned to a different Claude project home than the bulk run started from.');
+    throw new ExtractionError(ERR_CLAUDE_PROJECT_HOME_MISMATCH);
   }
 }
 
@@ -688,10 +699,7 @@ function listRecentsConversations(root: ParentNode = document): SidebarConversat
   const table = resolveRecentsTable(root);
   if (!table) {
     if (pageUrl && matchesRecents(pageUrl)) {
-      throw new ExtractionError(
-        'Could not find the Claude conversation list on the recents page. ' +
-          'Claude’s markup may have changed — please report this.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_RECENTS_LIST_MISSING);
     }
     return [];
   }
@@ -700,10 +708,7 @@ function listRecentsConversations(root: ParentNode = document): SidebarConversat
   for (const row of Array.from(table.querySelectorAll(selectors.recentsRow))) {
     const rowLinks = Array.from(row.querySelectorAll(selectors.recentsConversationLink));
     if (rowLinks.length !== 1) {
-      throw new ExtractionError(
-        'Could not read the Claude recents conversation list: a table row did not contain exactly one ' +
-          'conversation link. Claude’s markup may have changed — please report this.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_RECENTS_ROW_MALFORMED);
     }
     links.push(rowLinks[0]);
   }
@@ -722,10 +727,7 @@ function listRecentsConversations(root: ParentNode = document): SidebarConversat
     return !(href && resolveConversationHref(href, origin)) || !navigationTitle(anchor);
   }).length;
   if (unreadable > 0) {
-    throw new ExtractionError(
-      'Could not read every Claude conversation on the recents page: some rows’ links or titles are ' +
-        'missing. Claude’s markup may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_RECENTS_LINKS_INCOMPLETE);
   }
   return collectNavigationConversations(links, origin, 'recents');
 }
@@ -745,7 +747,7 @@ async function openRecentsConversation(url: string, opts: OpenConversationOption
   const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
   const target = resolveConversationHref(url, location.origin);
   if (!target) {
-    throw new ExtractionError('Could not open a selected Claude conversation: its URL is malformed. It was skipped.');
+    throw new ExtractionError(ERR_CLAUDE_OPEN_URL_MALFORMED);
   }
 
   if (location.pathname === `/chat/${target.id}` && hasRenderedMessages()) return;
@@ -759,10 +761,7 @@ async function openRecentsConversation(url: string, opts: OpenConversationOption
 
   const anchor = findRecentsConversationAnchor(target.id);
   if (!anchor) {
-    throw new ExtractionError(
-      'Could not open a selected Claude conversation: its link was not found on the recents page. ' +
-        'The list may need to render first. It was skipped.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_RECENTS_LINK_MISSING);
   }
 
   const beforeSignature = messageSignature();
@@ -770,9 +769,7 @@ async function openRecentsConversation(url: string, opts: OpenConversationOption
   // navigation; assigning `location` would reload it away.
   anchor.click();
   if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
-  throw new ExtractionError(
-    'Timed out opening a selected Claude conversation. It may be loading slowly; it was skipped.',
-  );
+  throw new ExtractionError(ERR_CLAUDE_OPEN_TIMED_OUT);
 }
 
 function findRecentsConversationAnchor(id: string): HTMLAnchorElement | null {
@@ -808,9 +805,7 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
   if (!matchesRecents(currentPageUrl())) {
     const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
     if (!historyObject?.back) {
-      throw new ExtractionError(
-        'Could not return to the Claude recents page: browser history is unavailable. It was skipped.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_RECENTS_HISTORY_UNAVAILABLE);
     }
     rewind = historyObject.back.bind(historyObject);
     rewind();
@@ -837,14 +832,14 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
       lastBackAt = Date.now();
     }
   }
-  throw new ExtractionError('Timed out returning to the Claude recents page. It may be loading slowly; it was skipped.');
+  throw new ExtractionError(ERR_CLAUDE_RECENTS_RETURN_TIMED_OUT);
 }
 
 /** Optional return hook used by the generic bulk driver after the batch (back to `/recents`). */
 async function openRecentsHome(homeUrl: string, opts: OpenConversationOptions = {}): Promise<void> {
   const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
   if (!matchesRecents(homeUrl)) {
-    throw new ExtractionError('Asked to return to a Claude page that is not the recents list.');
+    throw new ExtractionError(ERR_CLAUDE_NOT_RECENTS_PAGE);
   }
   if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
   await returnToRecents(pollMs, timeoutMs);
@@ -1014,10 +1009,7 @@ export async function extract(root: ParentNode = document, options: WalkOptions 
       : readSnapshot(root);
 
   if (messages.length === 0) {
-    throw new ExtractionError(
-      'No messages found on the page. The conversation may not have loaded, or Claude’s ' +
-        'markup changed — extraction selectors need updating.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_NO_MESSAGES);
   }
 
   return {
@@ -1150,10 +1142,7 @@ function readSnapshot(root: ParentNode): Message[] {
   }
 
   if (messages.length > 0 && dropped > 0) {
-    throw new ExtractionError(
-      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
-        'still be loading — wait for it to finish, then try again.',
-    );
+    throw new ExtractionError(ERR_TURNS_UNREADABLE);
   }
   return messages;
 }
@@ -1371,10 +1360,7 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       stepPx,
     });
     if (!reachedTop) {
-      throw new ExtractionError(
-        'Timed out scrolling back to the start of the conversation. It may be unusually ' +
-          'long; try again, or report if this persists.',
-      );
+      throw new ExtractionError(ERR_SCROLL_TO_START_TIMED_OUT);
     }
 
     // Pass 2 — back down to the last turn.
@@ -1398,10 +1384,7 @@ export async function collectVirtualizedTurns(doc: Document, options: WalkOption
       requiresStreamCompletion: true,
     });
     if (!reachedBottom) {
-      throw new ExtractionError(
-        'Timed out waiting for Claude’s streaming state to settle while loading the full conversation. ' +
-          'The conversation may still be generating or its markup may have changed — try again, or report if this persists.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_STREAMING_SETTLE_TIMED_OUT);
     }
 
     return buildMessages(turns, seenRowIndices, sawUnindexedTurn, declaredTotal);
@@ -1473,11 +1456,7 @@ function streamMarkerWatchdog(doc: Document): () => void {
       return;
     }
     if (++absentRounds < STREAM_MARKER_ABSENT_MAX_ROUNDS) return;
-    throw new ExtractionError(
-      'Claude’s message-completion marker was not found anywhere in the conversation, so this ' +
-        'extension cannot tell a finished response from one still being written. Claude’s markup ' +
-        'may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_COMPLETION_MARKER_MISSING);
   };
 }
 
@@ -1590,11 +1569,7 @@ function buildMessages(
     // that scroll by hand does exactly what just failed. Ask for a report instead of sending
     // them in circles — the same reasoning that split the interior gap into two messages.
     throw new ExtractionError(
-      k === 0
-        ? `The conversation’s first ${missing.length === 1 ? 'turn' : `${missing.length} turns`} never ` +
-          'loaded, even after scrolling to the top. Claude’s markup may have changed — please report this.'
-        : `The conversation is missing turns between positions ${previous} and ${indices[k]}. ` +
-          'Scroll through the whole conversation and try again.',
+      k === 0 ? errClaudeFirstTurnsNeverLoadedMessage(missing.length) : errClaudeTurnGapMessage(previous, indices[k]),
     );
   }
 
@@ -1606,11 +1581,7 @@ function buildMessages(
     const missing: number[] = [];
     for (let i = indices.length; i < declaredTotal; i++) missing.push(i);
     if (missing.every((i) => seenRowIndices.has(i))) throw unreadableRowsError(missing);
-    throw new ExtractionError(
-      `The conversation’s last ${missing.length === 1 ? 'turn' : `${missing.length} turns`} never ` +
-        `loaded — Claude reports ${declaredTotal} messages but only ${indices.length} could be read. ` +
-        'Scroll to the end of the conversation and try again.',
-    );
+    throw new ExtractionError(errClaudeLastTurnsNeverLoadedMessage(missing.length, declaredTotal, indices.length));
   }
 
   const messages: Message[] = [];
@@ -1625,16 +1596,10 @@ function buildMessages(
   }
 
   if (messages.length > 0 && dropped > 0) {
-    throw new ExtractionError(
-      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
-        'still be loading — wait for it to finish, then try again.',
-    );
+    throw new ExtractionError(ERR_TURNS_UNREADABLE);
   }
   if (messages.length > 0 && sawUnindexedTurn) {
-    throw new ExtractionError(
-      'A conversation turn is missing its position marker and could not be exported ' +
-        'reliably. Claude’s markup may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_TURN_INDEX_MISSING);
   }
   return messages;
 }
@@ -1646,11 +1611,7 @@ function buildMessages(
  * user to report it rather than scroll again.
  */
 function unreadableRowsError(missing: number[]): ExtractionError {
-  return new ExtractionError(
-    `The conversation contains ${missing.length === 1 ? 'a message' : 'messages'} at ` +
-      `position ${missing.join(', ')} that this extension could not read — Claude’s markup ` +
-      'may have changed, or the message may be a type it does not support yet. Please report this.',
-  );
+  return new ExtractionError(errClaudeUnreadableRowsMessage(missing));
 }
 
 /**
@@ -1729,16 +1690,12 @@ function artifactMarkers(row: Element): string {
     // The cell is the only measured descendant marker that can survive a root-token rename.
     // Treating it as a card would invent the missing root relationship, so reject the row.
     if (cells.length > 0) {
-      throw new ExtractionError(
-        'Claude rendered an artifact card with an unrecognized root. Its metadata could not be read — please report this.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_ARTIFACT_ROOT_UNRECOGNIZED);
     }
     return '';
   }
   if (!row.querySelector(selectors.assistantMarkdown)) {
-    throw new ExtractionError(
-      'Claude rendered an artifact card without its corresponding assistant message. The markup may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_CLAUDE_ARTIFACT_ORPHAN);
   }
 
   const markers: string[] = [];
@@ -1749,9 +1706,7 @@ function artifactMarkers(row: Element): string {
     const title = titles.length === 1 ? (titles[0].textContent ?? '').trim() : '';
     const kind = kinds.length === 1 ? (kinds[0].textContent ?? '').trim() : '';
     if (!cell || titles.length !== 1 || kinds.length !== 1 || !title || !kind) {
-      throw new ExtractionError(
-        'Claude rendered an artifact card whose title or kind could not be read. The markup may have changed — please report this.',
-      );
+      throw new ExtractionError(ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE);
     }
     markers.push(`[Artifact: ${title} (${artifactFormatToken(kind)})]`);
   }

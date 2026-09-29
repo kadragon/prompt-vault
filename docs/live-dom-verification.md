@@ -25,7 +25,7 @@ above should re-check the ones adapter code depends on:
 | Number | Where it is relied on | What drift does |
 |--------|----------------------|-----------------|
 | Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
-| ChatGPT `#history` raw page size (**28 rows**, zero variance across 72 full pages / 2 cold runs, 2026-07-28) | `pageParityGate` in `src/adapters/chatgpt/index.ts`, counted via `sidebarConversationRow` | The gate derives the size from the largest settled batch it observes rather than hardcoding 28, so a changed page size self-corrects. What drift breaks is the *shape*: the gate assumes a batch finishes growing before the next round, and classifies it then. If pages ever interleave, or hydration stretches a batch across a quiet round, a full page would read as short and the walk would settle early — silently. Re-measure the per-batch increment and its arrival pattern, not just the total. |
+| ChatGPT `#history` raw page size (**28 rows**, zero variance across 72 full pages / 2 cold runs, 2026-07-28 — **pre-app-shell**; on the app-shell Recents list the rendered increment is ~10 rows against 20-row fetches, page size `[unknown — not measured]`, 2026-09-29) | `pageParityGate` in `src/adapters/chatgpt/index.ts`, counted via `sidebarConversationRow`; now secondary to the loading row (`sidebarLoadingStatus`) | The gate derives the size from the largest settled batch it observes rather than hardcoding 28, so a changed page size self-corrects. What drift breaks is the *shape*: the gate assumes a batch finishes growing before the next round, and classifies it then. If pages ever interleave, or hydration stretches a batch across a quiet round, a full page would read as short and the walk would settle early — silently. Re-measure the per-batch increment and its arrival pattern, not just the total. |
 | ChatGPT message-list load-older latency (**first growth ≤ 4533 ms, later gaps ≤ 1602 ms**, 3 runs, 2026-09-29) | `LOAD_OLDER_DEFAULTS` dwell (24 × 250 ms = 6 s) in `src/adapters/chatgpt/index.ts`, pinned by `test/adapters/chatgpt/auto-scroll.test.ts` | The list declares no turn total, so the dwell is the only end-of-list signal. A backend slower than the dwell ends the load early and the export silently lacks the OLDEST turns — nothing downstream can detect it. Re-measure the gap to the first growth after a pin, not just the gaps between later batches: per run the first gap was 4533 / 1181 / 1320 ms and the longest later one 1602 / 1185 / 1387 ms — the 4533 outlier is what sizes the dwell. |
 | ChatGPT `#history` page latency (**1509–7516 ms** confirmed, re-measured 2026-07-28; a 1502 ms minimum was seen but is unconfirmed as an inter-batch gap — was 1418–2830 ms on 2026-07-24) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run (recorded below). The 2026-07-28 re-measurement found gaps above the shipped 5 s dwell in **both** runs (5 of 74 batches), so exceeding the dwell is not exotic — that is a count, not a claim about the tail's shape. |
 
@@ -433,6 +433,85 @@ left the page except from the synthetic fixture conversations. The new selectors
 - **Unmeasured:** the deep-research frame (`expandedReportFrame`) — no such conversation in the
   account; the file-citation chip (`chatgpt-library-file-citation`) is exported as its label
   text, a judgement not a measurement.
+
+### 2026-09-29 — app-shell sidebar, project pages, and the "loading earlier messages" status
+
+Slices 2–3 of `docs/design/chatgpt-app-shell-remap.md` plus the load-older dwell, same account and
+day as the entry above, Playwright MCP. Evidence was counts, attribute names, ids and ChatGPT's own
+UI strings — no conversation text.
+
+**Sidebar.** There is no `#history`. The left panel scrolls in `[data-app-action-sidebar-scroll]`
+and holds `section[data-app-action-sidebar-section]` blocks whose
+`data-app-action-sidebar-section-heading` is an untranslated key (`Pinned`, `Projects`, `Recents`
+on a ko-KR UI). Recents wraps `[data-sidebar-project-container-id="chats"] > … > [role="list"]`,
+one `[role="listitem"][data-sidebar-chatgpt-conversation-key="chatgpt:conversation:<id>"]` per
+conversation holding one `a[href^="/c/"][data-interactive-row-link][aria-label]`. Every row in it
+was a top-level `/c/` chat (20 of 20, then 90 of 90); project chats are not listed there, and the
+Projects section rows carry no anchors at all (buttons that expand in place).
+
+- **Paging.** 20 rows at load; pinning the bottom grew it 29, 30, 40 … 90 in ~10-row steps, while
+  the page itself fetched `backend-api/conversations?limit=20&offset=…` 20 at a time (offsets
+  0–120 in ~6 s). The rendered increment is therefore not the server page size, and the 28-row
+  `pageParityGate` premise no longer describes this list; the gate is kept only as secondary
+  evidence and its page size on this DOM is `[unknown — not measured]`.
+- **The loading row.** While more rows are owed, the list ends in an extra
+  `[role="listitem"]` holding `[role="status"]` ("채팅 불러오는 중" plus shimmer bars). The loader
+  treats it as "a page is still owed" (`sidebarLoadingStatus`).
+- **429 is the failure mode, and it is silent on the page.** Pinning every 50 ms made the page's
+  own fetch at offset 140 answer **429**; the list stopped at 90 with the loading row still up for
+  30 s+ of further scrolling. That is the case the loading row catches (the loader reports
+  incomplete). A later fresh load got 429 at offset **0**: the list rendered 29 cached rows, then
+  the loading row **disappeared** with nothing else on the page saying the list was cut short. So
+  the row's presence is evidence of more rows; its absence is not evidence of the end. That
+  second case is not detectable from the DOM — record, not guard.
+- **Unmeasured:** the list's true end (the rate limit held for the rest of the session, so no walk
+  reached it) and inter-batch latency on this DOM. `SIDEBAR_SCROLL_DEFAULTS` keeps its 2026-07-28
+  sizing.
+
+**Project pages.** The home page (`/g/g-p-<id>/project`) is unchanged in the parts the adapter
+reads: `main section > ol > li.group/project-chat` (was `group/project-item`) `> a[href="/g/g-p-<id>/c/<id>"]`
+with the title in `.text-sm.font-medium` and a preview in a sibling; 8 of 8 rows rendered for the
+8-conversation demo project. The loaded extension's trigger mounted natively in that section as a
+`btn btn-secondary h-9 px-3` button. What changed is the **conversation page**: it links to no
+other project conversation anywhere (0 `a[href*="/g/g-p-"][href*="/c/"]`; the sidebar project
+entry is collapsed and anchorless), so the second open of a bulk run had nothing to click. The
+header carries the back link (`header a[href$="/project"]`, slug form), and clicking it swapped to
+the home list client-side in 122 ms, so `openProjectConversation` now returns home first when the
+target is not on the page.
+
+**Load-older status.** A conversation with older turns unmounted renders, above its first turn,
+`[data-thread-find-target="conversation"] > div.flex.justify-center.py-4 > div[role="status"]`
+("이전 메시지 불러오는 중…" with a spinner). On the 31-turn walk it was present from first paint
+(before any scroll), stayed up across every batch gap, and vanished with the final batch; the
+height moved once more (−58 px) 244 ms later and never again in 15 s. A 2-turn conversation never
+rendered it and did not grow over 7 s. The thread's other `[role="status"]` is an `sr-only` span in
+the scroll footer (`[data-thread-scroll-footer]`), which the `> * >` depth excludes. The adapter
+now ends the load after a short settle once it has **seen** the status clear; if it never saw one
+it keeps the 6 s dwell, because absence cannot tell a short conversation from drifted markup. A
+status that stays up with nothing arriving for 15 s (over 3x the slowest measured gap) is treated
+as a stuck fetch and fails loud, rather than holding the tab until the step cap.
+
+**Hidden route pages — the finding that mattered most.** The app-shell keeps previously visited
+routes mounted: after a few navigations the document held **5** `main`s, 5 headers and 5
+`[data-app-action-timeline-scroll]`s, each inside a `[data-app-shell-active-page="false"]` wrapper
+whose child is `display: none`, plus the one `[data-app-shell-active-page="true"]` on screen. The
+left sidebar sits outside all of them. Every document-wide query the adapter made therefore hit a
+hidden route first, and both halves of that were observed through the loaded extension (1.14.0,
+built from this branch before the fix):
+
+- the export toolbar was mounted into a **hidden** header (`getBoundingClientRect().width 0`) — the
+  toolbar simply vanished after an in-app navigation;
+- a project bulk run saved 4 of 8, and the saved files held **3 and 2 turns** from conversations
+  that have 1 — messages of hidden routes merged into the export (the zero-height hidden scroll
+  container sent the walk to the one-shot read, which read every route).
+
+`selectors.activePage` now scopes every page-level read (toolbar mount, thread, load-older status,
+project list, back link, open/readiness checks). After the fix, through the rebuilt extension:
+project bulk **8 of 8** in 71 s, each file 1 User + 1 Assistant with 8 distinct bodies, ending back
+on the project home; sidebar bulk **3 of 3** in 33 s; toolbar native and visible after an SPA hop;
+the 31-turn walk exported twice with 31 User + 31 Assistant, byte-identical. A panel "Load more"
+at the adapter's own pace reached 76 rows, hit **429** again, and ended with the incomplete warning
+rather than a silent stop.
 
 ### 2026-07-24 — `#history` sidebar is append-only, not a recycling virtualizer
 

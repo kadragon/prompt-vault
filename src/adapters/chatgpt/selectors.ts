@@ -2,11 +2,22 @@
 // ChatGPT's markup changes, this is the one file to update. ChatGPT's DOM is unstable —
 // re-verify against the live page and refresh fixtures when extraction regresses. The
 // conversation-page entries below were re-mapped to the "app-shell" DOM and verified
-// against the live page on 2026-09-29 (docs/live-dom-verification.md); the sidebar and
-// project entries further down still describe the pre-app-shell DOM and are re-mapped by
-// their own slices (docs/design/chatgpt-app-shell-remap.md).
+// against the live page on 2026-09-29 (docs/live-dom-verification.md), and so were the
+// sidebar and project entries further down (docs/design/chatgpt-app-shell-remap.md,
+// slices 2-3).
 
 export const selectors = {
+  /**
+   * The route page on screen. The app-shell keeps previously visited routes mounted as
+   * `display: none` siblings (measured 2026-09-29: 4 hidden + 1 active after a few
+   * navigations), each with its own header, thread and messages — so every page-level query
+   * is scoped to this wrapper, or it lands on a hidden conversation first. The left sidebar
+   * lives outside it. Verified against the live page (2026-09-29).
+   */
+  activePage: '[data-app-shell-active-page="true"]',
+  /** Any route page wrapper, active or hidden — its presence marks an app-shell document. */
+  routePage: '[data-app-shell-active-page]',
+
   /**
    * One message unit — the user side or the assistant side of a turn. A turn
    * (`[data-turn-key]`) holds up to two of these, in reading order: the user unit first,
@@ -82,6 +93,16 @@ export const selectors = {
    * reached. Verified against the live page (2026-09-29).
    */
   scrollContainer: '[data-app-action-timeline-scroll]',
+
+  /**
+   * The thread's "loading earlier messages" status, rendered above the first turn for as long
+   * as older turns remain unmounted — present from first paint, gone once the oldest turn
+   * mounts. Depth-pinned under the thread root so the scroll footer's `sr-only`
+   * `[role="status"]` never matches. Its absence proves nothing (a short conversation and a
+   * drifted selector look alike), so it only ever shortens the load after it was SEEN.
+   * Verified against the live page (2026-09-29): a 31-turn and a 2-turn conversation.
+   */
+  olderTurnsLoading: '[data-thread-find-target="conversation"] > * > [role="status"]',
 
   /**
    * The header action bar holding ChatGPT's native Share and conversation-options
@@ -161,34 +182,38 @@ export const selectors = {
   codeMirrorWrappingClass: 'cm-lineWrapping',
 
   /**
-   * The history-list container in the left sidebar (`#history`), holding the
-   * `<a href="/c/…">` links for past conversations. Scoping the conversation-link
-   * query to this element cleanly excludes project/GPT chats (which live under
-   * `/g/…/c/…` in separate sections) and the composer. Verified against the live
-   * page (2026-07-17); re-verify if the bulk selection list comes up empty.
+   * The Recents conversation list in the app-shell left sidebar. Only top-level `/c/` chats
+   * are listed here — project chats are not, and the Projects section above renders no
+   * anchors — so scoping to it excludes project/GPT chats and the composer. Its id is a
+   * fixed key, not a localized label. Verified against the live page (2026-09-29).
    */
-  sidebarHistory: '#history',
+  sidebarHistory: '[data-sidebar-project-container-id="chats"]',
 
   /**
-   * A single past-conversation link inside `sidebarHistory`. `href` is `/c/<id>`
-   * (the active chat's link may carry a `?messageId=…` query, deduped by path id) and
-   * the full, untruncated title lives in the link's `aria-label`. Verified against the
-   * live page (2026-07-17).
+   * A single past-conversation link inside `sidebarHistory` — an
+   * `a[data-interactive-row-link]` whose `href` is `/c/<id>` (deduped by path id) and whose
+   * `aria-label` holds the full, untruncated title. Verified against the live page
+   * (2026-09-29).
    */
   sidebarConversationLink: 'a[href^="/c/"]',
 
   /**
-   * EVERY conversation row inside `sidebarHistory`, top-level and project/GPT-scoped alike
-   * — deliberately wider than `sidebarConversationLink`, which takes only the `/c/…` rows
-   * the bulk list exports. This is the row count the server pages in, so it is the only
-   * count that reveals the page size: measured 2026-07-29 on a 1042-conversation account,
-   * `#history` appended a fixed **28 rows** per page across 36 consecutive pages while the
-   * `/c/`-only increment varied 15-27, because the split between the two kinds varies per
-   * page (`852 /c/ + 190 /g/…/c/ = 1042`, every anchor in `#history`). Used by the
-   * parity oracle in `loadMoreConversations`, never for extraction. Verified against the
-   * live page (2026-07-29); re-verify if the load-more walk starts warning on healthy lists.
+   * EVERY conversation row inside `sidebarHistory` — the count `pageParityGate` reads.
+   * On the app-shell sidebar the rendered increment (~10 rows) is not the server page
+   * (20 per fetch), so parity is secondary evidence here; `sidebarLoadingStatus` is the
+   * primary one. Never used for extraction. Verified against the live page (2026-09-29).
    */
-  sidebarConversationRow: 'a[href*="/c/"]',
+  sidebarConversationRow: '[data-sidebar-chatgpt-conversation-key]',
+
+  /**
+   * The Recents list's trailing loading row (a `[role="listitem"]` holding a
+   * `[role="status"]` and shimmer bars), shown while more rows are owed. Excludes conversation
+   * rows, so a status indicator inside one can never read as a pending page. Its presence is
+   * evidence a page is still coming; its absence is NOT evidence of the end — a 429 on a
+   * fresh load removed it with the list cut short. Verified against the live page
+   * (2026-09-29).
+   */
+  sidebarLoadingStatus: '[role="listitem"]:not([data-sidebar-chatgpt-conversation-key]) [role="status"]',
 
   /**
    * A conversation link on a Project home page (`/g/g-p-<id>/project`) or in the
@@ -196,9 +221,9 @@ export const selectors = {
    * `href` is `/g/g-p-<id>[-slug]/c/<convId>` — the slug varies by context, so match
    * on the `/g/g-p-` prefix plus the `/c/` segment and key by the stable `convId`.
    * On the project home page these live in a `<main>` `<ol>` of
-   * `<li class="group/project-item">`; only the project home page is scraped for the
-   * bulk list, so no extra scoping is needed. Verified against the live page
-   * (2026-07-18); re-verify if the project bulk list comes up empty.
+   * `<li class="group/project-chat">`; only the project home page is scraped for the
+   * bulk list, so no extra scoping is needed. An app-shell project CONVERSATION page links
+   * to no other project conversation at all. Verified against the live page (2026-09-29).
    */
   projectConversationLink: 'a[href*="/g/g-p-"][href*="/c/"]',
 
@@ -207,14 +232,15 @@ export const selectors = {
    * a `text-sm font-medium` block holding the human title (the sibling block is a
    * message-body preview snippet, also `text-sm` but NOT `font-medium`, so both classes
    * are required to avoid picking the snippet). Best-effort: extraction falls back to
-   * the link's text when this is absent. Verified against the live page (2026-07-18).
+   * the link's text when this is absent. Verified against the live page (2026-09-29).
    */
   projectConversationTitle: '.text-sm.font-medium',
 
   /**
    * The link back to a project's home page shown while a project conversation is open
-   * (`href` ends `/project`). Used to return the user to the project after a bulk run.
-   * Verified against the live page (2026-07-18).
+   * (`href` ends `/project`, in the header on the app-shell DOM). Used to return to the
+   * project between bulk opens and after a bulk run. Verified against the live page
+   * (2026-09-29).
    */
   projectBackLink: 'a[href$="/project"]',
 } as const;
