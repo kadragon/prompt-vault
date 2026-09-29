@@ -15,7 +15,11 @@ const PANE_H = 100;
 
 function gappedBlockDoc(
   source: string[],
-  { skip = -1, wrapping = false }: { skip?: number; wrapping?: boolean } = {},
+  {
+    skip = -1,
+    wrapping = false,
+    estimateShortBy = 0,
+  }: { skip?: number; wrapping?: boolean; estimateShortBy?: number } = {},
 ): { doc: Document; pane: HTMLElement; list: HTMLElement } {
   const window = new Window();
   const block =
@@ -58,7 +62,10 @@ function gappedBlockDoc(
     }
     if (last < source.length - 1) content.appendChild(doc.createElement('div')).className = 'cm-gap';
   };
-  content.getBoundingClientRect = () => ({ top: -top, height: source.length * LINE_H }) as DOMRect;
+  // `estimateShortBy` lines: CodeMirror sizes `.cm-gap` spacers by estimate, so the content
+  // height can undercount the lines that are really there.
+  content.getBoundingClientRect = () =>
+    ({ top: -top, height: (source.length - estimateShortBy) * LINE_H }) as DOMRect;
   Object.defineProperty(pane, 'clientHeight', { get: () => PANE_H });
   Object.defineProperty(pane, 'scrollHeight', { get: () => source.length * LINE_H });
   Object.defineProperty(pane, 'scrollTop', {
@@ -85,6 +92,12 @@ describe('chatgpt — reading a virtualized CodeMirror block', () => {
     expect(convo.messages[1].content).toBe('```python\n' + source.join('\n') + '\n```');
     expect(pane.scrollTop).toBe(7 * LINE_H);
     expect(list.scrollTop).toBe(3000); // the message walk resumes where it was
+  });
+
+  it('keeps the tail when the gap estimate undercounts the lines', async () => {
+    const { doc } = gappedBlockDoc(source, { estimateShortBy: 3 });
+    const convo = await extract(doc, { harvestStepDelayMs: 0 });
+    expect(convo.messages[1].content).toBe('```python\n' + source.join('\n') + '\n```');
   });
 
   it('fails loud when a line is never rendered at any scroll position', async () => {

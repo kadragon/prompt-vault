@@ -11,7 +11,7 @@ import { ExtractionError } from '../../core/errors';
 import type { ConversationAdapter, OpenConversationOptions } from '../types';
 import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import { matches, matchesProject } from './matches';
-import { proseToMarkdown } from './prose';
+import { proseToMarkdown, type ProseOptions } from './prose';
 import { selectors } from './selectors';
 
 const PROVIDER = 'chatgpt';
@@ -111,14 +111,14 @@ const WALK_STEP_FRACTION = 0.5;
 // Hard anti-runaway ceiling for the collection walk, far above any real conversation's
 // step count (the primary bound is derived from the live scroll height per iteration).
 const WALK_ABSOLUTE_MAX_STEPS = 2000;
+/** Re-queries of one window after a read left its node snapshot stale (see `record`). */
+const RECORD_MAX_PASSES = 5;
 
 /** Overridable knobs so the loop can be unit-tested without real timers/DOM. */
-export interface AutoScrollOptions {
+export interface AutoScrollOptions extends ProseOptions {
   stepDelayMs?: number;
   stableRounds?: number;
   maxSteps?: number;
-  /** Pause per step while scrolling a virtualized code block's pane (tests). */
-  harvestStepDelayMs?: number;
 }
 
 /**
@@ -557,7 +557,7 @@ export async function extract(root: ParentNode = document, options: AutoScrollOp
  * dropped turn would be worse than a visible error (AGENTS.md #4).
  */
 async function readSnapshot(root: ParentNode, options: AutoScrollOptions = {}): Promise<Message[]> {
-  const roleNodes = Array.from(root.querySelectorAll(selectors.message)).filter(hasKnownRole);
+  const roleNodes = Array.from(root.querySelectorAll(selectors.message)).filter((el) => messageRole(el) !== null);
   const messages: Message[] = [];
   for (const el of roleNodes) {
     const message = await toMessage(el, options);
@@ -570,10 +570,6 @@ async function readSnapshot(root: ParentNode, options: AutoScrollOptions = {}): 
     );
   }
   return messages;
-}
-
-function hasKnownRole(el: Element): boolean {
-  return messageRole(el) !== null;
 }
 
 /**
@@ -744,8 +740,14 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
   const order: string[] = [];
   const turns = new Map<string, CollectedTurn>();
   let sawIdlessTurn = false;
-  const record = async (): Promise<void> => {
+  // One pass over the rendered window. Reading a turn can scroll the list (a long code block
+  // is scrolled into view to be read), and the windowed list may then unmount and remount
+  // nodes later in this snapshot. A detached node cannot be laid out, and skipping it would
+  // record its later siblings first, so the pass reports `stale` and `record` re-queries —
+  // turns already read are skipped, so a re-query only continues where it stopped.
+  const recordPass = async (): Promise<'done' | 'stale'> => {
     for (const el of Array.from(doc.querySelectorAll(selectors.message))) {
+      if (el.isConnected === false) return 'stale';
       const role = messageRole(el);
       if (!role) continue;
       const id = messageId(el);
@@ -769,6 +771,13 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
         seen.content = content;
         seen.reliable = reliable;
       }
+    }
+    return 'done';
+  };
+  const record = async (): Promise<void> => {
+    // Bounded: a window that never settles is left to the next walk step.
+    for (let pass = 0; pass < RECORD_MAX_PASSES; pass++) {
+      if ((await recordPass()) === 'done') return;
     }
   };
 

@@ -69,7 +69,7 @@ async function readCodeBlock(block: Element, options: ProseOptions): Promise<Cod
   const content = block.querySelector(selectors.codeMirrorContent);
   // The header label ("Python") is the only language source for the static renderings;
   // `htmlToMarkdown` lowercases it and drops anything that is not a language token.
-  const label = (block.querySelector(selectors.copyExclude)?.textContent ?? '').trim();
+  const label = headerLabel(block);
   if (content) {
     const language = content.getAttribute(selectors.codeMirrorLanguageAttr) ?? label;
     const text = content.querySelector(selectors.codeMirrorGap)
@@ -81,6 +81,15 @@ async function readCodeBlock(block: Element, options: ProseOptions): Promise<Cod
   // `code.whitespace-pre!`.
   const code = block.querySelector('pre') ?? block.querySelector('code');
   return { language: label, text: code?.textContent ?? '' };
+}
+
+/** The code-block header's language label, without any button or icon text. */
+function headerLabel(block: Element): string {
+  const header = block.querySelector(selectors.copyExclude);
+  if (!header) return '';
+  const clone = header.cloneNode(true) as Element;
+  clone.querySelectorAll('button, svg').forEach((n) => n.remove());
+  return (clone.textContent ?? '').trim();
 }
 
 /**
@@ -140,8 +149,13 @@ async function harvestCodeMirror(block: Element, content: Element, options: Pros
     for (const [el, top] of restore) el.scrollTop = top;
   }
 
+  // `total` came from the content height, which counts `.cm-gap` spacers at CodeMirror's
+  // ESTIMATED heights. A line measured past it proves the estimate ran short: extend to it
+  // rather than drop the tail. An estimate that ran long leaves an index unfilled and fails
+  // loud below.
+  const last = Math.max(total, ...Array.from(lines.keys(), (i) => i + 1));
   const out: string[] = [];
-  for (let i = 0; i < total; i++) {
+  for (let i = 0; i < last; i++) {
     const line = lines.get(i);
     if (line === undefined) throw incomplete();
     out.push(line);

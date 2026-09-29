@@ -138,6 +138,11 @@ The larger hazard that measurement exposed is filed above.)*
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
 
+### PR #102 — Re-map the ChatGPT conversation page to the app-shell DOM (2026-09-29)
+
+- [ ] [debt] Every ChatGPT export now waits the 6 s load-older dwell, even a conversation already fully mounted; find an end-of-list signal (or a safe short-circuit) that cannot silently drop older turns (source: code-review) — src/adapters/chatgpt/index.ts `LOAD_OLDER_DEFAULTS`
+- [ ] [debt] Adapter `ExtractionError` messages (63 across adapters, incl. the new code-block one) are English literals shown via alert(); route them through `src/strings.ts` + the five catalogs (source: code-review) — src/adapters/chatgpt/prose.ts
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*

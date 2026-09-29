@@ -152,6 +152,14 @@ describe('chatgptAdapter.extract — shapes the fixtures do not hold', () => {
     expect(convo.messages[1].content).toBe('```python\nx = 1\ny = 2\n```');
   });
 
+  it('never takes a header button caption for the language', async () => {
+    const block =
+      '<div data-markdown-copy="code-block"><div data-markdown-copy="exclude"><div></div><button>Copy</button></div>' +
+      '<pre><code>plain</code></pre></div>';
+    const convo = await extractHtml(page('T', turn('t1', userUnit('u1', 'q'), assistantUnit('a1 a1', block))));
+    expect(convo.messages[1].content).toBe('```\nplain\n```');
+  });
+
   it('fails loud on a virtualized CodeMirror block it cannot scroll (no layout)', async () => {
     // `.cm-gap` stands in for lines outside CodeMirror's viewport. Without a layout engine the
     // lines cannot be indexed, so the export must refuse rather than drop them silently.

@@ -18,6 +18,8 @@ interface Turn {
   neverFills?: boolean;
   uiText?: string;
   idless?: boolean;
+  /** Detached on its first sighting (unmounted by a scroll mid-read); any read then throws. */
+  detachedOnce?: boolean;
 }
 
 const TURN_H = 100;
@@ -63,7 +65,16 @@ function makeWindowedDoc({
     return t >= offset() && t + TURN_H <= offset() + container.clientHeight;
   };
 
+  const sightings = new Map<string, number>();
   const makeNode = (t: Turn, i: number) => {
+    const seenBefore = sightings.get(t.id) ?? 0;
+    sightings.set(t.id, seenBefore + 1);
+    if (t.detachedOnce && seenBefore === 0) {
+      const detached = (): never => {
+        throw new Error('read a detached node');
+      };
+      return { isConnected: false, getAttribute: detached, matches: detached, querySelector: detached, querySelectorAll: detached };
+    }
     // The real content element (pre-wrap) is present only once the turn is hydrated:
     // for skeleton/uiText turns that means fully centered; otherwise whenever rendered.
     const hydrated = (): boolean => (t.skeleton || t.uiText !== undefined ? fullyInside(i) : true);
@@ -186,6 +197,18 @@ describe('collectVirtualizedTurns — windowed message list', () => {
     await expect(
       collectVirtualizedTurns(makeWindowedDoc({ turns, stuckScroll: true }), fast),
     ).rejects.toBeInstanceOf(ExtractionError);
+  });
+
+  it('re-queries when a node is unmounted mid-read, keeping document order', async () => {
+    // Reading a long code block scrolls the list, and the windowed list may unmount a node
+    // later in the same snapshot. Reading that detached node must not fail the export.
+    const turns: Turn[] = [
+      { id: 'a', role: 'user', content: 'first' },
+      { id: 'b', role: 'assistant', content: 'second', detachedOnce: true },
+      { id: 'c', role: 'user', content: 'third' },
+    ];
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages.map((m) => m.id)).toEqual(['a', 'b', 'c']);
   });
 
   it('fails loud when a recognized turn has no message id', async () => {
