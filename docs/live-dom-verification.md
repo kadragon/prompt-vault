@@ -26,6 +26,7 @@ above should re-check the ones adapter code depends on:
 |--------|----------------------|-----------------|
 | Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
 | ChatGPT `#history` raw page size (**28 rows**, zero variance across 72 full pages / 2 cold runs, 2026-07-28) | `pageParityGate` in `src/adapters/chatgpt/index.ts`, counted via `sidebarConversationRow` | The gate derives the size from the largest settled batch it observes rather than hardcoding 28, so a changed page size self-corrects. What drift breaks is the *shape*: the gate assumes a batch finishes growing before the next round, and classifies it then. If pages ever interleave, or hydration stretches a batch across a quiet round, a full page would read as short and the walk would settle early — silently. Re-measure the per-batch increment and its arrival pattern, not just the total. |
+| ChatGPT message-list load-older latency (**first growth ≤ 4533 ms, later gaps ≤ 1602 ms**, 3 runs, 2026-09-29) | `LOAD_OLDER_DEFAULTS` dwell (24 × 250 ms = 6 s) in `src/adapters/chatgpt/index.ts`, pinned by `test/adapters/chatgpt/auto-scroll.test.ts` | The list declares no turn total, so the dwell is the only end-of-list signal. A backend slower than the dwell ends the load early and the export silently lacks the OLDEST turns — nothing downstream can detect it. Re-measure the gap to the first growth after a pin, not just the gaps between later batches: per run the first gap was 4533 / 1181 / 1320 ms and the longest later one 1602 / 1185 / 1387 ms — the 4533 outlier is what sizes the dwell. |
 | ChatGPT `#history` page latency (**1509–7516 ms** confirmed, re-measured 2026-07-28; a 1502 ms minimum was seen but is unconfirmed as an inter-batch gap — was 1418–2830 ms on 2026-07-24) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run (recorded below). The 2026-07-28 re-measurement found gaps above the shipped 5 s dwell in **both** runs (5 of 74 batches), so exceeding the dwell is not exotic — that is a count, not a claim about the tail's shape. |
 
 ## Tooling reality (read before promising anything)
@@ -389,6 +390,49 @@ alphanumeric does decode), so a correction that simply stopped decoding would ha
 `>` and read no nested tag at all — the opposite hole. All four are pinned as tests.
 
 ## ChatGPT
+
+### 2026-09-29 — the "app-shell" conversation page: what moved, and three things that are not selectors
+
+ChatGPT shipped a redesigned DOM ("app-shell"); every conversation-page selector matched 0 and
+the toolbar fell back to the overlay. Measured on a logged-in account with Playwright MCP, over
+20 existing conversations, a 31-turn walk (`/c/6aba2292…`), and three conversations created for
+the purpose (the fixtures). Evidence was counts, attribute names and ids — no conversation text
+left the page except from the synthetic fixture conversations. The new selectors are stamped in
+`src/adapters/chatgpt/selectors.ts`; what follows is what they cannot hold.
+
+- **Message units, not role nodes.** A turn (`[data-turn-key]`, window-local keys — not a global
+  index) holds a user unit and/or an assistant unit, each `[data-chatgpt-search-message-ids]`.
+  Seen: assistant-only turns (scheduled tasks), an unanswered prompt, image-only prompts with no
+  `[data-user-message-bubble]`. The assistant unit's id list repeats its id (`X X`) or lists
+  tool steps with the reply last.
+- **The list scrolls `column-reverse`.** `scrollTop` runs `-(scrollHeight - clientHeight)` (top)
+  to `0` (bottom); a positive write clamps to 0. The pre-app-shell walk (`scrollTop = 0` as the
+  top, `+=` downward) sees only the newest window and cannot move.
+- **Windowed, and older turns mount on reaching the top.** About six turn nodes exist at once;
+  pinning to the top grew `scrollHeight` 5975 → 58031 px while the node count stayed 6. So
+  progress is read from height, never node count. No element declares the total (checked:
+  `aria-setsize`, the virtualizer wrapper — a `height:` style equal to the loaded height —, the
+  user-message navigation). Latency: see the re-measure table.
+- **Code blocks render three ways** under `[data-markdown-copy="code-block"]`: static
+  `<pre><code>`, static `code.whitespace-pre!`, or a CodeMirror 6 editor. The mix varied per
+  load with no hover involved; long blocks were CodeMirror from first paint. CodeMirror holds
+  one `.cm-line` per line with no newline characters, and virtualizes: a 150-line block had 36
+  lines in the DOM and a `.cm-gap` spacer. Its lines render only inside the window AND its pane
+  — with the block below the fold, scrolling the pane still yielded 36; after
+  `scrollIntoView({ block: 'nearest' })`, all 150 (20 px lines, 12 px top padding, wrapping off
+  by default). No attribute holds the source. The adapter reads a gapped block by scrolling it
+  into view and walking its pane; verified end to end through the loaded extension: MD and PDF
+  both held `print(1)`..`print(150)` exactly.
+- **Prompts render two ways.** A plain prompt is pre-wrap text with typed inline code as
+  `<code>` (backticks dropped). A prompt holding a fenced block renders through the reply
+  pipeline inside `[data-markdown-text-tone="user-message"]` — 25 of the 31-turn walk's 31
+  prompts — with header-less code blocks.
+- **Result through the extension (31-turn conversation):** toolbar mounted in the header bar,
+  left of Share, 36×36 buttons, not an overlay. MD: 31 `## User` + 31 `## Assistant`, 213 code
+  blocks against 213 counted on the page by an independent walk. PDF: 31 + 31 role labels.
+- **Unmeasured:** the deep-research frame (`expandedReportFrame`) — no such conversation in the
+  account; the file-citation chip (`chatgpt-library-file-citation`) is exported as its label
+  text, a judgement not a measurement.
 
 ### 2026-07-24 — `#history` sidebar is append-only, not a recycling virtualizer
 
@@ -1874,3 +1918,12 @@ the built extension loaded — a load-unpacked smoke test of the bulk panel on G
 - Fixtures are committed to a public repo. Capture only from a conversation you are willing to
   publish, and check the HTML for account identifiers (email, display name, avatar URLs) before
   committing.
+- What the 2026-09-29 capture had to strip, beyond `script`/`style`/`link`/`meta`: the whole
+  left panel (`aside`, `nav` — every other conversation's title); every attribute on `<html>`
+  and `<body>` (`data-theme-account-id`, `data-theme-user-id`); `img` sources; the new-chat
+  page's suggestion rows (generated from the account's own work — a real project name leaked
+  into the first capture); and **this extension's own UI** (`#prompt-vault-download-buttons`,
+  `#prompt-vault-coach-mark`, `#prompt-vault-bulk-panel`) — the MCP browser has it loaded. After
+  stripping, list every text node and `aria-label` outside `[data-turn-key]` and read them.
+- `browser_evaluate` with `filename` saves the return value JSON-encoded; decode before writing
+  the fixture. `browser_run_code_unsafe` cannot write files (no `import`).

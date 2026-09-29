@@ -49,7 +49,23 @@ function stubAlert(): ReturnType<typeof vi.fn> {
 const CONV_URL = 'https://chatgpt.com/c/abc-123';
 const NON_CONV_URL = 'https://chatgpt.com/';
 const PROJECT_URL = 'https://chatgpt.com/g/g-p-abc123/project';
-const HEADER_ID = 'conversation-header-actions';
+// A test-only handle on ChatGPT's header action bar. The live bar has no id; the adapter
+// matches it structurally (`src/adapters/chatgpt/selectors.ts`), so the id only lets the
+// assertions below find it.
+const HEADER_ID = 'test-header-actions';
+
+// ChatGPT's app-shell header around a given action-bar body, as measured live (2026-09-29).
+function chatgptHeader(bar: string): string {
+  return (
+    '<header><div data-testid="app-shell-header-context-menu-surface">' +
+    `<div id="${HEADER_ID}" class="flex items-center gap-toolbar-action">${bar}</div>` +
+    '</div></header>'
+  );
+}
+
+// The native Share button (no testid; localized label) and the options-menu button.
+const CHATGPT_SHARE = '<button id="share" aria-label="공유"></button>';
+const CHATGPT_OPTIONS = '<button aria-haspopup="menu" aria-label="더보기"></button>';
 
 // A Project home page whose conversation-list <section> is the trigger's native mount.
 function docWithProjectSection(): Document {
@@ -66,7 +82,7 @@ function docWithProjectSection(): Document {
 function docWithHeader(): Document {
   const window = new Window();
   window.document.write(
-    `<body><header><div id="${HEADER_ID}"><button data-testid="share-chat-button"></button></div></header></body>`,
+    `<body>${chatgptHeader(CHATGPT_SHARE + CHATGPT_OPTIONS)}</body>`,
   );
   return window.document as unknown as Document;
 }
@@ -185,7 +201,7 @@ describe('syncButtons', () => {
     const doc = docWithHeader();
     syncButtons(doc, CONV_URL);
 
-    const share = doc.querySelector('[data-testid="share-chat-button"]');
+    const share = doc.getElementById('share');
     const container = doc.getElementById(CONTAINER_ID);
     // Share is untouched (not replaced or hidden), and our container sits right before it.
     expect(share).not.toBeNull();
@@ -194,7 +210,7 @@ describe('syncButtons', () => {
 
   it('mounts at the front of the bar when the Share anchor is absent', () => {
     const window = new Window();
-    window.document.write(`<body><header><div id="${HEADER_ID}"><button id="other"></button></div></header></body>`);
+    window.document.write(`<body>${chatgptHeader(CHATGPT_OPTIONS)}</body>`);
     const doc = window.document as unknown as Document;
     syncButtons(doc, CONV_URL);
 
@@ -206,14 +222,14 @@ describe('syncButtons', () => {
   it('repositions to the left of Share when the anchor renders after the first mount', () => {
     // Staged SPA render: the header bar exists but Share has not rendered yet.
     const window = new Window();
-    window.document.write(`<body><header><div id="${HEADER_ID}"></div></header></body>`);
+    window.document.write(`<body>${chatgptHeader('')}</body>`);
     const doc = window.document as unknown as Document;
     syncButtons(doc, CONV_URL); // mounts at the front (no anchor yet)
 
     // Share renders late, inserted before our already-mounted container.
     const header = doc.getElementById(HEADER_ID)!;
     const share = doc.createElement('button');
-    share.setAttribute('data-testid', 'share-chat-button');
+    share.setAttribute('aria-label', '공유');
     header.prepend(share);
     expect(doc.getElementById(CONTAINER_ID)?.previousElementSibling).toBe(share); // now wrongly right of Share
 
@@ -229,8 +245,8 @@ describe('syncButtons', () => {
     syncButtons(doc, CONV_URL);
 
     const header = doc.getElementById(HEADER_ID);
-    // 4 per-format buttons + the bulk button + the fixture's Share button.
-    expect(header?.querySelectorAll('button').length).toBe(6);
+    // 4 per-format buttons + the bulk button + the fixture's Share and options buttons.
+    expect(header?.querySelectorAll('button').length).toBe(7);
     expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
   });
 
@@ -317,7 +333,7 @@ describe('syncButtons', () => {
     // toolbar the user has — suppressing it here would remove the UI outright.
     const doc = bareDoc();
     const turn = doc.createElement('div');
-    turn.setAttribute('data-message-author-role', 'assistant');
+    turn.setAttribute('data-turn-key', 't1');
     const frame = doc.createElement('iframe');
     frame.setAttribute('src', EXPANDED_REPORT_SRC);
     turn.appendChild(frame);
@@ -347,7 +363,7 @@ describe('syncButtons', () => {
 
     // Header renders late; next sync should swap the overlay for the native placement.
     const header = doc.createElement('div');
-    header.id = HEADER_ID;
+    header.innerHTML = chatgptHeader('');
     doc.body.appendChild(header);
     syncButtons(doc, CONV_URL, { allowOverlayFallback: true });
 

@@ -6,8 +6,8 @@
 // table, blockquote, hr, br, img.
 //
 // Provider-agnostic on purpose, and therefore in core rather than in an adapter:
-// every adapter hands it a *different* container (ChatGPT's `.markdown`, Claude's
-// `.standard-markdown`) but the same ordinary rendered HTML inside. Adapter isolation
+// every adapter hands it a *different* container (ChatGPT's `[data-markdown-text-style]`
+// root, Claude's `.standard-markdown`) but the same ordinary rendered HTML inside. Adapter isolation
 // (AGENTS.md #3) bans the alternative — one adapter importing another's module. Nothing
 // here may reference a provider-specific selector, class, or attribute.
 

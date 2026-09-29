@@ -8,6 +8,28 @@ A `*(blocked by: ...)*` / `*(deferred: ...)*` marker MUST sit on the item's own 
 and in `tasks.md`). The picker tokenizes checkboxes line by line, so a marker pushed onto a
 continuation line is invisible to it and the blocked item is offered as actionable work.
 
+## 2-chatgpt-sidebar-bulk — app-shell re-map (`docs/design/chatgpt-app-shell-remap.md`)
+
+- [ ] [FIX] Restore ChatGPT sidebar bulk export on the app-shell DOM (no `#history` container any more).
+      Scope: `sidebarHistory`, `sidebarConversationLink`, `sidebarConversationRow`;
+      `listConversations`, `openConversation`, `loadMoreConversations`. Observed 2026-09-29:
+      rows are `a[href^="/c/"][data-interactive-row-link][aria-label]` inside
+      `[role="listitem"][data-sidebar-chatgpt-conversation-key]` — re-verify the scope container
+      so project/GPT chats stay excluded. Re-measure the page size (was 28 rows) and inter-batch
+      latency and update `docs/live-dom-verification.md`'s re-measure table. Acceptance:
+      `npm test` green on a new sidebar fixture; a live bulk run of ≥3 conversations produces one
+      file per conversation.
+
+## 3-chatgpt-project-pages — app-shell re-map (`docs/design/chatgpt-app-shell-remap.md`)
+
+- [ ] [FIX] Restore ChatGPT project bulk export on the app-shell DOM.
+      Scope: `projectConversationLink`, `projectConversationTitle`, `projectBackLink`;
+      `matchesProject`, `listProjectConversations`, `openProjectConversation`, `openProjectHome`,
+      `loadMoreProjectConversations`, `projectToolbarMount`, `PROJECT_TOOLBAR_BUTTON_CLASS`.
+      Project pages are unmeasured in the new DOM — start with a live measurement, not a
+      guess. Acceptance: `npm test` green on a new project fixture; the trigger mounts natively
+      on a live project home page and a live project bulk run exports every listed conversation.
+
 ## Tooling & static analysis
 
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the
@@ -115,6 +137,11 @@ The larger hazard that measurement exposed is filed above.)*
       nodes with a byte-identical id and text (QA's PROBE4: resolves at 455 ms with the outgoing
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
+
+### PR #102 — Re-map the ChatGPT conversation page to the app-shell DOM (2026-09-29)
+
+- [ ] [debt] Every ChatGPT export now waits the 6 s load-older dwell, even a conversation already fully mounted; find an end-of-list signal (or a safe short-circuit) that cannot silently drop older turns (source: code-review) — src/adapters/chatgpt/index.ts `LOAD_OLDER_DEFAULTS`
+- [ ] [debt] Adapter `ExtractionError` messages (63 across adapters, incl. the new code-block one) are English literals shown via alert(); route them through `src/strings.ts` + the five catalogs (source: code-review) — src/adapters/chatgpt/prose.ts
 
 ## Next (roadmap — not v1)
 

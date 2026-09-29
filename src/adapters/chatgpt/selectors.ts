@@ -1,48 +1,96 @@
 // Every ChatGPT DOM selector lives here, exactly once (docs/conventions.md). When
-// ChatGPT's markup changes, this is the one file to update. Verified against live
-// captures in test/fixtures/chatgpt/ (2026-07-17). ChatGPT's DOM is unstable —
-// re-verify against the live page and refresh fixtures when extraction regresses.
+// ChatGPT's markup changes, this is the one file to update. ChatGPT's DOM is unstable —
+// re-verify against the live page and refresh fixtures when extraction regresses. The
+// conversation-page entries below were re-mapped to the "app-shell" DOM and verified
+// against the live page on 2026-09-29 (docs/live-dom-verification.md); the sidebar and
+// project entries further down still describe the pre-app-shell DOM and are re-mapped by
+// their own slices (docs/design/chatgpt-app-shell-remap.md).
 
 export const selectors = {
-  /** A single message turn; the author-role attribute distinguishes user/assistant. */
-  message: '[data-message-author-role]',
-  /** Attribute holding the role value (`user` | `assistant` | `system`). */
-  authorRoleAttr: 'data-message-author-role',
-  /** Attribute holding the provider message id. */
-  messageIdAttr: 'data-message-id',
+  /**
+   * One message unit — the user side or the assistant side of a turn. A turn
+   * (`[data-turn-key]`) holds up to two of these, in reading order: the user unit first,
+   * then the assistant unit; an assistant-only turn (a scheduled task) or an unanswered
+   * prompt holds one. Every unit carries this attribute and nothing else in the thread
+   * does. Verified against the live page (2026-09-29): 20 conversations plus a 31-turn walk.
+   */
+  message: '[data-chatgpt-search-message-ids]',
+  /**
+   * Attribute on `message` holding its provider message id(s), whitespace-separated. A user
+   * unit holds one id; an assistant unit holds its id twice, or several ids when the reply
+   * spans tool steps — the last one is the reply itself. Verified against the live page
+   * (2026-09-29): last tokens unique across every unit measured.
+   */
+  messageIdAttr: 'data-chatgpt-search-message-ids',
+  /**
+   * The screen-reader-only role heading inside an assistant unit. There is no user
+   * counterpart — the user heading carries no attribute — so the user side is recognised
+   * by `userMessage` instead. Verified against the live page (2026-09-29).
+   */
+  assistantRoleMarker: '[data-conversation-role="assistant"]',
+  /**
+   * The user unit, matched on its Tailwind group name (`group/user-message`) with an
+   * attribute-word match so the `/` needs no escaping. Structural, not the bubble: an
+   * image-only prompt renders no `[data-user-message-bubble]` at all, only its tiles.
+   * Verified against the live page (2026-09-29).
+   */
+  userMessage: '[class~="group/user-message"]',
+  /**
+   * A conversation turn. Used only to tell an inline embed (inside a turn) from the
+   * page-covering deep-research view (outside one) — see `expandedReportFrame`. Verified
+   * against the live page (2026-09-29).
+   */
+  turn: '[data-turn-key]',
 
-  /** Raw user text lives in a pre-wrap block inside the user message node. */
-  userText: '.whitespace-pre-wrap',
-  /** Rendered assistant HTML lives in the `.markdown` prose container. */
-  assistantMarkdown: '.markdown',
+  /** Raw user text: the pre-wrap block inside the user bubble. Verified against the live page (2026-09-29). */
+  userText: '[data-user-message-bubble] .whitespace-pre-wrap',
+  /**
+   * Inline code inside `userText`: the bubble renders a backtick-quoted span of the typed
+   * prompt as `<code>` and drops the backticks, so they are put back when reading. Nothing
+   * else in the prompt is rendered (`**bold**` stays literal). Verified against the live
+   * page (2026-09-29).
+   */
+  userInlineCode: 'code',
+  /**
+   * The rendered-Markdown form of `userText`. A prompt holding a fenced block renders
+   * through the same Markdown pipeline as a reply — paragraphs, inline-code spans, code
+   * blocks — inside this root, instead of as plain text; it is serialized like a reply.
+   * Verified against the live page (2026-09-29): 25 of one conversation's 31 prompts.
+   */
+  userMarkdown: '[data-markdown-text-tone="user-message"]',
+  /**
+   * Rendered assistant prose root, exactly one per assistant unit. NOT
+   * `[data-markdown-copy-content]`, which exists only inside a writing block (`richBlock`).
+   * Verified against the live page (2026-09-29).
+   */
+  assistantMarkdown: '[data-markdown-text-style="assistant-message"]',
 
   /**
-   * A file-attachment tile inside a user turn (e.g. an uploaded/pasted-as-file `.txt`).
-   * ChatGPT renders it as a `role="group"` element whose `aria-label` is the file name;
-   * the tile carries no readable text node, so such a turn extracts empty unless the name
-   * is pulled from here. Used only to describe an otherwise text-free turn so it is not
-   * dropped (AGENTS.md #4). Verified against the live page (2026-07-22); re-verify if
-   * attachment turns start exporting empty.
+   * An uploaded file inside a user unit: a resource card whose button's `aria-label` is
+   * the file name. The card carries no other readable text beyond a localized kind label,
+   * so the name is pulled from here to describe an otherwise text-free prompt (AGENTS.md
+   * #4). An image prompt is a different tile (an `<img>`), handled as `[Image]`. Verified
+   * against the live page (2026-09-29) with an uploaded `.txt`.
    */
-  attachmentTile: '[role="group"][aria-label]',
+  attachmentTile: '[class~="group/resource-card"] > button[aria-label]',
 
   /**
-   * Scroll viewport that virtualizes the message list. ChatGPT lazy-renders older
-   * turns as you scroll up, so auto-scroll targets this element. It is an ancestor
-   * of `<main>` (verified against the captured fixtures — the messages all live
-   * inside it), marked with a stable `data-scroll-root` attribute. Best-effort: if
-   * absent, extraction falls back to whatever is already in the DOM.
+   * Scroll viewport of the message list. It is `flex-direction: column-reverse`, so its
+   * `scrollTop` runs from `-(scrollHeight - clientHeight)` (top) to `0` (bottom) — the
+   * adapter's scroll helpers read the direction rather than assume `0` is the top. It
+   * windows turns (about six nodes at a time) and mounts older turns as the top is
+   * reached. Verified against the live page (2026-09-29).
    */
-  scrollContainer: '[data-scroll-root]',
+  scrollContainer: '[data-app-action-timeline-scroll]',
 
   /**
-   * The header action bar holding ChatGPT's native controls (Share, conversation
-   * options) — a translucent-surface pill in the top-right of a conversation. The
-   * export buttons are injected here so they sit inline with Share instead of a
-   * fixed overlay covering it. Verified against the captured fixtures (2026-07-17);
-   * re-verify against the live page if the buttons stop mounting.
+   * The header action bar holding ChatGPT's native Share and conversation-options
+   * controls, inside the app-shell titlebar. The export buttons are injected here so they
+   * sit inline with Share instead of a fixed overlay. Matched on the titlebar's stable
+   * `data-testid` plus the bar's `gap-toolbar-action` token (unique on the page). Verified
+   * against the live page (2026-09-29).
    */
-  headerActions: '#conversation-header-actions',
+  headerActions: '[data-testid="app-shell-header-context-menu-surface"] .gap-toolbar-action',
 
   /**
    * The expanded deep-research report view. ChatGPT renders it as a cross-origin sandbox
@@ -61,16 +109,56 @@ export const selectors = {
    *
    * Host observed live as `connector-openai-deep-research.web-sandbox.oaiusercontent.com`
    * (2026-08-26). The inline-embed case is reasoned from that host's naming, not captured in
-   * a fixture — re-verify when a fixture with an inline connector embed exists.
+   * a fixture — re-verify when a fixture with an inline connector embed exists. NOT
+   * re-measured on the app-shell DOM: the account measured on 2026-09-29 held no
+   * deep-research conversation, so only the "outside a turn" test moved (to `turn`).
    */
   expandedReportFrame: 'iframe[src*="deep-research.web-sandbox.oaiusercontent.com"]',
 
   /**
-   * ChatGPT's native Share button inside the header action bar. It is the anchor the
-   * export buttons are placed to the left of (beside it, not replacing it). Matched
-   * by its stable `data-testid`; verified against the captured fixtures (2026-07-17).
+   * ChatGPT's native Share button, queried inside `headerActions` — the anchor the export
+   * buttons are placed to the left of. It has no `data-testid` and its `aria-label` is
+   * localized (`"공유"` in ko), so it is matched structurally: the bar's direct-child button
+   * that opens no menu (the options button carries `aria-haspopup`). Direct child only, so
+   * the injected export buttons — nested in their own container — never match. Verified
+   * against the live page (2026-09-29).
    */
-  shareButton: '[data-testid="share-chat-button"]',
+  shareButton: ':scope > button:not([aria-haspopup])',
+
+  /**
+   * An assistant code block, in any of its three renderings: a static `<pre><code>`, a
+   * static `code.whitespace-pre!`, or a CodeMirror 6 editor (`codeMirror*` below). Verified
+   * against the live page (2026-09-29).
+   */
+  codeBlock: '[data-markdown-copy="code-block"]',
+  /**
+   * Chrome ChatGPT's own copy action leaves out: code-block headers (their text is the
+   * language label), table action bars. Verified against the live page (2026-09-29).
+   */
+  copyExclude: '[data-markdown-copy="exclude"]',
+  /** Inline code — a `<span>`, not a `<code>`. Verified against the live page (2026-09-29). */
+  inlineCode: '[data-markdown-copy="inline-code"]',
+  /**
+   * A writing block (a "document" card): header chrome plus `richBlockContent`, an
+   * ordinary p/ul/li tree. Verified against the live page (2026-09-29).
+   */
+  richBlock: '[data-markdown-copy="rich-block"]',
+  richBlockContent: '[data-markdown-copy-content]',
+  /** Favicon inside a citation chip — decoration, not content. Verified against the live page (2026-09-29). */
+  citationFavicon: '[data-testid="chatgpt-citation"] img',
+  /**
+   * CodeMirror 6 internals of a hydrated code block. `.cm-content` carries the language in
+   * `data-language` and holds one `.cm-line` per source line (no newline characters);
+   * lines outside CodeMirror's viewport are replaced by `.cm-gap` spacers — measured 36 of
+   * 150 lines rendered — so a gapped block is read by scrolling its pane.
+   * `.cm-lineWrapping` on the content means line heights vary and the block cannot be read
+   * that way. Verified against the live page (2026-09-29).
+   */
+  codeMirrorContent: '.cm-content',
+  codeMirrorLine: '.cm-line',
+  codeMirrorGap: '.cm-gap',
+  codeMirrorLanguageAttr: 'data-language',
+  codeMirrorWrappingClass: 'cm-lineWrapping',
 
   /**
    * The history-list container in the left sidebar (`#history`), holding the
