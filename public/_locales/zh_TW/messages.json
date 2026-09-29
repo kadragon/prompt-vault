@@ -287,6 +287,9 @@
     "message": "捲動載入完整對話時逾時。對話可能特別長，請再試一次；如果問題持續發生，請回報。",
     "description": "Extraction error (ChatGPT): scrolling to load older messages of the conversation took too long."
   },
+  "errChatgptLoadOlderStalled": {
+    "message": "ChatGPT 無法繼續載入這段對話的較早訊息，現在匯出會缺少最早的內容。請稍後再試。"
+  },
   "errChatgptTurnIdMissing": {
     "message": "有一段對話缺少識別碼，無法可靠地匯出。ChatGPT 的頁面結構可能已變更，請回報此問題。",
     "description": "Extraction error (ChatGPT): a conversation turn has no identifier, so the export could not be made reliable."

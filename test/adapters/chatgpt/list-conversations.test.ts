@@ -58,6 +58,15 @@ describe('chatgptAdapter.listConversations', () => {
     expect(history?.querySelector(selectors.sidebarLoadingStatus)).not.toBeNull();
   });
 
+  it('never reads a status inside a conversation row as the loading row', () => {
+    const doc = docFrom(
+      '<body><div data-sidebar-project-container-id="chats"><div role="list">' +
+        '<div role="listitem" data-sidebar-chatgpt-conversation-key="chatgpt:conversation:x">' +
+        '<a href="/c/x" aria-label="X">X</a><span role="status">generating</span></div></div></div></body>',
+    );
+    expect(doc.querySelector(selectors.sidebarHistory)?.querySelector(selectors.sidebarLoadingStatus)).toBeNull();
+  });
+
   it('returns an empty list when the Recents list is absent', () => {
     const list = chatgptAdapter.listConversations?.(docFrom('<body><main>no sidebar</main></body>')) ?? [];
     expect(list).toEqual([]);

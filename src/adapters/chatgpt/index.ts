@@ -9,6 +9,7 @@ import {
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import {
+  ERR_CHATGPT_LOAD_OLDER_STALLED,
   ERR_CHATGPT_LOAD_OLDER_TIMED_OUT,
   ERR_CHATGPT_NO_MESSAGES,
   ERR_CHATGPT_OPEN_TIMED_OUT,
@@ -248,12 +249,17 @@ function toolbarMount(root: ParentNode = document): Element | null {
 }
 
 /**
- * The route page on screen, or `root` itself when the app-shell page wrapper is absent (a
- * fixture). Hidden, previously visited routes stay mounted beside it with their own headers
- * and threads, so page-level reads go through here — the sidebar, outside it, does not.
+ * The route page on screen. Hidden, previously visited routes stay mounted beside it with
+ * their own headers and threads, so page-level reads go through here — the sidebar, outside
+ * it, does not. Only a document with no route wrappers at all (a fixture) is read whole:
+ * wrappers present with none active (mid-transition) reads as an empty page, so extraction
+ * fails loud instead of merging every hidden route (AGENTS.md #4).
  */
 function activePage(root: ParentNode): ParentNode {
-  return root.querySelector(selectors.activePage) ?? root;
+  const active = root.querySelector(selectors.activePage);
+  if (active) return active;
+  if (!root.querySelector(selectors.routePage)) return root;
+  return (ownerDocument(root) ?? document).createDocumentFragment();
 }
 
 /**
@@ -278,9 +284,13 @@ function suppressOverlay(root: ParentNode = document): boolean {
   // Outside a conversation turn is what separates the page-covering expanded view from an
   // inline embed of the same connector rendered inside a message. An inline one leaves the
   // header in place and must not cost the user the toolbar.
-  return [...root.querySelectorAll(selectors.expandedReportFrame)].some(
-    (frame) => frame.closest(selectors.turn) === null,
-  );
+  // A frame left on a hidden route must not cost the visible route its toolbar, so only a
+  // frame on the active page — or outside every route page (unmeasured) — counts.
+  const page = activePage(root);
+  return [...root.querySelectorAll(selectors.expandedReportFrame)].some((frame) => {
+    const route = frame.closest(selectors.routePage);
+    return frame.closest(selectors.turn) === null && (route === null || route === page);
+  });
 }
 
 /**
@@ -329,8 +339,8 @@ function resolveConversationHref(href: string, origin: string): { id: string; ur
 /**
  * The stable conversation id from any conversation pathname — plain `/c/<id>` or a
  * project-scoped `/g/g-p-<id>[-slug]/c/<id>`. The `/c/` segment is the identity; the
- * project prefix and slug vary by context, so keying on this dedupes the same chat
- * seen as a project-list link and as a sidebar-expando link. `''` when absent.
+ * project prefix and slug vary by context (the list omits it, the opened page's URL carries
+ * it), so keying on this matches the same chat across both. `''` when absent.
  */
 function conversationIdFromPath(pathname: string): string {
   const match = pathname.match(/\/c\/([^/?#]+)/);
@@ -393,11 +403,9 @@ function findSidebarAnchor(targetPath: string): HTMLAnchorElement | null {
 /**
  * The Project home page's conversation-list `<section>` — the container wrapping the
  * `<ol>` of conversation rows. Found as the nearest `<section>` ancestor of a project
- * conversation link, which deliberately skips the persistent left-nav sidebar expando:
- * once a project conversation has been opened, that expando also lists the project's
- * conversations, but its links have no `<section>` ancestor, so they are excluded here
- * (verified live 2026-07-18 — without this, the trigger's mount and the bulk list would
- * wrongly bind to the sidebar). Null when the list has not rendered yet or the markup
+ * conversation link, so only the home page's list binds — a project link anywhere else
+ * (the pre-app-shell sidebar expando had them; the app-shell sidebar measured none on
+ * 2026-09-29) has no `<section>` ancestor and is excluded. Null when the list has not rendered yet or the markup
  * changed; the content layer then falls back to a non-overlapping overlay. Doubles as
  * the trigger's mount point. DOM knowledge stays in the adapter (docs/conventions.md).
  */
@@ -480,21 +488,25 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
  * pre-app-shell sidebar expando is gone), so every open after the first in a bulk run starts
  * from a page with nothing to click. Only the target's OWN project home is visited — its
  * header back link is matched by project id — so a run never wanders into another project.
- * Best-effort: a failed return is reported by the caller's link-missing error.
+ * Throws `openProjectHome`'s error when the return itself fails.
  */
 async function revealFromProjectHome(
   url: string,
   convId: string,
   opts: OpenConversationOptions,
 ): Promise<HTMLAnchorElement | null> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
   const projectId = projectIdFromPath(new URL(url, location.origin).pathname);
-  if (!projectId || !findProjectBackLink(projectId)) return null;
-  try {
-    await openProjectHome(`${location.origin}/g/${projectId}/project`, opts);
-  } catch {
-    return null;
+  if (!projectId) return null;
+  // Its own errors (no back link, home never rendered) are the accurate ones to surface.
+  await openProjectHome(`${location.origin}/g/${projectId}/project`, opts);
+  // The list can render its first rows before the target's; wait for that row itself.
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const anchor = findProjectConversationAnchor(convId);
+    if (anchor || Date.now() >= deadline) return anchor;
+    await delay(pollMs);
   }
-  return findProjectConversationAnchor(convId);
 }
 
 /** The currently-rendered project conversation link for `convId`, or null. */
@@ -754,10 +766,11 @@ export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions
   // settle replaces the dwell. Never seen → the full dwell, since absence cannot tell a short
   // conversation from drifted markup.
   let sawLoading = false;
+  let shownNow = false;
   const loading = (): boolean => {
-    const shown = page.querySelector(selectors.olderTurnsLoading) !== null;
-    if (shown) sawLoading = true;
-    return shown;
+    shownNow = page.querySelector(selectors.olderTurnsLoading) !== null;
+    if (shownNow) sawLoading = true;
+    return shownNow;
   };
 
   // Messages lazy-load as you scroll UP (older turns above), so pin to the top.
@@ -770,12 +783,12 @@ export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions
     onIncomplete: () => {
       stuck = true;
     },
-    // Seen earlier AND gone now; `pending` above already refreshed `sawLoading` this round.
-    endConfirmed: () => sawLoading && !loading(),
+    // Seen earlier AND gone on this round's read (`pending` runs first each round).
+    endConfirmed: () => sawLoading && !shownNow,
     confirmedStableRounds: options.stableRounds === undefined ? LOAD_OLDER_SETTLE.stableRounds : undefined,
   });
   // The status never cleared: older turns exist that never arrived (AGENTS.md #4).
-  if (stuck) throw new ExtractionError(ERR_CHATGPT_LOAD_OLDER_TIMED_OUT);
+  if (stuck) throw new ExtractionError(ERR_CHATGPT_LOAD_OLDER_STALLED);
 }
 
 interface CollectedTurn {

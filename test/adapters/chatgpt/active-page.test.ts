@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Window } from 'happy-dom';
 import { chatgptAdapter } from '../../../src/adapters/chatgpt';
+import { ExtractionError } from '../../../src/core/errors';
 import { assistantUnit, turn, userUnit } from './markup';
 
 // The app-shell keeps previously visited routes mounted as hidden siblings of the page on
@@ -47,6 +48,20 @@ describe('ChatGPT adapter scopes page reads to the active route', () => {
     expect(conversation.messages).toHaveLength(2);
     expect(text).toContain('active prompt');
     expect(text).not.toContain('hidden prompt');
+  });
+
+  it('fails loud mid-transition, when route pages exist but none is active', async () => {
+    const between = docFrom(pane(false, 'a', thread('a', 'first')) + pane(false, 'b', thread('b', 'second')));
+    await expect(chatgptAdapter.extract(between)).rejects.toBeInstanceOf(ExtractionError);
+    expect(chatgptAdapter.toolbarMount?.(between)).toBeNull();
+  });
+
+  it('lets only a report frame on the visible route suppress the overlay', () => {
+    const frame = '<iframe src="https://connector-openai-deep-research.web-sandbox.oaiusercontent.com/x"></iframe>';
+    const hiddenFrame = docFrom(pane(false, 'hidden', frame) + pane(true, 'active', thread('n', 'p')));
+    const shownFrame = docFrom(pane(false, 'hidden', thread('o', 'p')) + pane(true, 'active', frame));
+    expect(chatgptAdapter.suppressOverlay?.(hiddenFrame)).toBe(false);
+    expect(chatgptAdapter.suppressOverlay?.(shownFrame)).toBe(true);
   });
 
   it('lists the visible project home, not a hidden one', () => {

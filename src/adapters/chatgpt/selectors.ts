@@ -15,6 +15,8 @@ export const selectors = {
    * lives outside it. Verified against the live page (2026-09-29).
    */
   activePage: '[data-app-shell-active-page="true"]',
+  /** Any route page wrapper, active or hidden — its presence marks an app-shell document. */
+  routePage: '[data-app-shell-active-page]',
 
   /**
    * One message unit — the user side or the assistant side of a turn. A turn
@@ -205,12 +207,13 @@ export const selectors = {
 
   /**
    * The Recents list's trailing loading row (a `[role="listitem"]` holding a
-   * `[role="status"]` and shimmer bars), shown while more rows are owed. Its presence is
+   * `[role="status"]` and shimmer bars), shown while more rows are owed. Excludes conversation
+   * rows, so a status indicator inside one can never read as a pending page. Its presence is
    * evidence a page is still coming; its absence is NOT evidence of the end — a 429 on a
    * fresh load removed it with the list cut short. Verified against the live page
    * (2026-09-29).
    */
-  sidebarLoadingStatus: '[role="listitem"] [role="status"]',
+  sidebarLoadingStatus: '[role="listitem"]:not([data-sidebar-chatgpt-conversation-key]) [role="status"]',
 
   /**
    * A conversation link on a Project home page (`/g/g-p-<id>/project`) or in the

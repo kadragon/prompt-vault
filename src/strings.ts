@@ -186,6 +186,7 @@ export const ERR_CHATGPT_PROJECT_BACK_LINK_MISSING = m('errChatgptProjectBackLin
 export const ERR_CHATGPT_PROJECT_HOME_TIMED_OUT = m('errChatgptProjectHomeTimedOut');
 export const ERR_CHATGPT_NO_MESSAGES = m('errChatgptNoMessages');
 export const ERR_CHATGPT_LOAD_OLDER_TIMED_OUT = m('errChatgptLoadOlderTimedOut');
+export const ERR_CHATGPT_LOAD_OLDER_STALLED = m('errChatgptLoadOlderStalled');
 export const ERR_CHATGPT_TURN_ID_MISSING = m('errChatgptTurnIdMissing');
 export const ERR_CHATGPT_SIDEBAR_SCROLL_TIMED_OUT = m('errChatgptSidebarScrollTimedOut');
 export const ERR_CHATGPT_PROJECT_LIST_SCROLL_TIMED_OUT = m('errChatgptProjectListScrollTimedOut');

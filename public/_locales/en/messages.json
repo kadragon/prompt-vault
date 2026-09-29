@@ -287,6 +287,10 @@
     "message": "Timed out loading the full conversation while scrolling. The conversation may be unusually long; try again, or report if this persists.",
     "description": "Extraction error (ChatGPT): scrolling to load older messages of the conversation took too long."
   },
+  "errChatgptLoadOlderStalled": {
+    "message": "ChatGPT stopped loading the earlier messages of this conversation, so the export would be missing its oldest turns. Wait a moment and try again.",
+    "description": "Extraction error (ChatGPT): the conversation's own \"loading earlier messages\" indicator stayed up with nothing arriving, so older turns never loaded."
+  },
   "errChatgptTurnIdMissing": {
     "message": "A conversation turn is missing its identifier and could not be exported reliably. ChatGPT’s markup may have changed — please report this.",
     "description": "Extraction error (ChatGPT): a conversation turn has no identifier, so the export could not be made reliable."

@@ -287,6 +287,9 @@
     "message": "スクロールして会話全体を読み込む途中でタイムアウトしました。会話が非常に長い可能性があります。もう一度お試しいただき、繰り返し起きる場合はご報告ください。",
     "description": "Extraction error (ChatGPT): scrolling to load older messages of the conversation took too long."
   },
+  "errChatgptLoadOlderStalled": {
+    "message": "ChatGPT がこの会話の以前のメッセージを読み込めなかったため、このままでは最初のほうのやり取りが欠けてしまいます。しばらくしてからもう一度お試しください。"
+  },
   "errChatgptTurnIdMissing": {
     "message": "識別子のない会話ターンがあるため、正確にエクスポートできませんでした。ChatGPT のページ構成が変わった可能性があります。ご報告ください。",
     "description": "Extraction error (ChatGPT): a conversation turn has no identifier, so the export could not be made reliable."

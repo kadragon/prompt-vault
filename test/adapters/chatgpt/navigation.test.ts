@@ -78,6 +78,27 @@ describe('chatgptAdapter.openProjectConversation', () => {
     expect(page.doc.querySelector('[data-chatgpt-search-message-ids]')?.getAttribute('data-chatgpt-search-message-ids')).toBe('conv-b');
   });
 
+  it('waits for the target row when the home list renders its first rows before it', async () => {
+    const page = installLivePage(`${PROJECT}-demo/c/conv-a`, conversationBody('conv-a'));
+    wireNavigation(page);
+    // Home arrives with only conv-a; conv-b's row lands a beat later.
+    page.doc.addEventListener('click', (event) => {
+      const href = (event.target as Element | null)?.closest?.('a')?.getAttribute('href') ?? '';
+      if (!href.endsWith('/project')) return;
+      const list = page.doc.querySelector('ol');
+      const late = list?.lastElementChild;
+      late?.remove();
+      setTimeout(() => {
+        if (late) list?.appendChild(late);
+      }, 20);
+    });
+    await chatgptAdapter.openProjectConversation?.(`https://chatgpt.com${PROJECT}/c/conv-b`, {
+      pollMs: 5,
+      timeoutMs: 500,
+    });
+    expect(page.doc.querySelector('[data-chatgpt-search-message-ids]')?.getAttribute('data-chatgpt-search-message-ids')).toBe('conv-b');
+  });
+
   it('fails loud when neither the page nor the project home lists the target', async () => {
     const page = installLivePage(`${PROJECT}-demo/c/conv-a`, conversationBody('conv-a'));
     wireNavigation(page);

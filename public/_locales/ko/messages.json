@@ -287,6 +287,9 @@
     "message": "스크롤하며 대화 전체를 불러오는 동안 시간이 초과되었습니다. 대화가 유난히 길 수 있습니다. 다시 시도해 보고, 계속되면 제보해 주세요.",
     "description": "Extraction error (ChatGPT): scrolling to load older messages of the conversation took too long."
   },
+  "errChatgptLoadOlderStalled": {
+    "message": "ChatGPT가 이 대화의 이전 메시지를 더 불러오지 않아, 이대로 내보내면 가장 오래된 부분이 빠집니다. 잠시 후 다시 시도해 주세요."
+  },
   "errChatgptTurnIdMissing": {
     "message": "식별자가 없는 대화 항목이 있어 안정적으로 내보낼 수 없습니다. ChatGPT 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
     "description": "Extraction error (ChatGPT): a conversation turn has no identifier, so the export could not be made reliable."
