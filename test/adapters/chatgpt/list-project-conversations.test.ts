@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Window } from 'happy-dom';
 import { chatgptAdapter } from '../../../src/adapters/chatgpt';
 
@@ -49,7 +51,29 @@ const PROJECT = `
     </main>
   </body>`;
 
+// The app-shell project home page's <main>, captured live 2026-09-29 and sanitized: the list
+// rows are now `<li class="group/project-chat">`, otherwise the same section > ol > li > a shape.
+const PROJECT_HOME = readFileSync(
+  fileURLToPath(new URL('../../fixtures/chatgpt/project-home.html', import.meta.url)),
+  'utf8',
+);
+
 describe('chatgptAdapter.listProjectConversations', () => {
+  it('enumerates the captured app-shell project list, titled from the font-medium block', () => {
+    const doc = docFrom(PROJECT_HOME);
+    const list = chatgptAdapter.listProjectConversations?.(doc) ?? [];
+    expect(list.map((c) => c.id)).toEqual(['conv-paa', 'conv-pbb', 'conv-pcc']);
+    expect(list[0].url).toBe('https://chatgpt.com/g/g-p-proj1/c/conv-paa');
+    // Each title is the row's font-medium block, never its preview-snippet sibling.
+    const titles = [...doc.querySelectorAll('section li a .text-sm.font-medium')].map((e) => e.textContent?.trim());
+    expect(list.map((c) => c.title)).toEqual(titles);
+  });
+
+  it('mounts the project trigger on the captured list section', () => {
+    const doc = docFrom(PROJECT_HOME);
+    expect(chatgptAdapter.projectToolbarMount?.(doc)).toBe(doc.querySelector('main section'));
+  });
+
   it('enumerates project conversations in order, titling from the font-medium block', () => {
     const list = chatgptAdapter.listProjectConversations?.(docFrom(PROJECT)) ?? [];
     expect(list).toEqual([

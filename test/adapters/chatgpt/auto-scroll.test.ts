@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { LOAD_OLDER_DEFAULTS_TEST, autoScrollToLoad } from '../../../src/adapters/chatgpt';
+import {
+  LOAD_OLDER_DEFAULTS_TEST,
+  LOAD_OLDER_SETTLE_TEST,
+  LOAD_OLDER_STATUS_EXTRA_ROUNDS_TEST,
+  autoScrollToLoad,
+} from '../../../src/adapters/chatgpt';
 import { selectors } from '../../../src/adapters/chatgpt/selectors';
 import { ExtractionError } from '../../../src/core/errors';
 
@@ -8,7 +13,9 @@ import { ExtractionError } from '../../../src/core/errors';
 // its `scrollHeight` grows. Each time the list is pinned to its top, one more "page" of
 // height arrives — but only on every `every`-th pin, modelling the up-to-1.6 s gaps between
 // batches. `reversed` lays it out `column-reverse`, where the top is the most negative
-// `scrollTop` and `0` is the bottom.
+// `scrollTop` and `0` is the bottom. `loader` renders the thread's "loading earlier messages"
+// status for as long as older turns remain (measured 2026-09-29: present from first paint,
+// gone once the oldest turn mounts); `pinsWhenFull` records the pin count at that moment.
 function makeDoc({
   growPx = 1000,
   maxHeight = 5000,
@@ -16,6 +23,7 @@ function makeDoc({
   runaway = false,
   reversed = false,
   container = true,
+  loader = false,
 }: {
   growPx?: number;
   maxHeight?: number;
@@ -23,13 +31,15 @@ function makeDoc({
   runaway?: boolean;
   reversed?: boolean;
   container?: boolean;
-} = {}): { doc: Document; list: { scrollHeight: number; pins: number } } {
+  loader?: boolean;
+} = {}): { doc: Document; list: { scrollHeight: number; pins: number; pinsWhenFull: number } } {
   const clientHeight = 500;
   let top = reversed ? 0 : 10;
   const list = {
     clientHeight,
     scrollHeight: 1000,
     pins: 0,
+    pinsWhenFull: -1,
     ownerDocument: reversed
       ? { defaultView: { getComputedStyle: () => ({ flexDirection: 'column-reverse' }) } }
       : undefined,
@@ -44,10 +54,15 @@ function makeDoc({
       list.pins++;
       if (list.pins % every !== 0) return;
       list.scrollHeight = runaway ? list.scrollHeight + growPx : Math.min(maxHeight, list.scrollHeight + growPx);
+      if (list.pinsWhenFull < 0 && list.scrollHeight >= maxHeight) list.pinsWhenFull = list.pins;
     },
   };
   const doc = {
-    querySelector: (sel: string) => (container && sel === selectors.scrollContainer ? list : null),
+    querySelector: (sel: string) => {
+      if (container && sel === selectors.scrollContainer) return list;
+      if (loader && sel === selectors.olderTurnsLoading && list.scrollHeight < maxHeight) return {};
+      return null;
+    },
     querySelectorAll: () => ({ length: 6 }), // windowed: the node count never moves
   } as unknown as Document;
   return { doc, list };
@@ -98,8 +113,60 @@ describe('autoScrollToLoad', () => {
         /* ignore — never reaches the top */
       },
     };
-    const doc = { querySelector: () => stubborn, querySelectorAll: () => ({ length: 3 }) } as unknown as Document;
+    const doc = {
+      querySelector: (sel: string) => (sel === selectors.scrollContainer ? stubborn : null),
+      querySelectorAll: () => ({ length: 3 }),
+    } as unknown as Document;
     await expect(autoScrollToLoad(doc, { stepDelayMs: 0 })).resolves.toBeUndefined();
+  });
+
+  it('ends shortly after the loading-earlier-messages status clears, not after the full dwell', async () => {
+    const { doc, list } = makeDoc({ loader: true });
+    await autoScrollToLoad(doc, { stepDelayMs: 0 });
+    expect(list.scrollHeight).toBe(5000);
+    const { stableRounds = 0 } = LOAD_OLDER_DEFAULTS_TEST;
+    expect(list.pins - list.pinsWhenFull).toBeLessThan(stableRounds);
+  });
+
+  it('keeps the full dwell when the status was never seen — its absence proves nothing', async () => {
+    // A short conversation never renders the status, but neither does a long one whose status
+    // markup drifted; ending early on absence would silently drop that one's oldest turns.
+    const { doc, list } = makeDoc();
+    await autoScrollToLoad(doc, { stepDelayMs: 0 });
+    const { stableRounds = 0 } = LOAD_OLDER_DEFAULTS_TEST;
+    expect(list.pins - list.pinsWhenFull).toBeGreaterThanOrEqual(stableRounds);
+  });
+
+  it('keeps waiting past the dwell while the status still shows', async () => {
+    // A batch gap longer than the dwell: the status says older turns remain, so the walk may
+    // not give up on time alone (the step cap stays the fail-loud bound).
+    const { stableRounds = 0 } = LOAD_OLDER_DEFAULTS_TEST;
+    const { doc, list } = makeDoc({ loader: true, every: stableRounds * 2 });
+    await autoScrollToLoad(doc, { stepDelayMs: 0 });
+    expect(list.scrollHeight).toBe(5000);
+  });
+
+  it('fails loud when the status stays up and nothing more arrives', async () => {
+    // A stuck fetch (measured on the sidebar as a 429 that left its loading row up): the
+    // oldest turns will never come, so ending quietly on the dwell would drop them silently.
+    const { doc } = makeDoc({ loader: true, maxHeight: 3000 });
+    const stuck = doc.querySelector.bind(doc);
+    const always = { ...doc, querySelector: (sel: string) => (sel === selectors.olderTurnsLoading ? {} : stuck(sel)) };
+    await expect(autoScrollToLoad(always as unknown as Document, { stepDelayMs: 0 })).rejects.toBeInstanceOf(
+      ExtractionError,
+    );
+  });
+
+  it('holds a stuck status well past the slowest measured batch gap before failing', () => {
+    const { stepDelayMs = 0, stableRounds = 0 } = LOAD_OLDER_DEFAULTS_TEST;
+    expect(stepDelayMs * (stableRounds + LOAD_OLDER_STATUS_EXTRA_ROUNDS_TEST)).toBeGreaterThan(3 * 4533);
+  });
+
+  it('settles longer than the last height change measured after the status cleared', () => {
+    // 2026-09-29: the status vanished with the final batch; the height moved once more
+    // (-58 px) 244 ms later (docs/live-dom-verification.md).
+    const { stepDelayMs = 0, stableRounds = 0 } = LOAD_OLDER_SETTLE_TEST;
+    expect(stepDelayMs * stableRounds).toBeGreaterThan(244);
   });
 
   it('dwells longer than the slowest batch gap measured live', () => {

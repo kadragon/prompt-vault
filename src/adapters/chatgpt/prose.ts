@@ -8,6 +8,9 @@
 
 import { delay } from '../../core/sidebar';
 import { ExtractionError } from '../../core/errors';
+import {
+  ERR_CHATGPT_CODE_BLOCK_INCOMPLETE,
+} from '../../strings';
 import { htmlToMarkdown } from '../../core/html-to-markdown';
 import { selectors } from './selectors';
 
@@ -105,10 +108,7 @@ function headerLabel(block: Element): string {
 async function harvestCodeMirror(block: Element, content: Element, options: ProseOptions): Promise<string> {
   const { harvestStepDelayMs = HARVEST_STEP_DELAY_MS } = options;
   const incomplete = (): ExtractionError =>
-    new ExtractionError(
-      'A long code block could not be read in full. Scroll it into view and try again, or ' +
-        'report this if it persists.',
-    );
+    new ExtractionError(ERR_CHATGPT_CODE_BLOCK_INCOMPLETE);
 
   const pane = scrollPaneOf(block, content);
   const firstLine = content.querySelector(selectors.codeMirrorLine);

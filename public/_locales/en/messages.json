@@ -242,5 +242,311 @@
   "optionsMinFormatNote": {
     "message": "At least one export format must stay enabled.",
     "description": "Shown when the user tries to uncheck the last remaining format."
+  },
+  "errTurnsUnreadable": {
+    "message": "Some conversation turns could not be read (empty or malformed). The conversation may still be loading — wait for it to finish, then try again.",
+    "description": "Extraction error (any provider): some conversation turns were empty or malformed, likely because the page is still loading."
+  },
+  "errScrollToStartTimedOut": {
+    "message": "Timed out scrolling back to the start of the conversation. It may be unusually long; try again, or report if this persists.",
+    "description": "Extraction error (Claude, Gemini): scrolling back to the first message to load older turns took too long."
+  },
+  "errChatgptCodeBlockIncomplete": {
+    "message": "A long code block could not be read in full. Scroll it into view and try again, or report this if it persists.",
+    "description": "Extraction error (ChatGPT): a long, virtualized code block could not be read completely."
+  },
+  "errChatgptSidebarLinkMissing": {
+    "message": "Could not open a selected conversation: its link was not found in the sidebar (the history list may need scrolling into view). It was skipped.",
+    "description": "Bulk export error (ChatGPT): a selected conversation's sidebar link could not be found, so it was skipped."
+  },
+  "errChatgptOpenTimedOut": {
+    "message": "Timed out opening a selected conversation. It may be loading slowly; it was skipped.",
+    "description": "Bulk export error (ChatGPT): opening a selected conversation took too long, so it was skipped."
+  },
+  "errChatgptProjectLinkMissing": {
+    "message": "Could not open a selected project conversation: its link was not found on the page (the project list may need scrolling into view). It was skipped.",
+    "description": "Bulk export error (ChatGPT): a selected project conversation's link could not be found on the project page, so it was skipped."
+  },
+  "errChatgptProjectOpenTimedOut": {
+    "message": "Timed out opening a selected project conversation. It may be loading slowly; it was skipped.",
+    "description": "Bulk export error (ChatGPT): opening a selected project conversation took too long, so it was skipped."
+  },
+  "errChatgptProjectBackLinkMissing": {
+    "message": "Could not return to the project home: its back link was not found.",
+    "description": "Bulk export error (ChatGPT): after a project batch, the link back to the project home page could not be found."
+  },
+  "errChatgptProjectHomeTimedOut": {
+    "message": "Timed out returning to the project home page.",
+    "description": "Bulk export error (ChatGPT): returning to the project home page after a batch took too long."
+  },
+  "errChatgptNoMessages": {
+    "message": "No messages found on the page. The conversation may not have loaded, or ChatGPT’s markup changed — extraction selectors need updating.",
+    "description": "Extraction error (ChatGPT): no messages were found on the conversation page."
+  },
+  "errChatgptLoadOlderTimedOut": {
+    "message": "Timed out loading the full conversation while scrolling. The conversation may be unusually long; try again, or report if this persists.",
+    "description": "Extraction error (ChatGPT): scrolling to load older messages of the conversation took too long."
+  },
+  "errChatgptTurnIdMissing": {
+    "message": "A conversation turn is missing its identifier and could not be exported reliably. ChatGPT’s markup may have changed — please report this.",
+    "description": "Extraction error (ChatGPT): a conversation turn has no identifier, so the export could not be made reliable."
+  },
+  "errChatgptSidebarScrollTimedOut": {
+    "message": "Timed out loading the conversation list while scrolling. The sidebar may be unusually long; try again, or report if this persists.",
+    "description": "Bulk export error (ChatGPT): scrolling the sidebar to load the full conversation list took too long."
+  },
+  "errChatgptProjectListScrollTimedOut": {
+    "message": "Timed out loading the project conversation list while scrolling. The list may be unusually long; try again, or report if this persists.",
+    "description": "Bulk export error (ChatGPT): scrolling the project page to load the full project conversation list took too long."
+  },
+  "errGeminiSidebarMissing": {
+    "message": "Could not find Gemini’s conversation sidebar. Gemini’s markup may have changed — please report this.",
+    "description": "Bulk export error (Gemini): the conversation sidebar could not be found on the page."
+  },
+  "errGeminiSidebarCollapsed": {
+    "message": "Gemini’s conversation sidebar is collapsed, so its conversation links cannot be read. Open the sidebar (the menu button at the top left) and try again.",
+    "description": "Bulk export error (Gemini): the sidebar is collapsed, so the conversation list cannot be read; tells the user how to open it."
+  },
+  "errGeminiSidebarLinksUnreadable": {
+    "message": "Could not read any Gemini sidebar conversation link: their URLs are not the expected /app/<id> shape. Gemini’s markup may have changed — please report this.",
+    "description": "Bulk export error (Gemini): sidebar links exist but none has the expected /app/<id> URL shape. Keep \"/app/<id>\" verbatim."
+  },
+  "errGeminiOpenUrlMalformed": {
+    "message": "Could not open a selected Gemini conversation: its URL is malformed. It was skipped.",
+    "description": "Bulk export error (Gemini): a selected conversation has a malformed URL, so it was skipped."
+  },
+  "errGeminiOpenLinkMissing": {
+    "message": "Could not open a selected Gemini conversation: its sidebar link was not found, even after scrolling the conversation list. It was skipped.",
+    "description": "Bulk export error (Gemini): a selected conversation's sidebar link was not found even after scrolling, so it was skipped."
+  },
+  "errGeminiOpenTimedOut": {
+    "message": "Timed out opening a selected Gemini conversation. It may be loading slowly; it was skipped.",
+    "description": "Bulk export error (Gemini): opening a selected conversation took too long, so it was skipped."
+  },
+  "errGeminiNoMessages": {
+    "message": "No messages found on the page. The conversation may not have loaded, or Gemini’s markup changed — extraction selectors need updating.",
+    "description": "Extraction error (Gemini): no messages were found on the conversation page."
+  },
+  "errGeminiMessageListMissing": {
+    "message": "Could not find Gemini’s message list to scroll, so older messages in this conversation may not have loaded. Gemini’s markup may have changed — please report this.",
+    "description": "Extraction error (Gemini): the scrollable message list was not found, so older messages may be missing."
+  },
+  "errGeminiMessageListUnscrollable": {
+    "message": "Gemini’s message list cannot be scrolled right now, so older messages in this conversation may not have loaded. Bring the conversation into view and try again.",
+    "description": "Extraction error (Gemini): the message list exists but cannot be scrolled right now, so older messages may be missing."
+  },
+  "errGeminiExchangesDropped": {
+    "message": "Only $loaded$ of $expected$ loaded exchanges are still on the page — Gemini removed some while they were being read. Scroll through the whole conversation and try again.",
+    "description": "Extraction error (Gemini): Gemini unloaded some already-loaded exchanges while they were being read. $loaded$ is how many are still on the page, $expected$ how many had loaded.",
+    "placeholders": {
+      "loaded": {
+        "content": "$1"
+      },
+      "expected": {
+        "content": "$2"
+      }
+    }
+  },
+  "errGeminiStillGenerating": {
+    "message": "Gemini is still generating a response. Wait for it to finish, then export again.",
+    "description": "Extraction error (Gemini): a response is still being generated."
+  },
+  "errGeminiResponseUnreadable": {
+    "message": "This conversation contains a response this extension could not read — it may be a kind Gemini renders outside its normal text area, or Gemini’s markup may have changed. Please report this.",
+    "description": "Extraction error (Gemini): a response could not be read, possibly a kind rendered outside the normal text area."
+  },
+  "errClaudeArtifactAndAttachment": {
+    "message": "A Claude message carries both an artifact card and a file attachment, which its markup has never done. Its author could not be determined — please report this.",
+    "description": "Extraction error (Claude): a message has both an artifact card and a file attachment, so its author (user or Claude) cannot be told apart."
+  },
+  "errClaudeSidebarMissing": {
+    "message": "Could not find Claude’s conversation sidebar. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): the conversation sidebar could not be found on the page."
+  },
+  "errClaudeProjectListMissing": {
+    "message": "Could not find the Claude project conversation list on a project page. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): the project conversation list was not found on a project page."
+  },
+  "errClaudeProjectRowMalformed": {
+    "message": "Could not read the Claude project conversation list: a table row did not contain exactly one conversation link. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): a row of the project conversation table did not hold exactly one conversation link."
+  },
+  "errClaudeSidebarLinksUnreadable": {
+    "message": "Could not read any Claude sidebar conversation link: their URLs or titles are missing. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): sidebar conversation links exist but none has both a URL and a title."
+  },
+  "errClaudeProjectLinksUnreadable": {
+    "message": "Could not read any Claude project conversation link: their URLs or titles are missing. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): project conversation links exist but none has both a URL and a title."
+  },
+  "errClaudeRecentsLinksUnreadable": {
+    "message": "Could not read any Claude recents conversation link: their URLs or titles are missing. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): conversation links on the recents page exist but none has both a URL and a title."
+  },
+  "errClaudeOpenUrlMalformed": {
+    "message": "Could not open a selected Claude conversation: its URL is malformed. It was skipped.",
+    "description": "Bulk export error (Claude): a selected conversation has a malformed URL, so it was skipped."
+  },
+  "errClaudeOpenLinkMissing": {
+    "message": "Could not open a selected Claude conversation: its sidebar link was not found, even after scrolling the recent-chat list. It was skipped.",
+    "description": "Bulk export error (Claude): a selected conversation's sidebar link was not found even after scrolling the recent-chat list, so it was skipped."
+  },
+  "errClaudeOpenTimedOut": {
+    "message": "Timed out opening a selected Claude conversation. It may be loading slowly; it was skipped.",
+    "description": "Bulk export error (Claude): opening a selected conversation took too long, so it was skipped."
+  },
+  "errClaudeProjectOpenUrlMalformed": {
+    "message": "Could not open a selected Claude project conversation: its URL is malformed. It was skipped.",
+    "description": "Bulk export error (Claude): a selected project conversation has a malformed URL, so it was skipped."
+  },
+  "errClaudeProjectOpenLinkMissing": {
+    "message": "Could not open a selected Claude project conversation: its table link was not found. The project list may need to render first. It was skipped.",
+    "description": "Bulk export error (Claude): a selected project conversation's link was not found in the project table, so it was skipped."
+  },
+  "errClaudeProjectOpenTimedOut": {
+    "message": "Timed out opening a selected Claude project conversation. It may be loading slowly; it was skipped.",
+    "description": "Bulk export error (Claude): opening a selected project conversation took too long, so it was skipped."
+  },
+  "errClaudeProjectHomeUrlMissing": {
+    "message": "Could not return to the Claude project home: no measured project-home URL is available. It was skipped.",
+    "description": "Bulk export error (Claude): the project home URL recorded at the start of the batch is unavailable, so returning there was skipped."
+  },
+  "errClaudeProjectHomeHistoryUnavailable": {
+    "message": "Could not return to the Claude project home: browser history is unavailable. It was skipped.",
+    "description": "Bulk export error (Claude): browser history is unavailable, so returning to the project home was skipped."
+  },
+  "errClaudeProjectHomeTimedOut": {
+    "message": "Timed out returning to the Claude project home. It may be loading slowly; it was skipped.",
+    "description": "Bulk export error (Claude): returning to the project home took too long, so it was skipped."
+  },
+  "errClaudeProjectHomeMismatch": {
+    "message": "Returned to a different Claude project home than the bulk run started from.",
+    "description": "Bulk export error (Claude): after the batch, the page landed on a different project home than the one the batch started from."
+  },
+  "errClaudeRecentsListMissing": {
+    "message": "Could not find the Claude conversation list on the recents page. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): the conversation list was not found on the recents (/recents) page."
+  },
+  "errClaudeRecentsRowMalformed": {
+    "message": "Could not read the Claude recents conversation list: a table row did not contain exactly one conversation link. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): a row of the recents conversation table did not hold exactly one conversation link."
+  },
+  "errClaudeRecentsLinksIncomplete": {
+    "message": "Could not read every Claude conversation on the recents page: some rows’ links or titles are missing. Claude’s markup may have changed — please report this.",
+    "description": "Bulk export error (Claude): some rows on the recents page lack a link or title, so the list would be incomplete."
+  },
+  "errClaudeRecentsLinkMissing": {
+    "message": "Could not open a selected Claude conversation: its link was not found on the recents page. The list may need to render first. It was skipped.",
+    "description": "Bulk export error (Claude): a selected conversation's link was not found on the recents page, so it was skipped."
+  },
+  "errClaudeRecentsHistoryUnavailable": {
+    "message": "Could not return to the Claude recents page: browser history is unavailable. It was skipped.",
+    "description": "Bulk export error (Claude): browser history is unavailable, so returning to the recents page was skipped."
+  },
+  "errClaudeRecentsReturnTimedOut": {
+    "message": "Timed out returning to the Claude recents page. It may be loading slowly; it was skipped.",
+    "description": "Bulk export error (Claude): returning to the recents page took too long, so it was skipped."
+  },
+  "errClaudeNotRecentsPage": {
+    "message": "Asked to return to a Claude page that is not the recents list.",
+    "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
+  },
+  "errClaudeNoMessages": {
+    "message": "No messages found on the page. The conversation may not have loaded, or Claude’s markup changed — extraction selectors need updating.",
+    "description": "Extraction error (Claude): no messages were found on the conversation page."
+  },
+  "errClaudeStreamingSettleTimedOut": {
+    "message": "Timed out waiting for Claude’s streaming state to settle while loading the full conversation. The conversation may still be generating or its markup may have changed — try again, or report if this persists.",
+    "description": "Extraction error (Claude): while loading the full conversation, Claude never finished streaming within the time limit."
+  },
+  "errClaudeCompletionMarkerMissing": {
+    "message": "Claude’s message-completion marker was not found anywhere in the conversation, so this extension cannot tell a finished response from one still being written. Claude’s markup may have changed — please report this.",
+    "description": "Extraction error (Claude): the marker Claude puts on finished responses is absent from the whole conversation, so finished and in-progress responses cannot be told apart."
+  },
+  "errClaudeFirstTurnNeverLoaded": {
+    "message": "The conversation’s first turn never loaded, even after scrolling to the top. Claude’s markup may have changed — please report this.",
+    "description": "Extraction error (Claude): the first turn of the conversation never loaded, even after scrolling to the top. Singular form of errClaudeFirstTurnsNeverLoaded."
+  },
+  "errClaudeFirstTurnsNeverLoaded": {
+    "message": "The conversation’s first $count$ turns never loaded, even after scrolling to the top. Claude’s markup may have changed — please report this.",
+    "description": "Extraction error (Claude): the first $count$ turns (always 2 or more) never loaded, even after scrolling to the top.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeTurnGap": {
+    "message": "The conversation is missing turns between positions $from$ and $to$. Scroll through the whole conversation and try again.",
+    "description": "Extraction error (Claude): turns between two read positions are missing. $from$ and $to$ are zero-based turn positions.",
+    "placeholders": {
+      "from": {
+        "content": "$1"
+      },
+      "to": {
+        "content": "$2"
+      }
+    }
+  },
+  "errClaudeLastTurnNeverLoaded": {
+    "message": "The conversation’s last turn never loaded — Claude reports $declared$ messages but only $read$ could be read. Scroll to the end of the conversation and try again.",
+    "description": "Extraction error (Claude): the last turn never loaded. $declared$ is how many messages Claude says the conversation has, $read$ how many were read. Singular form of errClaudeLastTurnsNeverLoaded.",
+    "placeholders": {
+      "declared": {
+        "content": "$1"
+      },
+      "read": {
+        "content": "$2"
+      }
+    }
+  },
+  "errClaudeLastTurnsNeverLoaded": {
+    "message": "The conversation’s last $count$ turns never loaded — Claude reports $declared$ messages but only $read$ could be read. Scroll to the end of the conversation and try again.",
+    "description": "Extraction error (Claude): the last $count$ turns (always 2 or more) never loaded. $declared$ is how many messages Claude says the conversation has, $read$ how many were read.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "declared": {
+        "content": "$2"
+      },
+      "read": {
+        "content": "$3"
+      }
+    }
+  },
+  "errClaudeTurnIndexMissing": {
+    "message": "A conversation turn is missing its position marker and could not be exported reliably. Claude’s markup may have changed — please report this.",
+    "description": "Extraction error (Claude): a conversation turn has no position marker, so the export could not be made reliable."
+  },
+  "errClaudeUnreadableRow": {
+    "message": "The conversation contains a message at position $positions$ that this extension could not read — Claude’s markup may have changed, or the message may be a type it does not support yet. Please report this.",
+    "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its zero-based position. Singular form of errClaudeUnreadableRows.",
+    "placeholders": {
+      "positions": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeUnreadableRows": {
+    "message": "The conversation contains messages at position $positions$ that this extension could not read — Claude’s markup may have changed, or the message may be a type it does not support yet. Please report this.",
+    "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of zero-based positions.",
+    "placeholders": {
+      "positions": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeArtifactRootUnrecognized": {
+    "message": "Claude rendered an artifact card with an unrecognized root. Its metadata could not be read — please report this.",
+    "description": "Extraction error (Claude): an artifact card has an unrecognized root element, so its title and kind could not be read."
+  },
+  "errClaudeArtifactOrphan": {
+    "message": "Claude rendered an artifact card without its corresponding assistant message. The markup may have changed — please report this.",
+    "description": "Extraction error (Claude): an artifact card was found outside any Claude response."
+  },
+  "errClaudeArtifactMetadataUnreadable": {
+    "message": "Claude rendered an artifact card whose title or kind could not be read. The markup may have changed — please report this.",
+    "description": "Extraction error (Claude): an artifact card's title or kind could not be read."
   }
 }

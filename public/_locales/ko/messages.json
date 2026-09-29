@@ -242,5 +242,311 @@
   "optionsMinFormatNote": {
     "message": "최소 한 개의 내보내기 형식은 켜져 있어야 합니다.",
     "description": "Shown when the user tries to uncheck the last remaining format."
+  },
+  "errTurnsUnreadable": {
+    "message": "대화 일부를 읽지 못했습니다(비어 있거나 형식이 올바르지 않음). 대화가 아직 불러오는 중일 수 있으니, 다 불러온 뒤 다시 시도해 주세요.",
+    "description": "Extraction error (any provider): some conversation turns were empty or malformed, likely because the page is still loading."
+  },
+  "errScrollToStartTimedOut": {
+    "message": "대화 맨 처음으로 스크롤하는 동안 시간이 초과되었습니다. 대화가 유난히 길 수 있습니다. 다시 시도해 보고, 계속되면 제보해 주세요.",
+    "description": "Extraction error (Claude, Gemini): scrolling back to the first message to load older turns took too long."
+  },
+  "errChatgptCodeBlockIncomplete": {
+    "message": "긴 코드 블록을 끝까지 읽지 못했습니다. 코드 블록이 화면에 보이도록 스크롤한 뒤 다시 시도하고, 계속되면 제보해 주세요.",
+    "description": "Extraction error (ChatGPT): a long, virtualized code block could not be read completely."
+  },
+  "errChatgptSidebarLinkMissing": {
+    "message": "선택한 대화를 열지 못했습니다. 사이드바에서 링크를 찾을 수 없습니다(기록 목록을 스크롤해서 보이게 해야 할 수 있습니다). 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (ChatGPT): a selected conversation's sidebar link could not be found, so it was skipped."
+  },
+  "errChatgptOpenTimedOut": {
+    "message": "선택한 대화를 여는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (ChatGPT): opening a selected conversation took too long, so it was skipped."
+  },
+  "errChatgptProjectLinkMissing": {
+    "message": "선택한 프로젝트 대화를 열지 못했습니다. 페이지에서 링크를 찾을 수 없습니다(프로젝트 목록을 스크롤해서 보이게 해야 할 수 있습니다). 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (ChatGPT): a selected project conversation's link could not be found on the project page, so it was skipped."
+  },
+  "errChatgptProjectOpenTimedOut": {
+    "message": "선택한 프로젝트 대화를 여는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (ChatGPT): opening a selected project conversation took too long, so it was skipped."
+  },
+  "errChatgptProjectBackLinkMissing": {
+    "message": "프로젝트 홈으로 돌아가지 못했습니다. 돌아가기 링크를 찾을 수 없습니다.",
+    "description": "Bulk export error (ChatGPT): after a project batch, the link back to the project home page could not be found."
+  },
+  "errChatgptProjectHomeTimedOut": {
+    "message": "프로젝트 홈으로 돌아가는 동안 시간이 초과되었습니다.",
+    "description": "Bulk export error (ChatGPT): returning to the project home page after a batch took too long."
+  },
+  "errChatgptNoMessages": {
+    "message": "페이지에서 메시지를 찾지 못했습니다. 대화가 아직 불러와지지 않았거나, ChatGPT 페이지 구조가 바뀌어 추출 선택자를 고쳐야 할 수 있습니다.",
+    "description": "Extraction error (ChatGPT): no messages were found on the conversation page."
+  },
+  "errChatgptLoadOlderTimedOut": {
+    "message": "스크롤하며 대화 전체를 불러오는 동안 시간이 초과되었습니다. 대화가 유난히 길 수 있습니다. 다시 시도해 보고, 계속되면 제보해 주세요.",
+    "description": "Extraction error (ChatGPT): scrolling to load older messages of the conversation took too long."
+  },
+  "errChatgptTurnIdMissing": {
+    "message": "식별자가 없는 대화 항목이 있어 안정적으로 내보낼 수 없습니다. ChatGPT 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (ChatGPT): a conversation turn has no identifier, so the export could not be made reliable."
+  },
+  "errChatgptSidebarScrollTimedOut": {
+    "message": "스크롤하며 대화 목록을 불러오는 동안 시간이 초과되었습니다. 사이드바 목록이 유난히 길 수 있습니다. 다시 시도해 보고, 계속되면 제보해 주세요.",
+    "description": "Bulk export error (ChatGPT): scrolling the sidebar to load the full conversation list took too long."
+  },
+  "errChatgptProjectListScrollTimedOut": {
+    "message": "스크롤하며 프로젝트 대화 목록을 불러오는 동안 시간이 초과되었습니다. 목록이 유난히 길 수 있습니다. 다시 시도해 보고, 계속되면 제보해 주세요.",
+    "description": "Bulk export error (ChatGPT): scrolling the project page to load the full project conversation list took too long."
+  },
+  "errGeminiSidebarMissing": {
+    "message": "Gemini의 대화 사이드바를 찾지 못했습니다. Gemini 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Gemini): the conversation sidebar could not be found on the page."
+  },
+  "errGeminiSidebarCollapsed": {
+    "message": "Gemini의 대화 사이드바가 접혀 있어 대화 링크를 읽을 수 없습니다. 왼쪽 위 메뉴 버튼으로 사이드바를 연 뒤 다시 시도해 주세요.",
+    "description": "Bulk export error (Gemini): the sidebar is collapsed, so the conversation list cannot be read; tells the user how to open it."
+  },
+  "errGeminiSidebarLinksUnreadable": {
+    "message": "Gemini 사이드바의 대화 링크를 하나도 읽지 못했습니다. URL이 예상한 /app/<id> 형식이 아닙니다. Gemini 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Gemini): sidebar links exist but none has the expected /app/<id> URL shape. Keep \"/app/<id>\" verbatim."
+  },
+  "errGeminiOpenUrlMalformed": {
+    "message": "선택한 Gemini 대화를 열지 못했습니다. URL 형식이 올바르지 않습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Gemini): a selected conversation has a malformed URL, so it was skipped."
+  },
+  "errGeminiOpenLinkMissing": {
+    "message": "선택한 Gemini 대화를 열지 못했습니다. 대화 목록을 스크롤해도 사이드바에서 링크를 찾을 수 없습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Gemini): a selected conversation's sidebar link was not found even after scrolling, so it was skipped."
+  },
+  "errGeminiOpenTimedOut": {
+    "message": "선택한 Gemini 대화를 여는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Gemini): opening a selected conversation took too long, so it was skipped."
+  },
+  "errGeminiNoMessages": {
+    "message": "페이지에서 메시지를 찾지 못했습니다. 대화가 아직 불러와지지 않았거나, Gemini 페이지 구조가 바뀌어 추출 선택자를 고쳐야 할 수 있습니다.",
+    "description": "Extraction error (Gemini): no messages were found on the conversation page."
+  },
+  "errGeminiMessageListMissing": {
+    "message": "스크롤할 Gemini 메시지 목록을 찾지 못해, 이 대화의 이전 메시지가 불러와지지 않았을 수 있습니다. Gemini 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (Gemini): the scrollable message list was not found, so older messages may be missing."
+  },
+  "errGeminiMessageListUnscrollable": {
+    "message": "지금은 Gemini 메시지 목록을 스크롤할 수 없어, 이 대화의 이전 메시지가 불러와지지 않았을 수 있습니다. 대화가 화면에 보이게 한 뒤 다시 시도해 주세요.",
+    "description": "Extraction error (Gemini): the message list exists but cannot be scrolled right now, so older messages may be missing."
+  },
+  "errGeminiExchangesDropped": {
+    "message": "불러온 대화 $expected$개 중 $loaded$개만 페이지에 남아 있습니다. 읽는 도중에 Gemini가 일부를 지웠습니다. 대화 전체를 한 번 스크롤한 뒤 다시 시도해 주세요.",
+    "description": "Extraction error (Gemini): Gemini unloaded some already-loaded exchanges while they were being read. $loaded$ is how many are still on the page, $expected$ how many had loaded.",
+    "placeholders": {
+      "loaded": {
+        "content": "$1"
+      },
+      "expected": {
+        "content": "$2"
+      }
+    }
+  },
+  "errGeminiStillGenerating": {
+    "message": "Gemini가 아직 응답을 생성하고 있습니다. 응답이 끝난 뒤 다시 내보내 주세요.",
+    "description": "Extraction error (Gemini): a response is still being generated."
+  },
+  "errGeminiResponseUnreadable": {
+    "message": "이 대화에 확장 프로그램이 읽지 못한 응답이 있습니다. Gemini가 일반 텍스트 영역 밖에 표시하는 유형이거나, Gemini 페이지 구조가 바뀌었을 수 있습니다. 제보해 주세요.",
+    "description": "Extraction error (Gemini): a response could not be read, possibly a kind rendered outside the normal text area."
+  },
+  "errClaudeArtifactAndAttachment": {
+    "message": "Claude 메시지 하나에 아티팩트 카드와 첨부 파일이 함께 들어 있습니다. 지금까지 없던 구조라 작성자를 판별할 수 없습니다. 제보해 주세요.",
+    "description": "Extraction error (Claude): a message has both an artifact card and a file attachment, so its author (user or Claude) cannot be told apart."
+  },
+  "errClaudeSidebarMissing": {
+    "message": "Claude의 대화 사이드바를 찾지 못했습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): the conversation sidebar could not be found on the page."
+  },
+  "errClaudeProjectListMissing": {
+    "message": "프로젝트 페이지에서 Claude 프로젝트 대화 목록을 찾지 못했습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): the project conversation list was not found on a project page."
+  },
+  "errClaudeProjectRowMalformed": {
+    "message": "Claude 프로젝트 대화 목록을 읽지 못했습니다. 대화 링크가 정확히 하나가 아닌 행이 있습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): a row of the project conversation table did not hold exactly one conversation link."
+  },
+  "errClaudeSidebarLinksUnreadable": {
+    "message": "Claude 사이드바의 대화 링크를 하나도 읽지 못했습니다. URL이나 제목이 없습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): sidebar conversation links exist but none has both a URL and a title."
+  },
+  "errClaudeProjectLinksUnreadable": {
+    "message": "Claude 프로젝트의 대화 링크를 하나도 읽지 못했습니다. URL이나 제목이 없습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): project conversation links exist but none has both a URL and a title."
+  },
+  "errClaudeRecentsLinksUnreadable": {
+    "message": "Claude 최근 대화 페이지의 대화 링크를 하나도 읽지 못했습니다. URL이나 제목이 없습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): conversation links on the recents page exist but none has both a URL and a title."
+  },
+  "errClaudeOpenUrlMalformed": {
+    "message": "선택한 Claude 대화를 열지 못했습니다. URL 형식이 올바르지 않습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): a selected conversation has a malformed URL, so it was skipped."
+  },
+  "errClaudeOpenLinkMissing": {
+    "message": "선택한 Claude 대화를 열지 못했습니다. 최근 대화 목록을 스크롤해도 사이드바에서 링크를 찾을 수 없습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): a selected conversation's sidebar link was not found even after scrolling the recent-chat list, so it was skipped."
+  },
+  "errClaudeOpenTimedOut": {
+    "message": "선택한 Claude 대화를 여는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): opening a selected conversation took too long, so it was skipped."
+  },
+  "errClaudeProjectOpenUrlMalformed": {
+    "message": "선택한 Claude 프로젝트 대화를 열지 못했습니다. URL 형식이 올바르지 않습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): a selected project conversation has a malformed URL, so it was skipped."
+  },
+  "errClaudeProjectOpenLinkMissing": {
+    "message": "선택한 Claude 프로젝트 대화를 열지 못했습니다. 목록에서 링크를 찾을 수 없습니다. 프로젝트 목록이 먼저 표시되어야 할 수 있습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): a selected project conversation's link was not found in the project table, so it was skipped."
+  },
+  "errClaudeProjectOpenTimedOut": {
+    "message": "선택한 Claude 프로젝트 대화를 여는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): opening a selected project conversation took too long, so it was skipped."
+  },
+  "errClaudeProjectHomeUrlMissing": {
+    "message": "Claude 프로젝트 홈으로 돌아가지 못했습니다. 기록해 둔 프로젝트 홈 URL이 없습니다. 이 단계는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): the project home URL recorded at the start of the batch is unavailable, so returning there was skipped."
+  },
+  "errClaudeProjectHomeHistoryUnavailable": {
+    "message": "Claude 프로젝트 홈으로 돌아가지 못했습니다. 브라우저 방문 기록을 사용할 수 없습니다. 이 단계는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): browser history is unavailable, so returning to the project home was skipped."
+  },
+  "errClaudeProjectHomeTimedOut": {
+    "message": "Claude 프로젝트 홈으로 돌아가는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 단계는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): returning to the project home took too long, so it was skipped."
+  },
+  "errClaudeProjectHomeMismatch": {
+    "message": "일괄 내보내기를 시작한 곳과 다른 Claude 프로젝트 홈으로 돌아왔습니다.",
+    "description": "Bulk export error (Claude): after the batch, the page landed on a different project home than the one the batch started from."
+  },
+  "errClaudeRecentsListMissing": {
+    "message": "Claude 최근 대화 페이지에서 대화 목록을 찾지 못했습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): the conversation list was not found on the recents (/recents) page."
+  },
+  "errClaudeRecentsRowMalformed": {
+    "message": "Claude 최근 대화 목록을 읽지 못했습니다. 대화 링크가 정확히 하나가 아닌 행이 있습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): a row of the recents conversation table did not hold exactly one conversation link."
+  },
+  "errClaudeRecentsLinksIncomplete": {
+    "message": "Claude 최근 대화 페이지의 대화를 모두 읽지 못했습니다. 일부 행에 링크나 제목이 없습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Claude): some rows on the recents page lack a link or title, so the list would be incomplete."
+  },
+  "errClaudeRecentsLinkMissing": {
+    "message": "선택한 Claude 대화를 열지 못했습니다. 최근 대화 페이지에서 링크를 찾을 수 없습니다. 목록이 먼저 표시되어야 할 수 있습니다. 이 대화는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): a selected conversation's link was not found on the recents page, so it was skipped."
+  },
+  "errClaudeRecentsHistoryUnavailable": {
+    "message": "Claude 최근 대화 페이지로 돌아가지 못했습니다. 브라우저 방문 기록을 사용할 수 없습니다. 이 단계는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): browser history is unavailable, so returning to the recents page was skipped."
+  },
+  "errClaudeRecentsReturnTimedOut": {
+    "message": "Claude 최근 대화 페이지로 돌아가는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 단계는 건너뛰었습니다.",
+    "description": "Bulk export error (Claude): returning to the recents page took too long, so it was skipped."
+  },
+  "errClaudeNotRecentsPage": {
+    "message": "Claude 최근 대화 목록이 아닌 페이지로 돌아가라는 요청을 받았습니다.",
+    "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
+  },
+  "errClaudeNoMessages": {
+    "message": "페이지에서 메시지를 찾지 못했습니다. 대화가 아직 불러와지지 않았거나, Claude 페이지 구조가 바뀌어 추출 선택자를 고쳐야 할 수 있습니다.",
+    "description": "Extraction error (Claude): no messages were found on the conversation page."
+  },
+  "errClaudeStreamingSettleTimedOut": {
+    "message": "대화 전체를 불러오는 동안 Claude의 응답 스트리밍이 끝나기를 기다리다 시간이 초과되었습니다. 아직 응답을 생성 중이거나 페이지 구조가 바뀌었을 수 있습니다. 다시 시도해 보고, 계속되면 제보해 주세요.",
+    "description": "Extraction error (Claude): while loading the full conversation, Claude never finished streaming within the time limit."
+  },
+  "errClaudeCompletionMarkerMissing": {
+    "message": "대화 어디에서도 Claude의 응답 완료 표시를 찾지 못해, 끝난 응답과 아직 작성 중인 응답을 구분할 수 없습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (Claude): the marker Claude puts on finished responses is absent from the whole conversation, so finished and in-progress responses cannot be told apart."
+  },
+  "errClaudeFirstTurnNeverLoaded": {
+    "message": "맨 위까지 스크롤했는데도 대화의 첫 번째 항목이 불러와지지 않았습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (Claude): the first turn of the conversation never loaded, even after scrolling to the top. Singular form of errClaudeFirstTurnsNeverLoaded."
+  },
+  "errClaudeFirstTurnsNeverLoaded": {
+    "message": "맨 위까지 스크롤했는데도 대화의 처음 $count$개 항목이 불러와지지 않았습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (Claude): the first $count$ turns (always 2 or more) never loaded, even after scrolling to the top.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeTurnGap": {
+    "message": "대화에서 $from$번과 $to$번 위치 사이의 항목이 빠졌습니다. 대화 전체를 한 번 스크롤한 뒤 다시 시도해 주세요.",
+    "description": "Extraction error (Claude): turns between two read positions are missing. $from$ and $to$ are zero-based turn positions.",
+    "placeholders": {
+      "from": {
+        "content": "$1"
+      },
+      "to": {
+        "content": "$2"
+      }
+    }
+  },
+  "errClaudeLastTurnNeverLoaded": {
+    "message": "대화의 마지막 항목이 불러와지지 않았습니다. Claude가 알려 준 메시지는 $declared$개인데 $read$개만 읽었습니다. 대화 끝까지 스크롤한 뒤 다시 시도해 주세요.",
+    "description": "Extraction error (Claude): the last turn never loaded. $declared$ is how many messages Claude says the conversation has, $read$ how many were read. Singular form of errClaudeLastTurnsNeverLoaded.",
+    "placeholders": {
+      "declared": {
+        "content": "$1"
+      },
+      "read": {
+        "content": "$2"
+      }
+    }
+  },
+  "errClaudeLastTurnsNeverLoaded": {
+    "message": "대화의 마지막 $count$개 항목이 불러와지지 않았습니다. Claude가 알려 준 메시지는 $declared$개인데 $read$개만 읽었습니다. 대화 끝까지 스크롤한 뒤 다시 시도해 주세요.",
+    "description": "Extraction error (Claude): the last $count$ turns (always 2 or more) never loaded. $declared$ is how many messages Claude says the conversation has, $read$ how many were read.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "declared": {
+        "content": "$2"
+      },
+      "read": {
+        "content": "$3"
+      }
+    }
+  },
+  "errClaudeTurnIndexMissing": {
+    "message": "위치 표시가 없는 대화 항목이 있어 안정적으로 내보낼 수 없습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (Claude): a conversation turn has no position marker, so the export could not be made reliable."
+  },
+  "errClaudeUnreadableRow": {
+    "message": "대화의 $positions$번 위치에 확장 프로그램이 읽지 못한 메시지가 있습니다. Claude 페이지 구조가 바뀌었거나, 아직 지원하지 않는 유형의 메시지일 수 있습니다. 제보해 주세요.",
+    "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its zero-based position. Singular form of errClaudeUnreadableRows.",
+    "placeholders": {
+      "positions": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeUnreadableRows": {
+    "message": "대화의 $positions$번 위치에 확장 프로그램이 읽지 못한 메시지가 있습니다. Claude 페이지 구조가 바뀌었거나, 아직 지원하지 않는 유형의 메시지일 수 있습니다. 제보해 주세요.",
+    "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of zero-based positions.",
+    "placeholders": {
+      "positions": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeArtifactRootUnrecognized": {
+    "message": "Claude가 알 수 없는 구조의 아티팩트 카드를 표시했습니다. 아티팩트 정보를 읽지 못했으니 제보해 주세요.",
+    "description": "Extraction error (Claude): an artifact card has an unrecognized root element, so its title and kind could not be read."
+  },
+  "errClaudeArtifactOrphan": {
+    "message": "Claude가 해당 응답 없이 아티팩트 카드만 표시했습니다. 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (Claude): an artifact card was found outside any Claude response."
+  },
+  "errClaudeArtifactMetadataUnreadable": {
+    "message": "Claude가 표시한 아티팩트 카드의 제목이나 유형을 읽지 못했습니다. 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Extraction error (Claude): an artifact card's title or kind could not be read."
   }
 }

@@ -164,3 +164,114 @@ export const OPTIONS_SAVE_FAILED_NOTE = m('optionsSaveFailedNote');
 
 // Shown when the user tries to uncheck the last remaining format (at least one is required).
 export const OPTIONS_MIN_FORMAT_NOTE = m('optionsMinFormatNote');
+
+// --- Extraction errors (thrown as ExtractionError by the adapters, shown via alert) ---
+//
+// Every fail-loud message an adapter throws resolves here so it reaches all five
+// catalogs (AGENTS.md Language Policy). A message whose English wording branches on a
+// count (turn vs N turns) is split into two keys: chrome.i18n has no plural forms, and a
+// single `$count$` key would force "1 turns" in English.
+
+// Shared across providers (identical wording on ChatGPT, Claude and Gemini).
+export const ERR_TURNS_UNREADABLE = m('errTurnsUnreadable');
+export const ERR_SCROLL_TO_START_TIMED_OUT = m('errScrollToStartTimedOut');
+
+// ChatGPT.
+export const ERR_CHATGPT_CODE_BLOCK_INCOMPLETE = m('errChatgptCodeBlockIncomplete');
+export const ERR_CHATGPT_SIDEBAR_LINK_MISSING = m('errChatgptSidebarLinkMissing');
+export const ERR_CHATGPT_OPEN_TIMED_OUT = m('errChatgptOpenTimedOut');
+export const ERR_CHATGPT_PROJECT_LINK_MISSING = m('errChatgptProjectLinkMissing');
+export const ERR_CHATGPT_PROJECT_OPEN_TIMED_OUT = m('errChatgptProjectOpenTimedOut');
+export const ERR_CHATGPT_PROJECT_BACK_LINK_MISSING = m('errChatgptProjectBackLinkMissing');
+export const ERR_CHATGPT_PROJECT_HOME_TIMED_OUT = m('errChatgptProjectHomeTimedOut');
+export const ERR_CHATGPT_NO_MESSAGES = m('errChatgptNoMessages');
+export const ERR_CHATGPT_LOAD_OLDER_TIMED_OUT = m('errChatgptLoadOlderTimedOut');
+export const ERR_CHATGPT_TURN_ID_MISSING = m('errChatgptTurnIdMissing');
+export const ERR_CHATGPT_SIDEBAR_SCROLL_TIMED_OUT = m('errChatgptSidebarScrollTimedOut');
+export const ERR_CHATGPT_PROJECT_LIST_SCROLL_TIMED_OUT = m('errChatgptProjectListScrollTimedOut');
+
+// Gemini.
+export const ERR_GEMINI_SIDEBAR_MISSING = m('errGeminiSidebarMissing');
+export const ERR_GEMINI_SIDEBAR_COLLAPSED = m('errGeminiSidebarCollapsed');
+export const ERR_GEMINI_SIDEBAR_LINKS_UNREADABLE = m('errGeminiSidebarLinksUnreadable');
+export const ERR_GEMINI_OPEN_URL_MALFORMED = m('errGeminiOpenUrlMalformed');
+export const ERR_GEMINI_OPEN_LINK_MISSING = m('errGeminiOpenLinkMissing');
+export const ERR_GEMINI_OPEN_TIMED_OUT = m('errGeminiOpenTimedOut');
+export const ERR_GEMINI_NO_MESSAGES = m('errGeminiNoMessages');
+export const ERR_GEMINI_MESSAGE_LIST_MISSING = m('errGeminiMessageListMissing');
+export const ERR_GEMINI_MESSAGE_LIST_UNSCROLLABLE = m('errGeminiMessageListUnscrollable');
+export const ERR_GEMINI_STILL_GENERATING = m('errGeminiStillGenerating');
+export const ERR_GEMINI_RESPONSE_UNREADABLE = m('errGeminiResponseUnreadable');
+
+/** Gemini unloaded some already-loaded exchanges while they were being read. */
+export function errGeminiExchangesDroppedMessage(loaded: number, expected: number): string {
+  return m('errGeminiExchangesDropped', [String(loaded), String(expected)]);
+}
+
+// Claude.
+export const ERR_CLAUDE_ARTIFACT_AND_ATTACHMENT = m('errClaudeArtifactAndAttachment');
+export const ERR_CLAUDE_SIDEBAR_MISSING = m('errClaudeSidebarMissing');
+export const ERR_CLAUDE_PROJECT_LIST_MISSING = m('errClaudeProjectListMissing');
+export const ERR_CLAUDE_PROJECT_ROW_MALFORMED = m('errClaudeProjectRowMalformed');
+export const ERR_CLAUDE_OPEN_URL_MALFORMED = m('errClaudeOpenUrlMalformed');
+export const ERR_CLAUDE_OPEN_LINK_MISSING = m('errClaudeOpenLinkMissing');
+export const ERR_CLAUDE_OPEN_TIMED_OUT = m('errClaudeOpenTimedOut');
+export const ERR_CLAUDE_PROJECT_OPEN_URL_MALFORMED = m('errClaudeProjectOpenUrlMalformed');
+export const ERR_CLAUDE_PROJECT_OPEN_LINK_MISSING = m('errClaudeProjectOpenLinkMissing');
+export const ERR_CLAUDE_PROJECT_OPEN_TIMED_OUT = m('errClaudeProjectOpenTimedOut');
+export const ERR_CLAUDE_PROJECT_HOME_URL_MISSING = m('errClaudeProjectHomeUrlMissing');
+export const ERR_CLAUDE_PROJECT_HOME_HISTORY_UNAVAILABLE = m('errClaudeProjectHomeHistoryUnavailable');
+export const ERR_CLAUDE_PROJECT_HOME_TIMED_OUT = m('errClaudeProjectHomeTimedOut');
+export const ERR_CLAUDE_PROJECT_HOME_MISMATCH = m('errClaudeProjectHomeMismatch');
+export const ERR_CLAUDE_RECENTS_LIST_MISSING = m('errClaudeRecentsListMissing');
+export const ERR_CLAUDE_RECENTS_ROW_MALFORMED = m('errClaudeRecentsRowMalformed');
+export const ERR_CLAUDE_RECENTS_LINKS_INCOMPLETE = m('errClaudeRecentsLinksIncomplete');
+export const ERR_CLAUDE_RECENTS_LINK_MISSING = m('errClaudeRecentsLinkMissing');
+export const ERR_CLAUDE_RECENTS_HISTORY_UNAVAILABLE = m('errClaudeRecentsHistoryUnavailable');
+export const ERR_CLAUDE_RECENTS_RETURN_TIMED_OUT = m('errClaudeRecentsReturnTimedOut');
+export const ERR_CLAUDE_NOT_RECENTS_PAGE = m('errClaudeNotRecentsPage');
+export const ERR_CLAUDE_NO_MESSAGES = m('errClaudeNoMessages');
+export const ERR_CLAUDE_STREAMING_SETTLE_TIMED_OUT = m('errClaudeStreamingSettleTimedOut');
+export const ERR_CLAUDE_COMPLETION_MARKER_MISSING = m('errClaudeCompletionMarkerMissing');
+export const ERR_CLAUDE_TURN_INDEX_MISSING = m('errClaudeTurnIndexMissing');
+export const ERR_CLAUDE_ARTIFACT_ROOT_UNRECOGNIZED = m('errClaudeArtifactRootUnrecognized');
+export const ERR_CLAUDE_ARTIFACT_ORPHAN = m('errClaudeArtifactOrphan');
+export const ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE = m('errClaudeArtifactMetadataUnreadable');
+
+/**
+ * A Claude navigation surface rendered conversation links but none was readable. One key
+ * per surface: the surface name is part of the sentence, not a translatable placeholder.
+ */
+export function errClaudeLinksUnreadableMessage(surface: 'sidebar' | 'project' | 'recents'): string {
+  switch (surface) {
+    case 'sidebar':
+      return m('errClaudeSidebarLinksUnreadable');
+    case 'project':
+      return m('errClaudeProjectLinksUnreadable');
+    case 'recents':
+      return m('errClaudeRecentsLinksUnreadable');
+  }
+}
+
+/** The first `count` turns never loaded, even after scrolling to the top. */
+export function errClaudeFirstTurnsNeverLoadedMessage(count: number): string {
+  return count === 1 ? m('errClaudeFirstTurnNeverLoaded') : m('errClaudeFirstTurnsNeverLoaded', [String(count)]);
+}
+
+/** Turns between two read positions are missing. */
+export function errClaudeTurnGapMessage(from: number, to: number): string {
+  return m('errClaudeTurnGap', [String(from), String(to)]);
+}
+
+/** The last `count` turns never loaded; Claude declared `declared` messages, `read` were read. */
+export function errClaudeLastTurnsNeverLoadedMessage(count: number, declared: number, read: number): string {
+  return count === 1
+    ? m('errClaudeLastTurnNeverLoaded', [String(declared), String(read)])
+    : m('errClaudeLastTurnsNeverLoaded', [String(count), String(declared), String(read)]);
+}
+
+/** Rendered rows at `positions` yielded no readable message. */
+export function errClaudeUnreadableRowsMessage(positions: readonly number[]): string {
+  const list = positions.join(', ');
+  return positions.length === 1 ? m('errClaudeUnreadableRow', [list]) : m('errClaudeUnreadableRows', [list]);
+}

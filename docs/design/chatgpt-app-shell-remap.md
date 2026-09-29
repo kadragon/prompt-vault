@@ -97,9 +97,11 @@ Decisions:
   `docs/live-dom-verification.md`, 2026-09-29), which also found three things this spec did not
   foresee: a `column-reverse` message list, three code-block renderings including a virtualized
   CodeMirror editor, and prompts that render as Markdown.
-- Project home page and project sidebar markup — unmeasured; revisit in slice 3.
-- Whether the sidebar still pages in fixed batches, and where "load more" scrolling lives —
-  revisit in slice 2.
+- Slices 2–3 (2026-09-29, `docs/live-dom-verification.md`): the sidebar is the Recents list with
+  a loading row; project conversation pages link to no other project chat; and the app-shell
+  keeps hidden route pages mounted, so page reads are scoped to `[data-app-shell-active-page]`.
+  Still open: the app-shell sidebar's page size and true end (429 blocked the walk), and project
+  lists long enough to page.
 
 ## Further Notes
 

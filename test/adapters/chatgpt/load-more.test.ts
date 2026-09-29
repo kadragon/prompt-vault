@@ -73,6 +73,7 @@ function makeRoot({
       if (runaway) grown += winRows; // never settles: more rows keep surfacing below
     },
     querySelectorAll: (): Element[] => anchorsAt(listRoot._top),
+    querySelector: (): Element | null => null, // no loading-status row
   };
   const root = {
     // `#history` resolves to the list root; projectListSection walks a project link
@@ -108,6 +109,7 @@ function makeLazyRoot({
   lastPageRows,
   hydrateSplit = 0,
   preloadedPages = 1,
+  loading = 'never',
 }: {
   pageSize: number;
   pages: number;
@@ -136,6 +138,13 @@ function makeLazyRoot({
    * sidebar), leaving every pre-existing case unchanged.
    */
   preloadedPages?: number;
+  /**
+   * When the list shows its trailing loading-status row (`[role="status"]`, measured
+   * 2026-09-29): `'fetching'` while a page is in flight — the healthy shape — or `'always'`,
+   * the shape measured when the server answered 429 and the row stayed up with nothing
+   * arriving. Defaults to `'never'`, leaving every pre-existing case unchanged.
+   */
+  loading?: 'never' | 'fetching' | 'always';
 }): { root: ParentNode; conversationCount: () => number } {
   const clientHeight = view * ROW;
   // Every rendered row's href, in DOM order. A page contributes `cPerPage(p)` plain rows
@@ -214,6 +223,8 @@ function makeLazyRoot({
       else if (hydrateSplit > 0 && reads === countableFromRead) upTo -= hydrateSplit;
       return anchorsFor(sel, upTo);
     },
+    querySelector: (): Element | null =>
+      loading === 'always' || (loading === 'fetching' && fetching) ? ({} as Element) : null,
   };
   const root = {
     querySelector: () => listRoot,
@@ -361,6 +372,41 @@ describe('loadMoreConversations (history sidebar)', () => {
     expect(result.map((c) => c.id)).toEqual(idsUpTo(14));
     // The list ended on a SHORT page, which is the one thing parity can read as a real end.
     expect(incomplete).not.toHaveBeenCalled();
+  });
+
+  it('keeps waiting past the dwell while the sidebar shows its loading row', async () => {
+    // The app-shell sidebar renders a loading-status row while a page is owed. The FIRST page
+    // boundary is the one parity cannot cover (it has seen no page land yet), so a gap longer
+    // than the dwell there is rescued only by that row. Synthetic gap, as in the case above.
+    const { stepDelayMs = 0, stableRounds, maxSteps } = SIDEBAR_SCROLL_DEFAULTS_TEST;
+    const dwellMs = (stepDelayMs / SCALE) * (stableRounds ?? 0);
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({
+      pageSize: 6,
+      pages: 2,
+      lastPageRows: 2,
+      fetchMs: dwellMs * 1.5,
+      loading: 'fetching',
+    });
+    const result = await loadMoreConversations(root, {
+      stepDelayMs: stepDelayMs / SCALE,
+      stableRounds,
+      maxSteps,
+      onIncomplete: incomplete,
+    });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(8));
+    expect(incomplete).not.toHaveBeenCalled();
+  });
+
+  it('reports possible incompleteness when the loading row never clears', async () => {
+    // Measured 2026-09-29: a 429 from the list endpoint leaves the loading row up while nothing
+    // arrives. The list ends on a SHORT page here, so parity alone would call it complete; the
+    // row is the only evidence left that it is not, and it must reach the caller (AGENTS.md #4).
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 2, fetchMs: 0, loading: 'always' });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(7));
+    expect(incomplete).toHaveBeenCalledTimes(1);
   });
 
   it('reports possible incompleteness when the list ends on a full-size page', async () => {

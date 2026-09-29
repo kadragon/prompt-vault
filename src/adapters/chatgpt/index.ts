@@ -8,6 +8,20 @@ import {
 } from '../../core/sidebar';
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
+import {
+  ERR_CHATGPT_LOAD_OLDER_TIMED_OUT,
+  ERR_CHATGPT_NO_MESSAGES,
+  ERR_CHATGPT_OPEN_TIMED_OUT,
+  ERR_CHATGPT_PROJECT_BACK_LINK_MISSING,
+  ERR_CHATGPT_PROJECT_HOME_TIMED_OUT,
+  ERR_CHATGPT_PROJECT_LINK_MISSING,
+  ERR_CHATGPT_PROJECT_LIST_SCROLL_TIMED_OUT,
+  ERR_CHATGPT_PROJECT_OPEN_TIMED_OUT,
+  ERR_CHATGPT_SIDEBAR_LINK_MISSING,
+  ERR_CHATGPT_SIDEBAR_SCROLL_TIMED_OUT,
+  ERR_CHATGPT_TURN_ID_MISSING,
+  ERR_TURNS_UNREADABLE,
+} from '../../strings';
 import type { ConversationAdapter, OpenConversationOptions } from '../types';
 import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import { matches, matchesProject } from './matches';
@@ -36,6 +50,25 @@ const SCROLL_ABSOLUTE_MAX_STEPS = 400;
 const LOAD_OLDER_DEFAULTS: AutoScrollOptions = { stepDelayMs: 250, stableRounds: 24, maxSteps: 2000 };
 /** Test-only: the dwell above is sized from a measurement, so a test pins it against that measurement. */
 export const LOAD_OLDER_DEFAULTS_TEST: Readonly<AutoScrollOptions> = LOAD_OLDER_DEFAULTS;
+/**
+ * The settle that replaces the dwell once the thread's "loading earlier messages" status
+ * (`selectors.olderTurnsLoading`) has been seen and has cleared — ChatGPT's own signal that the
+ * oldest turn is mounted. Measured 2026-09-29: the status vanished with the final batch and the
+ * height moved once more 244 ms later, so 4 x 250 ms = 1 s. Only after the status was SEEN:
+ * never seeing it keeps the full dwell (see `autoScrollToLoad`).
+ */
+const LOAD_OLDER_SETTLE: AutoScrollOptions = { stepDelayMs: LOAD_OLDER_DEFAULTS.stepDelayMs, stableRounds: 4 };
+/** Test-only: pins the settle against the measured post-status height change. */
+export const LOAD_OLDER_SETTLE_TEST: Readonly<AutoScrollOptions> = LOAD_OLDER_SETTLE;
+/**
+ * Extra no-growth rounds granted while the load-older status still shows, beyond the dwell:
+ * 24 + 36 = 60 x 250 ms = 15 s, over 3x the slowest measured batch gap (4533 ms). A status
+ * that outlasts that with nothing arriving is a stuck fetch, not a slow one, so the load fails
+ * loud then instead of holding the tab until the step cap (~8 min).
+ */
+const LOAD_OLDER_STATUS_EXTRA_ROUNDS = 36;
+/** Test-only: pins the stuck-status bound against the measured batch gap. */
+export const LOAD_OLDER_STATUS_EXTRA_ROUNDS_TEST = LOAD_OLDER_STATUS_EXTRA_ROUNDS;
 /**
  * Scroll tuning for the *conversation-list* loaders (`loadMoreConversations`,
  * `loadMoreProjectConversations`) — deliberately far more patient than the message-viewport
@@ -211,7 +244,16 @@ export const chatgptAdapter: ConversationAdapter = {
  * markup changed; the caller then falls back to a non-overlapping overlay.
  */
 function toolbarMount(root: ParentNode = document): Element | null {
-  return root.querySelector(selectors.headerActions);
+  return activePage(root).querySelector(selectors.headerActions);
+}
+
+/**
+ * The route page on screen, or `root` itself when the app-shell page wrapper is absent (a
+ * fixture). Hidden, previously visited routes stay mounted beside it with their own headers
+ * and threads, so page-level reads go through here — the sidebar, outside it, does not.
+ */
+function activePage(root: ParentNode): ParentNode {
+  return root.querySelector(selectors.activePage) ?? root;
 }
 
 /**
@@ -243,7 +285,7 @@ function suppressOverlay(root: ParentNode = document): boolean {
 
 /**
  * Enumerate the history sidebar's conversation links into the lightweight sidebar
- * model, in display order. Scoped to `#history` so project/GPT chats (under
+ * model, in display order. Scoped to the Recents list (`sidebarHistory`) so project/GPT chats (under
  * `/g/…/c/…`) and the composer are excluded. Deduped by path id because the active
  * chat's link can carry a `?messageId=…` query (a second link to the same id); the
  * full title comes from the link's `aria-label` (untruncated), falling back to its
@@ -319,10 +361,7 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
 
   const anchor = findSidebarAnchor(targetPath);
   if (!anchor) {
-    throw new ExtractionError(
-      'Could not open a selected conversation: its link was not found in the sidebar ' +
-        '(the history list may need scrolling into view). It was skipped.',
-    );
+    throw new ExtractionError(ERR_CHATGPT_SIDEBAR_LINK_MISSING);
   }
 
   // Snapshot the current turns so we can tell the new conversation has actually
@@ -337,12 +376,10 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
       return;
     }
   }
-  throw new ExtractionError(
-    'Timed out opening a selected conversation. It may be loading slowly; it was skipped.',
-  );
+  throw new ExtractionError(ERR_CHATGPT_OPEN_TIMED_OUT);
 }
 
-/** The `#history` link whose path matches `targetPath`, or null if not currently rendered. */
+/** The Recents link whose path matches `targetPath`, or null if not currently rendered. */
 function findSidebarAnchor(targetPath: string): HTMLAnchorElement | null {
   const history = document.querySelector(selectors.sidebarHistory);
   if (!history) return null;
@@ -365,7 +402,7 @@ function findSidebarAnchor(targetPath: string): HTMLAnchorElement | null {
  * the trigger's mount point. DOM knowledge stays in the adapter (docs/conventions.md).
  */
 function projectListSection(root: ParentNode): Element | null {
-  for (const link of root.querySelectorAll(selectors.projectConversationLink)) {
+  for (const link of activePage(root).querySelectorAll(selectors.projectConversationLink)) {
     const section = link.closest('section');
     if (section) return section;
   }
@@ -402,10 +439,10 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
 
 /**
  * Client-side navigate to a project conversation and resolve once its turns render.
- * Unlike `openConversation` (which clicks a `#history` link), the target anchor may be
- * in the project home page's list OR in the persistent project sidebar expando shown
- * once a conversation is open — so it is located by conversation id across whichever is
- * currently in the DOM. Fail-loud (AGENTS.md #4): throws when the link is not present
+ * Unlike `openConversation` (which clicks a Recents link), the target anchor lives only on
+ * the project home page's list — an app-shell project conversation page links to no other
+ * project conversation — so when it is absent the opener first returns to the target's
+ * project home (`revealFromProjectHome`), then clicks it by conversation id. Fail-loud (AGENTS.md #4): throws when the link is not present
  * or the conversation does not render in time. Already-open target → resolve at once.
  */
 async function openProjectConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
@@ -415,12 +452,9 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
   // Already showing the target conversation with content: no navigation needed.
   if (conversationIdFromPath(location.pathname) === targetId && hasRenderedMessages()) return;
 
-  const anchor = findProjectConversationAnchor(targetId);
+  const anchor = findProjectConversationAnchor(targetId) ?? (await revealFromProjectHome(url, targetId, opts));
   if (!anchor) {
-    throw new ExtractionError(
-      'Could not open a selected project conversation: its link was not found on the page ' +
-        '(the project list may need scrolling into view). It was skipped.',
-    );
+    throw new ExtractionError(ERR_CHATGPT_PROJECT_LINK_MISSING);
   }
 
   const beforeSignature = messageSignature();
@@ -437,14 +471,35 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
       return;
     }
   }
-  throw new ExtractionError(
-    'Timed out opening a selected project conversation. It may be loading slowly; it was skipped.',
-  );
+  throw new ExtractionError(ERR_CHATGPT_PROJECT_OPEN_TIMED_OUT);
+}
+
+/**
+ * The target's link after returning to its project home page, or null. An app-shell project
+ * conversation page links to no other project conversation (measured 2026-09-29 — the
+ * pre-app-shell sidebar expando is gone), so every open after the first in a bulk run starts
+ * from a page with nothing to click. Only the target's OWN project home is visited — its
+ * header back link is matched by project id — so a run never wanders into another project.
+ * Best-effort: a failed return is reported by the caller's link-missing error.
+ */
+async function revealFromProjectHome(
+  url: string,
+  convId: string,
+  opts: OpenConversationOptions,
+): Promise<HTMLAnchorElement | null> {
+  const projectId = projectIdFromPath(new URL(url, location.origin).pathname);
+  if (!projectId || !findProjectBackLink(projectId)) return null;
+  try {
+    await openProjectHome(`${location.origin}/g/${projectId}/project`, opts);
+  } catch {
+    return null;
+  }
+  return findProjectConversationAnchor(convId);
 }
 
 /** The currently-rendered project conversation link for `convId`, or null. */
 function findProjectConversationAnchor(convId: string): HTMLAnchorElement | null {
-  for (const anchor of document.querySelectorAll<HTMLAnchorElement>(selectors.projectConversationLink)) {
+  for (const anchor of activePage(document).querySelectorAll<HTMLAnchorElement>(selectors.projectConversationLink)) {
     const href = anchor.getAttribute('href');
     if (href && conversationIdFromPath(new URL(href, location.origin).pathname) === convId) return anchor;
   }
@@ -474,7 +529,7 @@ async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = 
 
   const back = findProjectBackLink(targetId);
   if (!back) {
-    throw new ExtractionError('Could not return to the project home: its back link was not found.');
+    throw new ExtractionError(ERR_CHATGPT_PROJECT_BACK_LINK_MISSING);
   }
   back.click();
 
@@ -483,7 +538,7 @@ async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = 
     await delay(pollMs);
     if (onTargetHome()) return;
   }
-  throw new ExtractionError('Timed out returning to the project home page.');
+  throw new ExtractionError(ERR_CHATGPT_PROJECT_HOME_TIMED_OUT);
 }
 
 /**
@@ -498,7 +553,7 @@ function projectIdFromPath(pathname: string): string {
 
 /** The back-to-project link for `projectId`, or null. Falls back to null (never a wrong project). */
 function findProjectBackLink(projectId: string): HTMLAnchorElement | null {
-  for (const anchor of document.querySelectorAll<HTMLAnchorElement>(selectors.projectBackLink)) {
+  for (const anchor of activePage(document).querySelectorAll<HTMLAnchorElement>(selectors.projectBackLink)) {
     const href = anchor.getAttribute('href');
     if (href && projectIdFromPath(new URL(href, location.origin).pathname) === projectId) return anchor;
   }
@@ -506,11 +561,11 @@ function findProjectBackLink(projectId: string): HTMLAnchorElement | null {
 }
 
 function hasRenderedProjectList(): boolean {
-  return document.querySelector(selectors.projectConversationLink) !== null;
+  return activePage(document).querySelector(selectors.projectConversationLink) !== null;
 }
 
 function hasRenderedMessages(): boolean {
-  return document.querySelector(selectors.message) !== null;
+  return activePage(document).querySelector(selectors.message) !== null;
 }
 
 /**
@@ -520,7 +575,7 @@ function hasRenderedMessages(): boolean {
  * unique, so a different first id means a different conversation.
  */
 function messageSignature(): string {
-  const nodes = document.querySelectorAll(selectors.message);
+  const nodes = activePage(document).querySelectorAll(selectors.message);
   const firstId = nodes[0] ? messageId(nodes[0]) ?? '' : '';
   return `${nodes.length}:${firstId}`;
 }
@@ -537,10 +592,7 @@ export async function extract(root: ParentNode = document, options: AutoScrollOp
       : await readSnapshot(root, options);
 
   if (messages.length === 0) {
-    throw new ExtractionError(
-      'No messages found on the page. The conversation may not have loaded, or ChatGPT’s ' +
-        'markup changed — extraction selectors need updating.',
-    );
+    throw new ExtractionError(ERR_CHATGPT_NO_MESSAGES);
   }
 
   return {
@@ -557,17 +609,16 @@ export async function extract(root: ParentNode = document, options: AutoScrollOp
  * dropped turn would be worse than a visible error (AGENTS.md #4).
  */
 async function readSnapshot(root: ParentNode, options: AutoScrollOptions = {}): Promise<Message[]> {
-  const roleNodes = Array.from(root.querySelectorAll(selectors.message)).filter((el) => messageRole(el) !== null);
+  const roleNodes = Array.from(activePage(root).querySelectorAll(selectors.message)).filter(
+    (el) => messageRole(el) !== null,
+  );
   const messages: Message[] = [];
   for (const el of roleNodes) {
     const message = await toMessage(el, options);
     if (message) messages.push(message);
   }
   if (messages.length > 0 && messages.length < roleNodes.length) {
-    throw new ExtractionError(
-      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
-        'still be loading — wait for it to finish, then try again.',
-    );
+    throw new ExtractionError(ERR_TURNS_UNREADABLE);
   }
   return messages;
 }
@@ -693,16 +744,38 @@ function deriveUrl(root: ParentNode): string {
  * the top), so a fully-loaded conversation never falsely fails.
  */
 export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions = {}): Promise<void> {
-  const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
+  const page = activePage(doc);
+  const container = page.querySelector<HTMLElement>(selectors.scrollContainer);
   if (!container) return; // Best-effort: extract whatever is already present.
 
+  // ChatGPT's own "loading earlier messages" status: while it shows, older turns remain, so a
+  // no-growth stretch earns extra rounds, and one that outlasts them is a stuck fetch that
+  // fails loud; once it has been seen and cleared, the oldest turn is mounted and a short
+  // settle replaces the dwell. Never seen → the full dwell, since absence cannot tell a short
+  // conversation from drifted markup.
+  let sawLoading = false;
+  const loading = (): boolean => {
+    const shown = page.querySelector(selectors.olderTurnsLoading) !== null;
+    if (shown) sawLoading = true;
+    return shown;
+  };
+
   // Messages lazy-load as you scroll UP (older turns above), so pin to the top.
+  let stuck = false;
   await scrollUntilStable(container, () => container.scrollHeight, pinTop, options, {
     defaults: LOAD_OLDER_DEFAULTS,
-    timeoutMessage:
-      'Timed out loading the full conversation while scrolling. The conversation may be ' +
-      'unusually long; try again, or report if this persists.',
+    timeoutMessage: ERR_CHATGPT_LOAD_OLDER_TIMED_OUT,
+    pending: loading,
+    pendingExtraRounds: LOAD_OLDER_STATUS_EXTRA_ROUNDS,
+    onIncomplete: () => {
+      stuck = true;
+    },
+    // Seen earlier AND gone now; `pending` above already refreshed `sawLoading` this round.
+    endConfirmed: () => sawLoading && !loading(),
+    confirmedStableRounds: options.stableRounds === undefined ? LOAD_OLDER_SETTLE.stableRounds : undefined,
   });
+  // The status never cleared: older turns exist that never arrived (AGENTS.md #4).
+  if (stuck) throw new ExtractionError(ERR_CHATGPT_LOAD_OLDER_TIMED_OUT);
 }
 
 interface CollectedTurn {
@@ -724,7 +797,8 @@ interface CollectedTurn {
  * truncated (AGENTS.md #4).
  */
 export async function collectVirtualizedTurns(doc: Document, options: AutoScrollOptions = {}): Promise<Message[]> {
-  const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
+  const page = activePage(doc);
+  const container = page.querySelector<HTMLElement>(selectors.scrollContainer);
   // A zero-height container (hidden/background tab) never actually scrolls, so the walk
   // below would crawl 1px at a time up to the absolute cap — minutes of a frozen tab.
   // Fall back to a one-shot read instead.
@@ -746,7 +820,7 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
   // record its later siblings first, so the pass reports `stale` and `record` re-queries —
   // turns already read are skipped, so a re-query only continues where it stopped.
   const recordPass = async (): Promise<'done' | 'stale'> => {
-    for (const el of Array.from(doc.querySelectorAll(selectors.message))) {
+    for (const el of Array.from(page.querySelectorAll(selectors.message))) {
       if (el.isConnected === false) return 'stale';
       const role = messageRole(el);
       if (!role) continue;
@@ -809,10 +883,7 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
   // never seen and are absent from `turns`, so the `dropped` check below cannot detect the
   // missing tail. Fail loud rather than return a silently truncated conversation (AGENTS.md #4).
   if (!reachedBottom) {
-    throw new ExtractionError(
-      'Timed out loading the full conversation while scrolling. The conversation may be ' +
-        'unusually long; try again, or report if this persists.',
-    );
+    throw new ExtractionError(ERR_CHATGPT_LOAD_OLDER_TIMED_OUT);
   }
 
   const messages: Message[] = [];
@@ -826,18 +897,12 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
     }
   }
   if (messages.length > 0 && dropped > 0) {
-    throw new ExtractionError(
-      'Some conversation turns could not be read (empty or malformed). The conversation may ' +
-        'still be loading — wait for it to finish, then try again.',
-    );
+    throw new ExtractionError(ERR_TURNS_UNREADABLE);
   }
   // A turn with no message id can't be collected across windows; retrying won't help, so give
   // it its own message rather than the "still loading" one (AGENTS.md #4 — never silently omit).
   if (messages.length > 0 && sawIdlessTurn) {
-    throw new ExtractionError(
-      'A conversation turn is missing its identifier and could not be exported reliably. ' +
-        'ChatGPT’s markup may have changed — please report this.',
-    );
+    throw new ExtractionError(ERR_CHATGPT_TURN_ID_MISSING);
   }
   return messages;
 }
@@ -878,16 +943,9 @@ export async function loadMoreConversations(
     () => advanceScrollPort(container, SIDEBAR_STEP_FRACTION),
     options,
     {
-      timeoutMessage:
-        'Timed out loading the conversation list while scrolling. The sidebar may be ' +
-        'unusually long; try again, or report if this persists.',
+      timeoutMessage: ERR_CHATGPT_SIDEBAR_SCROLL_TIMED_OUT,
       settled: endOfListGate(),
-      // Counted over EVERY conversation row, not the `/c/` ids accumulated above — only the
-      // raw row count pages in at a fixed size (see `pageParityGate`).
-      pending: pageParityGate(() => history.querySelectorAll(selectors.sidebarConversationRow).length, {
-        knownPageSize: options.knownPageSize,
-        onPageSize: options.onPageSize,
-      }),
+      pending: sidebarPagePending(history, options),
       pendingExtraRounds: SIDEBAR_PENDING_EXTRA_ROUNDS,
       defaults: SIDEBAR_SCROLL_DEFAULTS,
       onProgress: options.onProgress,
@@ -919,9 +977,7 @@ export async function loadMoreProjectConversations(
     () => advanceScrollPort(container, SIDEBAR_STEP_FRACTION),
     options,
     {
-      timeoutMessage:
-        'Timed out loading the project conversation list while scrolling. The list may be ' +
-        'unusually long; try again, or report if this persists.',
+      timeoutMessage: ERR_CHATGPT_PROJECT_LIST_SCROLL_TIMED_OUT,
       settled: endOfListGate(),
       defaults: SIDEBAR_SCROLL_DEFAULTS,
       onProgress: options.onProgress,
@@ -1003,6 +1059,23 @@ function endOfListGate(): (container: HTMLElement) => boolean {
     const clamped = isPortClamped(container, previousTop);
     previousTop = container.scrollTop;
     return clamped;
+  };
+}
+
+/**
+ * "Is another sidebar page still owed?" — the list's own loading row (primary evidence on the
+ * app-shell sidebar, measured 2026-09-29), or page parity (secondary: the rendered increment no
+ * longer equals the server page there). Parity is stateful, so it is consulted every round.
+ */
+function sidebarPagePending(history: Element, options: LoadMoreScrollOptions): () => boolean {
+  // Counted over EVERY conversation row, not the `/c/` ids the loader collects.
+  const parity = pageParityGate(() => history.querySelectorAll(selectors.sidebarConversationRow).length, {
+    knownPageSize: options.knownPageSize,
+    onPageSize: options.onPageSize,
+  });
+  return () => {
+    const parityOwed = parity();
+    return history.querySelector(selectors.sidebarLoadingStatus) !== null || parityOwed;
   };
 }
 
@@ -1116,6 +1189,8 @@ async function scrollUntilStable(
     settled = () => true,
     pending = () => false,
     pendingExtraRounds = 0,
+    endConfirmed = () => false,
+    confirmedStableRounds,
     defaults = {},
     onProgress,
     onIncomplete,
@@ -1130,6 +1205,13 @@ async function scrollUntilStable(
     pending?: () => boolean;
     /** Extra stall rounds allowed while `pending()` holds. */
     pendingExtraRounds?: number;
+    /**
+     * Positive evidence that the list has reached its end (the load-older status was seen and
+     * has cleared). While it holds, `confirmedStableRounds` replaces `stableRounds`.
+     */
+    endConfirmed?: () => boolean;
+    /** Stall rounds that end the loop once `endConfirmed()` holds; undefined keeps `stableRounds`. */
+    confirmedStableRounds?: number;
     defaults?: AutoScrollOptions;
     /** Fired with `count()`'s value, but only on a round that actually grew it. */
     onProgress?: (count: number) => void;
@@ -1161,7 +1243,9 @@ async function scrollUntilStable(
       stalls++;
       // Settled and static for a while → fully loaded, unless parity says a page is still
       // owed, which buys a longer (but still bounded) wait before giving up.
-      if (stalls >= stableRounds + (morePagesOwed ? pendingExtraRounds : 0)) {
+      const required =
+        confirmedStableRounds !== undefined && endConfirmed() ? confirmedStableRounds : stableRounds;
+      if (stalls >= required + (morePagesOwed ? pendingExtraRounds : 0)) {
         if (morePagesOwed) onIncomplete?.();
         return;
       }

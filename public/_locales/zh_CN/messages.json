@@ -242,5 +242,311 @@
   "optionsMinFormatNote": {
     "message": "至少要保留一种导出格式。",
     "description": "Shown when the user tries to uncheck the last remaining format."
+  },
+  "errTurnsUnreadable": {
+    "message": "部分对话内容无法读取（为空或格式有误）。对话可能仍在加载，请等待加载完成后重试。",
+    "description": "Extraction error (any provider): some conversation turns were empty or malformed, likely because the page is still loading."
+  },
+  "errScrollToStartTimedOut": {
+    "message": "滚动回对话开头时超时。对话可能特别长，请重试；如果问题持续出现，请反馈。",
+    "description": "Extraction error (Claude, Gemini): scrolling back to the first message to load older turns took too long."
+  },
+  "errChatgptCodeBlockIncomplete": {
+    "message": "无法完整读取一个较长的代码块。请将它滚动到可见区域后重试；如果问题持续出现，请反馈。",
+    "description": "Extraction error (ChatGPT): a long, virtualized code block could not be read completely."
+  },
+  "errChatgptSidebarLinkMissing": {
+    "message": "无法打开所选对话：在侧边栏中找不到它的链接（可能需要滚动历史记录列表使其显示）。已跳过该对话。",
+    "description": "Bulk export error (ChatGPT): a selected conversation's sidebar link could not be found, so it was skipped."
+  },
+  "errChatgptOpenTimedOut": {
+    "message": "打开所选对话时超时，可能是加载较慢。已跳过该对话。",
+    "description": "Bulk export error (ChatGPT): opening a selected conversation took too long, so it was skipped."
+  },
+  "errChatgptProjectLinkMissing": {
+    "message": "无法打开所选项目对话：在页面上找不到它的链接（可能需要滚动项目列表使其显示）。已跳过该对话。",
+    "description": "Bulk export error (ChatGPT): a selected project conversation's link could not be found on the project page, so it was skipped."
+  },
+  "errChatgptProjectOpenTimedOut": {
+    "message": "打开所选项目对话时超时，可能是加载较慢。已跳过该对话。",
+    "description": "Bulk export error (ChatGPT): opening a selected project conversation took too long, so it was skipped."
+  },
+  "errChatgptProjectBackLinkMissing": {
+    "message": "无法返回项目主页：找不到返回链接。",
+    "description": "Bulk export error (ChatGPT): after a project batch, the link back to the project home page could not be found."
+  },
+  "errChatgptProjectHomeTimedOut": {
+    "message": "返回项目主页时超时。",
+    "description": "Bulk export error (ChatGPT): returning to the project home page after a batch took too long."
+  },
+  "errChatgptNoMessages": {
+    "message": "页面上找不到任何消息。可能是对话尚未加载，或 ChatGPT 的页面结构已更改，需要更新提取选择器。",
+    "description": "Extraction error (ChatGPT): no messages were found on the conversation page."
+  },
+  "errChatgptLoadOlderTimedOut": {
+    "message": "滚动加载完整对话时超时。对话可能特别长，请重试；如果问题持续出现，请反馈。",
+    "description": "Extraction error (ChatGPT): scrolling to load older messages of the conversation took too long."
+  },
+  "errChatgptTurnIdMissing": {
+    "message": "有一段对话缺少标识符，无法可靠地导出。ChatGPT 的页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (ChatGPT): a conversation turn has no identifier, so the export could not be made reliable."
+  },
+  "errChatgptSidebarScrollTimedOut": {
+    "message": "滚动加载对话列表时超时。侧边栏列表可能特别长，请重试；如果问题持续出现，请反馈。",
+    "description": "Bulk export error (ChatGPT): scrolling the sidebar to load the full conversation list took too long."
+  },
+  "errChatgptProjectListScrollTimedOut": {
+    "message": "滚动加载项目对话列表时超时。列表可能特别长，请重试；如果问题持续出现，请反馈。",
+    "description": "Bulk export error (ChatGPT): scrolling the project page to load the full project conversation list took too long."
+  },
+  "errGeminiSidebarMissing": {
+    "message": "找不到 Gemini 的对话侧边栏。Gemini 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Gemini): the conversation sidebar could not be found on the page."
+  },
+  "errGeminiSidebarCollapsed": {
+    "message": "Gemini 的对话侧边栏已收起，无法读取对话链接。请点击左上角的菜单按钮展开侧边栏后重试。",
+    "description": "Bulk export error (Gemini): the sidebar is collapsed, so the conversation list cannot be read; tells the user how to open it."
+  },
+  "errGeminiSidebarLinksUnreadable": {
+    "message": "无法读取 Gemini 侧边栏中的任何对话链接：链接网址不是预期的 /app/<id> 格式。Gemini 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Gemini): sidebar links exist but none has the expected /app/<id> URL shape. Keep \"/app/<id>\" verbatim."
+  },
+  "errGeminiOpenUrlMalformed": {
+    "message": "无法打开所选 Gemini 对话：网址格式有误。已跳过该对话。",
+    "description": "Bulk export error (Gemini): a selected conversation has a malformed URL, so it was skipped."
+  },
+  "errGeminiOpenLinkMissing": {
+    "message": "无法打开所选 Gemini 对话：即使滚动了对话列表，侧边栏中仍找不到它的链接。已跳过该对话。",
+    "description": "Bulk export error (Gemini): a selected conversation's sidebar link was not found even after scrolling, so it was skipped."
+  },
+  "errGeminiOpenTimedOut": {
+    "message": "打开所选 Gemini 对话时超时，可能是加载较慢。已跳过该对话。",
+    "description": "Bulk export error (Gemini): opening a selected conversation took too long, so it was skipped."
+  },
+  "errGeminiNoMessages": {
+    "message": "页面上找不到任何消息。可能是对话尚未加载，或 Gemini 的页面结构已更改，需要更新提取选择器。",
+    "description": "Extraction error (Gemini): no messages were found on the conversation page."
+  },
+  "errGeminiMessageListMissing": {
+    "message": "找不到可滚动的 Gemini 消息列表，因此这段对话中较早的消息可能未加载。Gemini 的页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (Gemini): the scrollable message list was not found, so older messages may be missing."
+  },
+  "errGeminiMessageListUnscrollable": {
+    "message": "目前无法滚动 Gemini 消息列表，因此这段对话中较早的消息可能未加载。请让对话显示在画面中后重试。",
+    "description": "Extraction error (Gemini): the message list exists but cannot be scrolled right now, so older messages may be missing."
+  },
+  "errGeminiExchangesDropped": {
+    "message": "已加载的 $expected$ 轮对话中，只有 $loaded$ 轮仍在页面上——Gemini 在读取过程中移除了一部分。请从头到尾滚动整个对话后重试。",
+    "description": "Extraction error (Gemini): Gemini unloaded some already-loaded exchanges while they were being read. $loaded$ is how many are still on the page, $expected$ how many had loaded.",
+    "placeholders": {
+      "loaded": {
+        "content": "$1"
+      },
+      "expected": {
+        "content": "$2"
+      }
+    }
+  },
+  "errGeminiStillGenerating": {
+    "message": "Gemini 仍在生成回复。请等待生成完成后再导出。",
+    "description": "Extraction error (Gemini): a response is still being generated."
+  },
+  "errGeminiResponseUnreadable": {
+    "message": "这段对话中有一条回复无法被本扩展程序读取——可能是 Gemini 显示在常规文本区域之外的内容类型，也可能是 Gemini 的页面结构已更改。请反馈此问题。",
+    "description": "Extraction error (Gemini): a response could not be read, possibly a kind rendered outside the normal text area."
+  },
+  "errClaudeArtifactAndAttachment": {
+    "message": "一条 Claude 消息同时带有 Artifact 卡片和附件，这是以前从未出现过的结构，因此无法判断发送者。请反馈此问题。",
+    "description": "Extraction error (Claude): a message has both an artifact card and a file attachment, so its author (user or Claude) cannot be told apart."
+  },
+  "errClaudeSidebarMissing": {
+    "message": "找不到 Claude 的对话侧边栏。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): the conversation sidebar could not be found on the page."
+  },
+  "errClaudeProjectListMissing": {
+    "message": "在项目页面上找不到 Claude 项目对话列表。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): the project conversation list was not found on a project page."
+  },
+  "errClaudeProjectRowMalformed": {
+    "message": "无法读取 Claude 项目对话列表：有一行表格中的对话链接不是恰好一个。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): a row of the project conversation table did not hold exactly one conversation link."
+  },
+  "errClaudeSidebarLinksUnreadable": {
+    "message": "无法读取 Claude 侧边栏中的任何对话链接：缺少网址或标题。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): sidebar conversation links exist but none has both a URL and a title."
+  },
+  "errClaudeProjectLinksUnreadable": {
+    "message": "无法读取 Claude 项目中的任何对话链接：缺少网址或标题。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): project conversation links exist but none has both a URL and a title."
+  },
+  "errClaudeRecentsLinksUnreadable": {
+    "message": "无法读取 Claude 最近对话页面中的任何对话链接：缺少网址或标题。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): conversation links on the recents page exist but none has both a URL and a title."
+  },
+  "errClaudeOpenUrlMalformed": {
+    "message": "无法打开所选 Claude 对话：网址格式有误。已跳过该对话。",
+    "description": "Bulk export error (Claude): a selected conversation has a malformed URL, so it was skipped."
+  },
+  "errClaudeOpenLinkMissing": {
+    "message": "无法打开所选 Claude 对话：即使滚动了最近对话列表，侧边栏中仍找不到它的链接。已跳过该对话。",
+    "description": "Bulk export error (Claude): a selected conversation's sidebar link was not found even after scrolling the recent-chat list, so it was skipped."
+  },
+  "errClaudeOpenTimedOut": {
+    "message": "打开所选 Claude 对话时超时，可能是加载较慢。已跳过该对话。",
+    "description": "Bulk export error (Claude): opening a selected conversation took too long, so it was skipped."
+  },
+  "errClaudeProjectOpenUrlMalformed": {
+    "message": "无法打开所选 Claude 项目对话：网址格式有误。已跳过该对话。",
+    "description": "Bulk export error (Claude): a selected project conversation has a malformed URL, so it was skipped."
+  },
+  "errClaudeProjectOpenLinkMissing": {
+    "message": "无法打开所选 Claude 项目对话：在列表中找不到它的链接。可能需要先等项目列表显示出来。已跳过该对话。",
+    "description": "Bulk export error (Claude): a selected project conversation's link was not found in the project table, so it was skipped."
+  },
+  "errClaudeProjectOpenTimedOut": {
+    "message": "打开所选 Claude 项目对话时超时，可能是加载较慢。已跳过该对话。",
+    "description": "Bulk export error (Claude): opening a selected project conversation took too long, so it was skipped."
+  },
+  "errClaudeProjectHomeUrlMissing": {
+    "message": "无法返回 Claude 项目主页：没有记录到项目主页的网址。已跳过此步骤。",
+    "description": "Bulk export error (Claude): the project home URL recorded at the start of the batch is unavailable, so returning there was skipped."
+  },
+  "errClaudeProjectHomeHistoryUnavailable": {
+    "message": "无法返回 Claude 项目主页：浏览器历史记录不可用。已跳过此步骤。",
+    "description": "Bulk export error (Claude): browser history is unavailable, so returning to the project home was skipped."
+  },
+  "errClaudeProjectHomeTimedOut": {
+    "message": "返回 Claude 项目主页时超时，可能是加载较慢。已跳过此步骤。",
+    "description": "Bulk export error (Claude): returning to the project home took too long, so it was skipped."
+  },
+  "errClaudeProjectHomeMismatch": {
+    "message": "返回到的 Claude 项目主页与批量导出开始时的不同。",
+    "description": "Bulk export error (Claude): after the batch, the page landed on a different project home than the one the batch started from."
+  },
+  "errClaudeRecentsListMissing": {
+    "message": "在 Claude 最近对话页面上找不到对话列表。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): the conversation list was not found on the recents (/recents) page."
+  },
+  "errClaudeRecentsRowMalformed": {
+    "message": "无法读取 Claude 最近对话列表：有一行表格中的对话链接不是恰好一个。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): a row of the recents conversation table did not hold exactly one conversation link."
+  },
+  "errClaudeRecentsLinksIncomplete": {
+    "message": "无法读取 Claude 最近对话页面上的全部对话：部分行缺少链接或标题。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Claude): some rows on the recents page lack a link or title, so the list would be incomplete."
+  },
+  "errClaudeRecentsLinkMissing": {
+    "message": "无法打开所选 Claude 对话：在最近对话页面上找不到它的链接。可能需要先等列表显示出来。已跳过该对话。",
+    "description": "Bulk export error (Claude): a selected conversation's link was not found on the recents page, so it was skipped."
+  },
+  "errClaudeRecentsHistoryUnavailable": {
+    "message": "无法返回 Claude 最近对话页面：浏览器历史记录不可用。已跳过此步骤。",
+    "description": "Bulk export error (Claude): browser history is unavailable, so returning to the recents page was skipped."
+  },
+  "errClaudeRecentsReturnTimedOut": {
+    "message": "返回 Claude 最近对话页面时超时，可能是加载较慢。已跳过此步骤。",
+    "description": "Bulk export error (Claude): returning to the recents page took too long, so it was skipped."
+  },
+  "errClaudeNotRecentsPage": {
+    "message": "收到返回的目标不是 Claude 最近对话列表页面。",
+    "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
+  },
+  "errClaudeNoMessages": {
+    "message": "页面上找不到任何消息。可能是对话尚未加载，或 Claude 的页面结构已更改，需要更新提取选择器。",
+    "description": "Extraction error (Claude): no messages were found on the conversation page."
+  },
+  "errClaudeStreamingSettleTimedOut": {
+    "message": "加载完整对话时，等待 Claude 流式输出结束超时。对话可能仍在生成，或页面结构已更改。请重试；如果问题持续出现，请反馈。",
+    "description": "Extraction error (Claude): while loading the full conversation, Claude never finished streaming within the time limit."
+  },
+  "errClaudeCompletionMarkerMissing": {
+    "message": "在整段对话中都找不到 Claude 的回复完成标记，因此本扩展程序无法区分已完成的回复和仍在撰写的回复。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (Claude): the marker Claude puts on finished responses is absent from the whole conversation, so finished and in-progress responses cannot be told apart."
+  },
+  "errClaudeFirstTurnNeverLoaded": {
+    "message": "即使滚动到顶部，对话的第一段仍未加载。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (Claude): the first turn of the conversation never loaded, even after scrolling to the top. Singular form of errClaudeFirstTurnsNeverLoaded."
+  },
+  "errClaudeFirstTurnsNeverLoaded": {
+    "message": "即使滚动到顶部，对话的前 $count$ 段仍未加载。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (Claude): the first $count$ turns (always 2 or more) never loaded, even after scrolling to the top.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeTurnGap": {
+    "message": "对话中位置 $from$ 与 $to$ 之间的内容缺失。请从头到尾滚动整个对话后重试。",
+    "description": "Extraction error (Claude): turns between two read positions are missing. $from$ and $to$ are zero-based turn positions.",
+    "placeholders": {
+      "from": {
+        "content": "$1"
+      },
+      "to": {
+        "content": "$2"
+      }
+    }
+  },
+  "errClaudeLastTurnNeverLoaded": {
+    "message": "对话的最后一段未加载——Claude 显示共有 $declared$ 条消息，但只读取到 $read$ 条。请滚动到对话末尾后重试。",
+    "description": "Extraction error (Claude): the last turn never loaded. $declared$ is how many messages Claude says the conversation has, $read$ how many were read. Singular form of errClaudeLastTurnsNeverLoaded.",
+    "placeholders": {
+      "declared": {
+        "content": "$1"
+      },
+      "read": {
+        "content": "$2"
+      }
+    }
+  },
+  "errClaudeLastTurnsNeverLoaded": {
+    "message": "对话的最后 $count$ 段未加载——Claude 显示共有 $declared$ 条消息，但只读取到 $read$ 条。请滚动到对话末尾后重试。",
+    "description": "Extraction error (Claude): the last $count$ turns (always 2 or more) never loaded. $declared$ is how many messages Claude says the conversation has, $read$ how many were read.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "declared": {
+        "content": "$2"
+      },
+      "read": {
+        "content": "$3"
+      }
+    }
+  },
+  "errClaudeTurnIndexMissing": {
+    "message": "有一段对话缺少位置标记，无法可靠地导出。Claude 的页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (Claude): a conversation turn has no position marker, so the export could not be made reliable."
+  },
+  "errClaudeUnreadableRow": {
+    "message": "对话中位置 $positions$ 有一条消息无法被本扩展程序读取——可能是 Claude 的页面结构已更改，或是尚不支持的消息类型。请反馈此问题。",
+    "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its zero-based position. Singular form of errClaudeUnreadableRows.",
+    "placeholders": {
+      "positions": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeUnreadableRows": {
+    "message": "对话中位置 $positions$ 有多条消息无法被本扩展程序读取——可能是 Claude 的页面结构已更改，或是尚不支持的消息类型。请反馈此问题。",
+    "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of zero-based positions.",
+    "placeholders": {
+      "positions": {
+        "content": "$1"
+      }
+    }
+  },
+  "errClaudeArtifactRootUnrecognized": {
+    "message": "Claude 显示了一个结构无法识别的 Artifact 卡片，无法读取其信息。请反馈此问题。",
+    "description": "Extraction error (Claude): an artifact card has an unrecognized root element, so its title and kind could not be read."
+  },
+  "errClaudeArtifactOrphan": {
+    "message": "Claude 显示的 Artifact 卡片没有对应的回复消息。页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (Claude): an artifact card was found outside any Claude response."
+  },
+  "errClaudeArtifactMetadataUnreadable": {
+    "message": "无法读取 Claude 显示的 Artifact 卡片的标题或类型。页面结构可能已更改，请反馈此问题。",
+    "description": "Extraction error (Claude): an artifact card's title or kind could not be read."
   }
 }

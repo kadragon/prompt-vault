@@ -8,28 +8,6 @@ A `*(blocked by: ...)*` / `*(deferred: ...)*` marker MUST sit on the item's own 
 and in `tasks.md`). The picker tokenizes checkboxes line by line, so a marker pushed onto a
 continuation line is invisible to it and the blocked item is offered as actionable work.
 
-## 2-chatgpt-sidebar-bulk — app-shell re-map (`docs/design/chatgpt-app-shell-remap.md`)
-
-- [ ] [FIX] Restore ChatGPT sidebar bulk export on the app-shell DOM (no `#history` container any more).
-      Scope: `sidebarHistory`, `sidebarConversationLink`, `sidebarConversationRow`;
-      `listConversations`, `openConversation`, `loadMoreConversations`. Observed 2026-09-29:
-      rows are `a[href^="/c/"][data-interactive-row-link][aria-label]` inside
-      `[role="listitem"][data-sidebar-chatgpt-conversation-key]` — re-verify the scope container
-      so project/GPT chats stay excluded. Re-measure the page size (was 28 rows) and inter-batch
-      latency and update `docs/live-dom-verification.md`'s re-measure table. Acceptance:
-      `npm test` green on a new sidebar fixture; a live bulk run of ≥3 conversations produces one
-      file per conversation.
-
-## 3-chatgpt-project-pages — app-shell re-map (`docs/design/chatgpt-app-shell-remap.md`)
-
-- [ ] [FIX] Restore ChatGPT project bulk export on the app-shell DOM.
-      Scope: `projectConversationLink`, `projectConversationTitle`, `projectBackLink`;
-      `matchesProject`, `listProjectConversations`, `openProjectConversation`, `openProjectHome`,
-      `loadMoreProjectConversations`, `projectToolbarMount`, `PROJECT_TOOLBAR_BUTTON_CLASS`.
-      Project pages are unmeasured in the new DOM — start with a live measurement, not a
-      guess. Acceptance: `npm test` green on a new project fixture; the trigger mounts natively
-      on a live project home page and a live project bulk run exports every listed conversation.
-
 ## Tooling & static analysis
 
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the
@@ -138,10 +116,15 @@ The larger hazard that measurement exposed is filed above.)*
       content). Node identity proves a render *occurred*, not *which* conversation rendered.
       Recorded so the limit is on the record rather than rediscovered.
 
-### PR #102 — Re-map the ChatGPT conversation page to the app-shell DOM (2026-09-29)
+## ChatGPT app-shell follow-ups (2026-09-29)
 
-- [ ] [debt] Every ChatGPT export now waits the 6 s load-older dwell, even a conversation already fully mounted; find an end-of-list signal (or a safe short-circuit) that cannot silently drop older turns (source: code-review) — src/adapters/chatgpt/index.ts `LOAD_OLDER_DEFAULTS`
-- [ ] [debt] Adapter `ExtractionError` messages (63 across adapters, incl. the new code-block one) are English literals shown via alert(); route them through `src/strings.ts` + the five catalogs (source: code-review) — src/adapters/chatgpt/prose.ts
+> Left open by the sidebar/project/load-older batch; evidence in `docs/live-dom-verification.md`
+> → 2026-09-29 "app-shell sidebar, project pages …".
+
+- [ ] *(blocked by: needs a live session after ChatGPT's list rate-limit window resets — measure the window's length first)* [FIX] ChatGPT's conversation-list endpoint answers 429 after ~7 pages (~140 rows) at both the page's own and the adapter's pace, so "Load more" on a large account ends at ~76–90 rows with the incomplete warning. Loud, not silent — but the list cannot be completed. Measure how long the 429 lasts, then decide whether the loader should back off while `sidebarLoadingStatus` persists instead of ending.
+- [ ] *(blocked by: same rate-limit session as the item above)* [VERIFY] Measure the app-shell Recents list's true end — does the loading row disappear at a genuine end, and what are the page size and inter-batch latency now? `SIDEBAR_SCROLL_DEFAULTS` and `pageParityGate` still carry their 2026-07-28 `#history` sizing.
+- [ ] *(blocked by: needs a ChatGPT project holding more conversations than fit on its home page — the demo project has 8)* [VERIFY] Does a long project home list page or virtualize, and does `revealFromProjectHome` still find a target below the fold after returning home?
+- [ ] [debt] A conversation that never renders the "loading earlier messages" status still waits the full 6 s load-older dwell (the drift-safe variant was chosen on 2026-09-29); only a positive "no older turns" marker would let short conversations skip it — none was found.
 
 ## Next (roadmap — not v1)
 
