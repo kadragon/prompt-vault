@@ -9,22 +9,33 @@ import {
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import type { ConversationAdapter, OpenConversationOptions } from '../types';
-import { htmlToMarkdown } from '../../core/html-to-markdown';
 import { escapeMarkdownBlock } from '../../core/markdown-escape';
 import { matches, matchesProject } from './matches';
+import { proseToMarkdown } from './prose';
 import { selectors } from './selectors';
 
 const PROVIDER = 'chatgpt';
 
-// Auto-scroll tuning. ChatGPT virtualizes the message list and lazy-renders older
-// turns as you scroll toward the top, so we scroll up repeatedly until the rendered
-// message count stops growing (stable). Completion is judged purely by count
-// stability — never by scrollTop, which the user or the browser can leave non-zero.
-// The absolute cap is only an anti-runaway backstop: as long as new turns keep
-// appearing we keep going, so a genuinely long conversation is not cut short.
+// Default scroll tuning shared by `scrollUntilStable` callers and the message walk. The
+// message viewport's own load-older pass overrides it with `LOAD_OLDER_DEFAULTS` below.
+// The absolute cap is only an anti-runaway backstop: as long as new items keep appearing
+// we keep going, so a genuinely long list is not cut short.
 const SCROLL_STEP_DELAY_MS = 150;
 const SCROLL_STABLE_ROUNDS = 3;
 const SCROLL_ABSOLUTE_MAX_STEPS = 400;
+/**
+ * Tuning for pulling older turns in at the top (`autoScrollToLoad`). The app-shell list
+ * windows its turn nodes, so the rendered-node count stays flat while older turns mount;
+ * progress is read from the list's `scrollHeight` instead, and the list declares no total,
+ * so "done" can only be a dwell with no growth. Measured 2026-09-29 (three runs, pinned
+ * every 50 ms): the first growth arrived up to 4533 ms after the first pin and later ones
+ * at most 1602 ms apart — so the dwell is 24 x 250 ms = 6 s, above both. A slower backend
+ * than that ends the load early and the export silently lacks the oldest turns; re-measure
+ * per docs/live-dom-verification.md.
+ */
+const LOAD_OLDER_DEFAULTS: AutoScrollOptions = { stepDelayMs: 250, stableRounds: 24, maxSteps: 2000 };
+/** Test-only: the dwell above is sized from a measurement, so a test pins it against that measurement. */
+export const LOAD_OLDER_DEFAULTS_TEST: Readonly<AutoScrollOptions> = LOAD_OLDER_DEFAULTS;
 /**
  * Scroll tuning for the *conversation-list* loaders (`loadMoreConversations`,
  * `loadMoreProjectConversations`) — deliberately far more patient than the message-viewport
@@ -106,6 +117,8 @@ export interface AutoScrollOptions {
   stepDelayMs?: number;
   stableRounds?: number;
   maxSteps?: number;
+  /** Pause per step while scrolling a virtualized code block's pane (tests). */
+  harvestStepDelayMs?: number;
 }
 
 /**
@@ -224,7 +237,7 @@ function suppressOverlay(root: ParentNode = document): boolean {
   // inline embed of the same connector rendered inside a message. An inline one leaves the
   // header in place and must not cost the user the toolbar.
   return [...root.querySelectorAll(selectors.expandedReportFrame)].some(
-    (frame) => frame.closest(selectors.message) === null,
+    (frame) => frame.closest(selectors.turn) === null,
   );
 }
 
@@ -508,7 +521,7 @@ function hasRenderedMessages(): boolean {
  */
 function messageSignature(): string {
   const nodes = document.querySelectorAll(selectors.message);
-  const firstId = nodes[0]?.getAttribute(selectors.messageIdAttr) ?? '';
+  const firstId = nodes[0] ? messageId(nodes[0]) ?? '' : '';
   return `${nodes.length}:${firstId}`;
 }
 
@@ -521,7 +534,7 @@ export async function extract(root: ParentNode = document, options: AutoScrollOp
   const messages =
     root === (globalThis as { document?: Document }).document
       ? await collectVirtualizedTurns(root as Document, options)
-      : readSnapshot(root);
+      : await readSnapshot(root, options);
 
   if (messages.length === 0) {
     throw new ExtractionError(
@@ -543,9 +556,13 @@ export async function extract(root: ParentNode = document, options: AutoScrollOp
  * scroll container). Fails loud if a role-bearing turn yielded no content — a silently
  * dropped turn would be worse than a visible error (AGENTS.md #4).
  */
-function readSnapshot(root: ParentNode): Message[] {
+async function readSnapshot(root: ParentNode, options: AutoScrollOptions = {}): Promise<Message[]> {
   const roleNodes = Array.from(root.querySelectorAll(selectors.message)).filter(hasKnownRole);
-  const messages = roleNodes.map(toMessage).filter((m): m is Message => m !== null);
+  const messages: Message[] = [];
+  for (const el of roleNodes) {
+    const message = await toMessage(el, options);
+    if (message) messages.push(message);
+  }
   if (messages.length > 0 && messages.length < roleNodes.length) {
     throw new ExtractionError(
       'Some conversation turns could not be read (empty or malformed). The conversation may ' +
@@ -556,8 +573,27 @@ function readSnapshot(root: ParentNode): Message[] {
 }
 
 function hasKnownRole(el: Element): boolean {
-  const role = el.getAttribute(selectors.authorRoleAttr);
-  return role === 'user' || role === 'assistant' || role === 'system';
+  return messageRole(el) !== null;
+}
+
+/**
+ * A message unit's role. The assistant unit carries a role heading; the user unit carries
+ * none, so it is recognised by its own group marker. Anything else is not a message.
+ */
+function messageRole(el: Element): Role | null {
+  if (el.querySelector(selectors.assistantRoleMarker)) return 'assistant';
+  if (el.matches(selectors.userMessage)) return 'user';
+  return null;
+}
+
+/**
+ * A message unit's provider id: the LAST of its whitespace-separated ids. An assistant
+ * reply that spans tool steps lists every step, the reply itself last; a plain reply lists
+ * its one id twice; a user unit lists one.
+ */
+function messageId(el: Element): string | null {
+  const ids = (el.getAttribute(selectors.messageIdAttr) ?? '').trim().split(/\s+/).filter(Boolean);
+  return ids.length > 0 ? ids[ids.length - 1] : null;
 }
 
 /**
@@ -573,21 +609,26 @@ interface TurnRead {
 }
 
 /** Read a turn node's content + reliability, dispatching on role. */
-function readTurn(el: Element): TurnRead {
-  const role = el.getAttribute(selectors.authorRoleAttr) as Role;
+async function readTurn(el: Element, options: AutoScrollOptions = {}): Promise<TurnRead> {
+  const role = messageRole(el);
   if (role === 'assistant') {
     const markdownEl = el.querySelector(selectors.assistantMarkdown);
     // Fall back to plain text if the prose container is missing so a markup change
     // degrades to readable text rather than an empty message (but mark it unreliable).
-    if (markdownEl) return { content: htmlToMarkdown(markdownEl), reliable: true };
+    if (markdownEl) return { content: await proseToMarkdown(markdownEl, options), reliable: true };
     return { content: escapeMarkdownBlock((el.textContent ?? '').trim()), reliable: false };
   }
-  // User turns are LITERAL text in a pre-wrap block — ChatGPT renders them verbatim,
-  // it does not parse them as Markdown. `Message.content` is Markdown by contract, so
-  // escape at the source: a turn typed as `**literal**` or `- item` must export and
-  // render as the characters the user typed, not as bold text or a bullet list.
+  // A plain prompt is LITERAL text in a pre-wrap block — ChatGPT shows it verbatim, apart
+  // from inline code. `Message.content` is Markdown by contract, so escape at the source: a
+  // turn typed as `**literal**` or `- item` must export and render as the characters the
+  // user typed, not as bold text or a bullet list. A prompt holding a fenced block instead
+  // renders as Markdown, like a reply, and is serialized like one — its text nodes come out
+  // escaped too, so the same contract holds.
   const textEl = el.querySelector(selectors.userText);
-  const base = escapeMarkdownBlock((textEl?.textContent ?? '').trim());
+  const markdownEl = textEl?.querySelector(selectors.userMarkdown);
+  const base = markdownEl
+    ? await proseToMarkdown(markdownEl, options)
+    : escapeMarkdownBlock((textEl ? typedText(textEl) : '').trim());
   const files = fileMarkers(el);
   const combined = [base, files].filter(Boolean).join('\n\n');
   if (combined) return { content: combined, reliable: true };
@@ -598,14 +639,31 @@ function readTurn(el: Element): TurnRead {
 }
 
 /** Map one message DOM node to a normalized Message, or null if it has no content. */
-function toMessage(el: Element): Message | null {
-  const { content } = readTurn(el);
+async function toMessage(el: Element, options: AutoScrollOptions = {}): Promise<Message | null> {
+  const { content } = await readTurn(el, options);
   if (!content.trim()) return null;
-  const role = el.getAttribute(selectors.authorRoleAttr) as Role;
-  const id = el.getAttribute(selectors.messageIdAttr);
+  const role = messageRole(el) as Role;
+  const id = messageId(el);
   const message: Message = { role, content };
   if (id) message.id = id;
   return message;
+}
+
+/**
+ * The prompt as typed. The bubble renders backtick-quoted spans as `<code>` without their
+ * backticks, so each is re-wrapped — on a clone, never the live node — using a fence one
+ * backtick longer than any run inside it, as the typed source must have.
+ */
+function typedText(textEl: Element): string {
+  const clone = textEl.cloneNode(true) as Element;
+  for (const code of Array.from(clone.querySelectorAll(selectors.userInlineCode))) {
+    const body = code.textContent ?? '';
+    const longest = Math.max(0, ...Array.from(body.matchAll(/`+/g), (m) => m[0].length));
+    const fence = '`'.repeat(longest + 1);
+    const pad = body.startsWith('`') || body.endsWith('`') ? ' ' : '';
+    code.replaceWith(clone.ownerDocument.createTextNode(`${fence}${pad}${body}${pad}${fence}`));
+  }
+  return clone.textContent ?? '';
 }
 
 /** `[File: name]` for each attachment tile in a turn (empty string when there are none). */
@@ -628,21 +686,23 @@ function deriveUrl(root: ParentNode): string {
 }
 
 /**
- * Scroll the message viewport to the top repeatedly to force ChatGPT to render
- * lazily-loaded older turns, stopping once the rendered-message count holds steady
- * for a few rounds (i.e. no more older turns appear). Progress resets the stall
- * counter, so an arbitrarily long conversation keeps loading as long as new turns
- * keep arriving. Only the absolute step cap — reached solely if turns never stop
- * appearing — is a fail-loud condition (AGENTS.md #4); completion is judged by
- * count stability alone, never by `scrollTop` (which the user or browser may leave
- * non-zero), so a fully-loaded conversation never falsely fails.
+ * Scroll the message viewport to the top repeatedly to force ChatGPT to mount older
+ * turns, stopping once the list's height holds steady for the dwell in
+ * `LOAD_OLDER_DEFAULTS` (i.e. no more older turns appear). Height, not the rendered-node
+ * count: the list windows its nodes, so the count stays flat while older turns arrive.
+ * Progress resets the stall counter, so an arbitrarily long conversation keeps loading as
+ * long as turns keep arriving. Only the absolute step cap — reached solely if the list
+ * never stops growing — is a fail-loud condition (AGENTS.md #4); completion is judged by
+ * height stability alone, never by `scrollTop` (which the user or browser may leave off
+ * the top), so a fully-loaded conversation never falsely fails.
  */
 export async function autoScrollToLoad(doc: Document, options: AutoScrollOptions = {}): Promise<void> {
   const container = doc.querySelector<HTMLElement>(selectors.scrollContainer);
   if (!container) return; // Best-effort: extract whatever is already present.
 
   // Messages lazy-load as you scroll UP (older turns above), so pin to the top.
-  await scrollUntilStable(container, () => doc.querySelectorAll(selectors.message).length, pinTop, options, {
+  await scrollUntilStable(container, () => container.scrollHeight, pinTop, options, {
+    defaults: LOAD_OLDER_DEFAULTS,
     timeoutMessage:
       'Timed out loading the full conversation while scrolling. The conversation may be ' +
       'unusually long; try again, or report if this persists.',
@@ -660,7 +720,7 @@ interface CollectedTurn {
  * the list — only a handful of turn nodes exist in the DOM at once, and off-screen turns
  * are removed entirely — so no single `querySelectorAll` sees every turn. This scrolls
  * from top to bottom in overlapping steps and accumulates each turn (keyed by its stable
- * `data-message-id`) the first time it enters the window, upgrading its content on a later
+ * message id — see `messageId`) the first time it enters the window, upgrading its content on a later
  * sighting if the first was still an un-hydrated skeleton. Turn order is the first-seen
  * order during the strictly-downward walk, which equals conversation order. Falls back to
  * a one-shot snapshot read when there is no scroll container (best-effort). Fails loud if
@@ -672,10 +732,10 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
   // A zero-height container (hidden/background tab) never actually scrolls, so the walk
   // below would crawl 1px at a time up to the absolute cap — minutes of a frozen tab.
   // Fall back to a one-shot read instead.
-  if (!container || container.clientHeight === 0) return readSnapshot(doc);
+  if (!container || container.clientHeight === 0) return readSnapshot(doc, options);
 
-  // Pull in any older turns first (long chats paginate them in as you reach the top),
-  // then walk down from the very top. `autoScrollToLoad` leaves the viewport pinned there.
+  // Pull in any older turns first (long chats mount them as you reach the top), then walk
+  // down from the very top. `autoScrollToLoad` leaves the viewport pinned there.
   await autoScrollToLoad(doc, options);
 
   const { stepDelayMs = SCROLL_STEP_DELAY_MS } = options;
@@ -684,21 +744,25 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
   const order: string[] = [];
   const turns = new Map<string, CollectedTurn>();
   let sawIdlessTurn = false;
-  const record = (): void => {
+  const record = async (): Promise<void> => {
     for (const el of Array.from(doc.querySelectorAll(selectors.message))) {
-      if (!hasKnownRole(el)) continue;
-      const id = el.getAttribute(selectors.messageIdAttr);
+      const role = messageRole(el);
+      if (!role) continue;
+      const id = messageId(el);
       if (!id) {
         // No stable key to dedup this turn across windows, so it can never be collected.
         // Flag it so we fail loud rather than silently omit it (AGENTS.md #4).
         sawIdlessTurn = true;
         continue;
       }
-      const { content, reliable } = readTurn(el);
       const seen = turns.get(id);
+      // A turn already read from its real content element cannot improve; skip re-reading
+      // it, which for a long code block means re-scrolling its pane on every step.
+      if (seen?.reliable && seen.content.trim()) continue;
+      const { content, reliable } = await readTurn(el, options);
       if (!seen) {
         order.push(id);
-        turns.set(id, { role: el.getAttribute(selectors.authorRoleAttr) as Role, content, reliable });
+        turns.set(id, { role, content, reliable });
       } else if ((!seen.content.trim() && content.trim()) || (!seen.reliable && reliable)) {
         // Upgrade a turn first captured empty, or captured via the unreliable textContent
         // fallback (which can grab stray UI text), once its real content element renders.
@@ -708,13 +772,13 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
     }
   };
 
-  container.scrollTop = 0;
+  container.scrollTop = topScrollTop(container);
   await delay(stepDelayMs);
   let atBottomHits = 0;
   let reachedBottom = false;
   for (let step = 0; ; step++) {
-    record();
-    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 1) {
+    await record();
+    if (container.scrollTop >= bottomScrollTop(container) - 1) {
       if (++atBottomHits >= 2) {
         reachedBottom = true;
         break; // settle on the bottom (its content may still hydrate)
@@ -728,7 +792,7 @@ export async function collectVirtualizedTurns(doc: Document, options: AutoScroll
     // far above any real conversation's step count).
     const cap = options.maxSteps ?? Math.ceil(container.scrollHeight / stepPx) + SCROLL_STABLE_ROUNDS + 5;
     if (step >= cap || step >= WALK_ABSOLUTE_MAX_STEPS) break;
-    container.scrollTop = Math.min(container.scrollTop + stepPx, container.scrollHeight);
+    container.scrollTop = Math.min(container.scrollTop + stepPx, bottomScrollTop(container));
     await delay(stepDelayMs);
   }
 
@@ -884,7 +948,27 @@ function collectConversations(
 
 /** Pin a virtualized scroll container to the top (loads older items above). */
 function pinTop(container: HTMLElement): void {
-  container.scrollTop = 0;
+  container.scrollTop = topScrollTop(container);
+}
+
+/**
+ * True when the container lays out `column-reverse` — the app-shell message list does. Its
+ * `scrollTop` then runs from `-(scrollHeight - clientHeight)` at the top to `0` at the
+ * bottom, so `0` is the BOTTOM and a positive write clamps there.
+ */
+function isReversed(container: HTMLElement): boolean {
+  const view = container.ownerDocument?.defaultView;
+  return view?.getComputedStyle?.(container).flexDirection === 'column-reverse';
+}
+
+/** The `scrollTop` that shows the top of the list, in either scroll direction. */
+function topScrollTop(container: HTMLElement): number {
+  return isReversed(container) ? -(container.scrollHeight - container.clientHeight) : 0;
+}
+
+/** The `scrollTop` that shows the bottom of the list, in either scroll direction. */
+function bottomScrollTop(container: HTMLElement): number {
+  return isReversed(container) ? 0 : container.scrollHeight - container.clientHeight;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { collectVirtualizedTurns } from '../../../src/adapters/chatgpt';
+import { selectors } from '../../../src/adapters/chatgpt/selectors';
 import { ExtractionError } from '../../../src/core/errors';
 
 // Model ChatGPT's *windowing* virtualization: only the turn nodes whose fixed-height
@@ -25,30 +26,41 @@ function makeWindowedDoc({
   turns,
   clientHeight = 250,
   stuckScroll = false,
+  reversed = false,
 }: {
   turns: Turn[];
   clientHeight?: number;
   stuckScroll?: boolean;
+  /** Lay the list out `column-reverse`, as the app-shell list is: scrollTop runs -(sh-ch)..0. */
+  reversed?: boolean;
 }): Document {
+  const scrollHeight = turns.length * TURN_H;
+  const span = scrollHeight - clientHeight;
   let top = 0;
   const container = {
     clientHeight,
-    scrollHeight: turns.length * TURN_H,
+    scrollHeight,
+    ownerDocument: reversed
+      ? { defaultView: { getComputedStyle: () => ({ flexDirection: 'column-reverse' }) } }
+      : undefined,
     get scrollTop(): number {
       return top;
     },
     set scrollTop(v: number) {
-      if (!stuckScroll) top = v; // a stuck container ignores scroll writes (never advances)
+      // A stuck container ignores scroll writes (never advances); a live one clamps.
+      if (!stuckScroll) top = reversed ? Math.max(-span, Math.min(0, v)) : Math.max(0, Math.min(span, v));
     },
   };
+  // Distance of the viewport's top edge from the list's top, whatever the direction.
+  const offset = (): number => (reversed ? container.scrollTop + span : container.scrollTop);
 
   const intersects = (i: number): boolean => {
     const t = i * TURN_H;
-    return t < container.scrollTop + container.clientHeight && t + TURN_H > container.scrollTop;
+    return t < offset() + container.clientHeight && t + TURN_H > offset();
   };
   const fullyInside = (i: number): boolean => {
     const t = i * TURN_H;
-    return t >= container.scrollTop && t + TURN_H <= container.scrollTop + container.clientHeight;
+    return t >= offset() && t + TURN_H <= offset() + container.clientHeight;
   };
 
   const makeNode = (t: Turn, i: number) => {
@@ -62,14 +74,20 @@ function makeWindowedDoc({
     };
     return {
       getAttribute(name: string): string | null {
-        if (name === 'data-message-author-role') return t.role;
-        if (name === 'data-message-id') return t.idless ? null : t.id;
-        return null;
+        return name === selectors.messageIdAttr && !t.idless ? t.id : null;
       },
-      querySelector(sel: string): { textContent: string } | null {
-        // user → pre-wrap block (only when hydrated); assistant → no .markdown, so content
+      matches(sel: string): boolean {
+        return sel === selectors.userMessage && t.role === 'user';
+      },
+      querySelector(sel: string): unknown {
+        if (sel === selectors.assistantRoleMarker) return t.role === 'assistant' ? {} : null;
+        // user → pre-wrap block (only when hydrated); assistant → no prose root, so content
         // falls back to textContent. A non-hydrated turn has no proper element.
-        return t.role === 'user' && sel === '.whitespace-pre-wrap' && hydrated() ? { textContent: text() } : null;
+        if (t.role === 'user' && sel === selectors.userText && hydrated()) {
+          const textContent = text();
+          return { textContent, querySelector: () => null, cloneNode: () => ({ textContent, querySelectorAll: () => [] }) };
+        }
+        return null;
       },
       querySelectorAll(): never[] {
         return []; // no attachment tiles in these turns
@@ -81,9 +99,9 @@ function makeWindowedDoc({
   };
 
   return {
-    querySelector: (sel: string) => (sel === '[data-scroll-root]' ? container : null),
+    querySelector: (sel: string) => (sel === selectors.scrollContainer ? container : null),
     querySelectorAll: (sel: string) =>
-      sel === '[data-message-author-role]' ? turns.map(makeNode).filter((_, i) => intersects(i)) : [],
+      sel === selectors.message ? turns.map(makeNode).filter((_, i) => intersects(i)) : [],
   } as unknown as Document;
 }
 
@@ -105,6 +123,18 @@ describe('collectVirtualizedTurns — windowed message list', () => {
     expect(messages.map((m) => m.content)).toEqual(turns.map((t) => t.content));
     expect(messages.map((m) => m.id)).toEqual(turns.map((t) => t.id));
     expect(messages.map((m) => m.role)).toEqual(turns.map((t) => t.role));
+  });
+
+  it('walks a column-reverse list top to bottom — its top is the most negative scrollTop', async () => {
+    // The app-shell list is column-reverse: `scrollTop = 0` is the BOTTOM. A walk that starts
+    // at 0 sees only the newest window and then cannot move, so it must start at -(sh - ch).
+    const turns: Turn[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `m${i}`,
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: `content ${i}`,
+    }));
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns, reversed: true }), fast);
+    expect(messages.map((m) => m.id)).toEqual(turns.map((t) => t.id));
   });
 
   it('upgrades a turn captured as a skeleton once it hydrates on a later sighting', async () => {
@@ -175,17 +205,27 @@ describe('collectVirtualizedTurns — windowed message list', () => {
       { role: 'user', id: 'u1', content: 'hi' },
       { role: 'assistant', id: 'a1', content: 'hello' },
     ].map((t) => ({
-      getAttribute: (n: string) =>
-        n === 'data-message-author-role' ? t.role : n === 'data-message-id' ? t.id : null,
-      querySelector: (sel: string) => (t.role === 'user' && sel === '.whitespace-pre-wrap' ? { textContent: t.content } : null),
+      getAttribute: (n: string) => (n === selectors.messageIdAttr ? t.id : null),
+      matches: (sel: string) => sel === selectors.userMessage && t.role === 'user',
+      querySelector: (sel: string) => {
+        if (sel === selectors.assistantRoleMarker) return t.role === 'assistant' ? {} : null;
+        return t.role === 'user' && sel === selectors.userText
+          ? {
+              textContent: t.content,
+              querySelector: () => null,
+              cloneNode: () => ({ textContent: t.content, querySelectorAll: () => [] }),
+            }
+          : null;
+      },
       querySelectorAll: () => [],
       get textContent() {
         return t.content;
       },
     }));
     const doc = {
-      querySelector: (sel: string) => (sel === '[data-scroll-root]' ? { scrollTop: 0, clientHeight: 0, scrollHeight: 5000 } : null),
-      querySelectorAll: (sel: string) => (sel === '[data-message-author-role]' ? nodes : []),
+      querySelector: (sel: string) =>
+        sel === selectors.scrollContainer ? { scrollTop: 0, clientHeight: 0, scrollHeight: 5000 } : null,
+      querySelectorAll: (sel: string) => (sel === selectors.message ? nodes : []),
     } as unknown as Document;
 
     const messages = await collectVirtualizedTurns(doc, fast);

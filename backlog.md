@@ -8,6 +8,28 @@ A `*(blocked by: ...)*` / `*(deferred: ...)*` marker MUST sit on the item's own 
 and in `tasks.md`). The picker tokenizes checkboxes line by line, so a marker pushed onto a
 continuation line is invisible to it and the blocked item is offered as actionable work.
 
+## 2-chatgpt-sidebar-bulk — app-shell re-map (`docs/design/chatgpt-app-shell-remap.md`)
+
+- [ ] [FIX] Restore ChatGPT sidebar bulk export on the app-shell DOM (no `#history` container any more).
+      Scope: `sidebarHistory`, `sidebarConversationLink`, `sidebarConversationRow`;
+      `listConversations`, `openConversation`, `loadMoreConversations`. Observed 2026-09-29:
+      rows are `a[href^="/c/"][data-interactive-row-link][aria-label]` inside
+      `[role="listitem"][data-sidebar-chatgpt-conversation-key]` — re-verify the scope container
+      so project/GPT chats stay excluded. Re-measure the page size (was 28 rows) and inter-batch
+      latency and update `docs/live-dom-verification.md`'s re-measure table. Acceptance:
+      `npm test` green on a new sidebar fixture; a live bulk run of ≥3 conversations produces one
+      file per conversation.
+
+## 3-chatgpt-project-pages — app-shell re-map (`docs/design/chatgpt-app-shell-remap.md`)
+
+- [ ] [FIX] Restore ChatGPT project bulk export on the app-shell DOM.
+      Scope: `projectConversationLink`, `projectConversationTitle`, `projectBackLink`;
+      `matchesProject`, `listProjectConversations`, `openProjectConversation`, `openProjectHome`,
+      `loadMoreProjectConversations`, `projectToolbarMount`, `PROJECT_TOOLBAR_BUTTON_CLASS`.
+      Project pages are unmeasured in the new DOM — start with a live measurement, not a
+      guess. Acceptance: `npm test` green on a new project fixture; the trigger mounts natively
+      on a live project home page and a live project bulk run exports every listed conversation.
+
 ## Tooling & static analysis
 
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the

@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { chatgptAdapter } from '../../src/adapters/chatgpt';
 import { claudeAdapter } from '../../src/adapters/claude';
 import { geminiAdapter } from '../../src/adapters/gemini';
+import { assistantUnit, page as chatgptPage, turn as chatgptTurn, userUnit } from './chatgpt/markup';
 
 // `Message.content` is Markdown by contract, but every provider puts *literal* user
 // text on the page: ChatGPT and Claude in pre-wrap blocks, Gemini in per-line `<p>`s.
@@ -22,12 +23,7 @@ describe('a literally-typed user turn survives extraction unformatted', () => {
   it('chatgpt', async () => {
     const convo = await chatgptAdapter.extract(
       docFrom(
-        '<html><head><title>t</title></head><body>' +
-          '<div data-message-author-role="user" data-message-id="u1">' +
-          `<div class="whitespace-pre-wrap">${TYPED}</div></div>` +
-          '<div data-message-author-role="assistant" data-message-id="a1">' +
-          '<div class="markdown"><p>ok</p></div></div>' +
-          '</body></html>',
+        chatgptPage('t', chatgptTurn('t1', userUnit('u1', TYPED), assistantUnit('a1 a1', '<p>ok</p>'))),
       ),
     );
     expect(convo.messages[0].content).toBe(ESCAPED);
