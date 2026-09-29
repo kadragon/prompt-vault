@@ -126,6 +126,14 @@ The larger hazard that measurement exposed is filed above.)*
 - [ ] *(blocked by: needs a ChatGPT project holding more conversations than fit on its home page — the demo project has 8)* [VERIFY] Does a long project home list page or virtualize, and does `revealFromProjectHome` still find a target below the fold after returning home?
 - [ ] *(deferred: no positive "no older turns" marker exists — the 2026-09-29 live session searched and found none; revisit only with new DOM evidence)* [debt] A conversation that never renders the "loading earlier messages" status still waits the full 6 s load-older dwell (the drift-safe variant was chosen on 2026-09-29); only a positive "no older turns" marker would let short conversations skip it — none was found.
 
+### product-evaluator pass on v1.14.1 (2026-09-29)
+
+> Non-blocking findings from the pre-release evaluation (verdict SHIP).
+
+- [ ] *(blocked by: same rate-limit session as the ChatGPT list 429 item above)* [FIX] A ChatGPT list that gets 429 at offset 0 renders its cached rows, drops the loading row, and shows no incomplete marker (`docs/live-dom-verification.md` → 2026-09-29 "429 is the failure mode") — so the bulk panel offers a short list as if complete. Needs a DOM or timing signal that separates this from a genuine end before the loader can warn.
+- [ ] [FIX] `errClaudeNotRecentsPage` is developer wording in `en` ("Asked to return to a Claude page that is not the recents list.") and reads clumsily in `zh_CN`/`zh_TW` ("收到返回的目标不是…"). Rewrite the `en` source as user-facing copy, then re-author all five catalogs.
+- [ ] [FIX] `errClaudeUnreadableRows` (`en`) says "messages at position $positions$" where `$positions$` can list several — use "positions" (or pluralize with the count), and re-check the other four catalogs read the same way.
+
 ## Next (roadmap — not v1)
 
 - [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*
