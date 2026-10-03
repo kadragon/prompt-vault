@@ -129,8 +129,8 @@
     }
   },
   "bulkLoadMoreIncompleteMessage": {
-    "message": "会話を $count$ 件読み込みました。一覧が不完全な可能性があります。「さらに読み込む」をもう一度押してください。",
-    "description": "Shown when Load more stopped while the page-size parity check still expected another page, so the list may be short. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "message": "会話を $count$ 件読み込みました。一覧が不完全な可能性があります。「さらに読み込む」をもう一度押してください。同じところで止まる場合は、数分待ってから押してください。",
+    "description": "Shown when Load more stopped while the list still looked unfinished (page-size parity, a loading row, or ChatGPT's load-error row after a rate limit), so the list may be short. A rerun right away can stop at the same point while the site's rate limit lasts, hence the wait. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
     "placeholders": {
       "count": {
         "content": "$1"
