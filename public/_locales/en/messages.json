@@ -524,7 +524,7 @@
     "description": "Extraction error (Claude): a conversation turn has no position marker, so the export could not be made reliable."
   },
   "errClaudeUnreadableRow": {
-    "message": "The conversation contains a message at position $positions$ that this extension could not read — Claude’s markup may have changed, or the message may be a type it does not support yet. Please report this.",
+    "message": "The conversation contains a message at position $positions$ that this extension could not read — Claude’s markup may have changed, or the message may be of a type it does not support yet. Please report this.",
     "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its zero-based position. Singular form of errClaudeUnreadableRows.",
     "placeholders": {
       "positions": {

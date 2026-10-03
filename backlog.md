@@ -30,6 +30,11 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### PR #109 — Rewrite the Claude not-recents error and pluralize unreadable-rows (2026-10-03)
+
+- [ ] [debt] `errClaudeNotRecentsPage` reaches no user: `returnToStart` rejections are caught and only `console.warn`'d, and the recents panel mounts only on `/recents` — surface the failure in the bulk panel, or mark the key console-only in its description (source: code-review) — src/content/mount.ts:589
+- [ ] [debt] `errClaudeUnreadableRowsMessage` interpolates zero-based positions, so the first message reads "position 0" / "0번 위치" — add 1 at the string boundary (source: code-review) — src/strings.ts:276
+
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
