@@ -794,6 +794,23 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/last 2 turns never loaded/);
   });
 
+  // The trailing split's other half: the last declared row rendered but held nothing readable.
+  // Pins the one-based position end to end — the trailing caller builds its own index list.
+  it('names the last row one-based when it rendered but could not be read', async () => {
+    const doc = makeWindowedDoc({ turns: alternating(12), setSize: 12 });
+    const original = doc.querySelectorAll.bind(doc);
+    (doc as unknown as { querySelectorAll: (sel: string) => unknown[] }).querySelectorAll = (
+      sel: string,
+    ) => {
+      const out = original(sel) as unknown as {
+        closest?: (s: string) => { getAttribute(n: string): string | null } | null;
+      }[];
+      if (sel === '[data-index]') return out;
+      return out.filter((n) => n.closest?.('[data-index]')?.getAttribute('data-index') !== '11');
+    };
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/position 12 that this/);
+  });
+
   // The same shape with nothing declared must behave exactly as it did before. A markup
   // change has to degrade to the old behavior, never turn every export into a failure.
   it('exports the rows it collected when no row declares a total', async () => {
