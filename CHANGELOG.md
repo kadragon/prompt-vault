@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Rewrite the Claude not-recents error as user-facing copy and pluralize the unreadable-rows message (2026-10-03)
 - [done] Restore ChatGPT sidebar and project bulk export on the app-shell DOM, read only the visible route, and localize adapter errors (2026-09-29) → docs/live-dom-verification.md
 - [done] Re-map the ChatGPT conversation page to the app-shell DOM: header toolbar, full-turn export, CodeMirror code blocks (2026-09-29) → docs/live-dom-verification.md
 - [done] Date the privacy policy, share one Conversation test fixture, and pin the ChatGPT load-more flake on fake timers (2026-09-05) → docs/conventions.md

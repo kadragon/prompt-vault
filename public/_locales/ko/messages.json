@@ -451,7 +451,7 @@
     "description": "Bulk export error (Claude): returning to the recents page took too long, so it was skipped."
   },
   "errClaudeNotRecentsPage": {
-    "message": "Claude 최근 대화 목록이 아닌 페이지로 돌아가라는 요청을 받았습니다.",
+    "message": "내보내기를 최근 대화 페이지에서 시작하지 않아 Claude 최근 대화 페이지로 돌아가지 못했습니다.",
     "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
   },
   "errClaudeNoMessages": {

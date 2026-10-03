@@ -451,7 +451,7 @@
     "description": "Bulk export error (Claude): returning to the recents page took too long, so it was skipped."
   },
   "errClaudeNotRecentsPage": {
-    "message": "收到返回的目標不是 Claude 最近對話清單頁面。",
+    "message": "匯出並非從 Claude 最近對話頁面開始，因此無法返回該頁面。",
     "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
   },
   "errClaudeNoMessages": {

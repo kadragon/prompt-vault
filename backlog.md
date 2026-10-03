@@ -131,8 +131,6 @@ The larger hazard that measurement exposed is filed above.)*
 > Non-blocking findings from the pre-release evaluation (verdict SHIP).
 
 - [ ] *(blocked by: same rate-limit session as the ChatGPT list 429 item above)* [FIX] A ChatGPT list that gets 429 at offset 0 renders its cached rows, drops the loading row, and shows no incomplete marker (`docs/live-dom-verification.md` → 2026-09-29 "429 is the failure mode") — so the bulk panel offers a short list as if complete. Needs a DOM or timing signal that separates this from a genuine end before the loader can warn.
-- [ ] [FIX] `errClaudeNotRecentsPage` is developer wording in `en` ("Asked to return to a Claude page that is not the recents list.") and reads clumsily in `zh_CN`/`zh_TW` ("收到返回的目标不是…"). Rewrite the `en` source as user-facing copy, then re-author all five catalogs.
-- [ ] [FIX] `errClaudeUnreadableRows` (`en`) says "messages at position $positions$" where `$positions$` can list several — use "positions" (or pluralize with the count), and re-check the other four catalogs read the same way.
 
 ## Next (roadmap — not v1)
 

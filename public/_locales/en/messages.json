@@ -452,7 +452,7 @@
     "description": "Bulk export error (Claude): returning to the recents page took too long, so it was skipped."
   },
   "errClaudeNotRecentsPage": {
-    "message": "Asked to return to a Claude page that is not the recents list.",
+    "message": "Could not return to the Claude recents page: the export did not start from it.",
     "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
   },
   "errClaudeNoMessages": {
@@ -533,7 +533,7 @@
     }
   },
   "errClaudeUnreadableRows": {
-    "message": "The conversation contains messages at position $positions$ that this extension could not read — Claude’s markup may have changed, or the message may be a type it does not support yet. Please report this.",
+    "message": "The conversation contains messages at positions $positions$ that this extension could not read — Claude’s markup may have changed, or the messages may be of a type it does not support yet. Please report this.",
     "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of zero-based positions.",
     "placeholders": {
       "positions": {
