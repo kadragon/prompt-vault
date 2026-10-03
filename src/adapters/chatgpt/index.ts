@@ -948,6 +948,12 @@ export async function loadMoreConversations(
   if (!history) return [];
   const container = findScrollableAncestor(history);
 
+  // A list left cut by a 429 stays cut: the page never retries the fetch, and scrolling does
+  // not resume it (2026-10-03). Press its own retry button once, so the re-run the incomplete
+  // warning asks for can recover the list. Inside the rate-limit window the page swallows the
+  // click, and the error row keeps the walk reporting incomplete (`sidebarPagePending`).
+  history.querySelector<HTMLElement>(selectors.sidebarListRetry)?.click();
+
   const origin = documentOrigin(root);
   const acc = new Map<string, SidebarConversation>();
   await scrollUntilStable(
@@ -1077,8 +1083,9 @@ function endOfListGate(): (container: HTMLElement) => boolean {
 
 /**
  * "Is another sidebar page still owed?" — the list's own loading row (primary evidence on the
- * app-shell sidebar, measured 2026-09-29), or page parity (secondary: the rendered increment no
- * longer equals the server page there). Parity is stateful, so it is consulted every round.
+ * app-shell sidebar, measured 2026-09-29), its load-error row (a 429 cut the list, 2026-10-03),
+ * or page parity (secondary: the rendered increment no longer equals the server page there).
+ * Parity is stateful, so it is consulted every round.
  */
 function sidebarPagePending(history: Element, options: LoadMoreScrollOptions): () => boolean {
   // Counted over EVERY conversation row, not the `/c/` ids the loader collects.
@@ -1088,7 +1095,11 @@ function sidebarPagePending(history: Element, options: LoadMoreScrollOptions): (
   });
   return () => {
     const parityOwed = parity();
-    return history.querySelector(selectors.sidebarLoadingStatus) !== null || parityOwed;
+    return (
+      history.querySelector(selectors.sidebarLoadingStatus) !== null ||
+      history.querySelector(selectors.sidebarListRetry) !== null ||
+      parityOwed
+    );
   };
 }
 

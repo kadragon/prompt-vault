@@ -216,6 +216,16 @@ export const selectors = {
   sidebarLoadingStatus: '[role="listitem"]:not([data-sidebar-chatgpt-conversation-key]) [role="status"]',
 
   /**
+   * The retry button of the error status the Recents list shows once a page fetch answered
+   * 429: a `[role="status"][aria-busy="false"]` rendered as the list's NEXT SIBLING (not a
+   * list item), holding the error text and one button. The page drops its loading row once
+   * the rows it already fetched have rendered, so this is the only thing on screen that tells
+   * a cut list from a complete one; the page never retries on its own, and only a click on
+   * this button resumed the fetches. Verified against the live page (2026-10-03).
+   */
+  sidebarListRetry: '[role="list"] + [role="status"] button',
+
+  /**
    * A conversation link on a Project home page (`/g/g-p-<id>/project`) or in the
    * persistent project sidebar expando shown while a project conversation is open.
    * `href` is `/g/g-p-<id>[-slug]/c/<convId>` — the slug varies by context, so match

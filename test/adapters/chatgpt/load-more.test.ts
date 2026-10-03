@@ -4,6 +4,7 @@ import {
   loadMoreProjectConversations,
   SIDEBAR_SCROLL_DEFAULTS_TEST,
 } from '../../../src/adapters/chatgpt';
+import { selectors } from '../../../src/adapters/chatgpt/selectors';
 import { ExtractionError } from '../../../src/core/errors';
 
 // Build a fake list root modelling ChatGPT's virtualized history sidebar / project list
@@ -110,6 +111,7 @@ function makeLazyRoot({
   hydrateSplit = 0,
   preloadedPages = 1,
   loading = 'never',
+  listError = 'never',
 }: {
   pageSize: number;
   pages: number;
@@ -145,7 +147,16 @@ function makeLazyRoot({
    * arriving. Defaults to `'never'`, leaving every pre-existing case unchanged.
    */
   loading?: 'never' | 'fetching' | 'always';
-}): { root: ParentNode; conversationCount: () => number } {
+  /**
+   * The error status the page renders after the list when a page fetch answered 429 (measured
+   * 2026-10-03), with its retry button: `'end'` shows it once every modelled page is in — the
+   * list was cut, the server holds more — and the button never recovers; `'start'` shows it
+   * before the walk and holds back every further page until the button is clicked, which then
+   * resumes the fetches (the window had passed); `'stuck'` is `'start'` with a button that
+   * does nothing (clicked inside the window, the page sends no request). Defaults to `'never'`.
+   */
+  listError?: 'never' | 'end' | 'start' | 'stuck';
+}): { root: ParentNode; conversationCount: () => number; retryClicks: () => number } {
   const clientHeight = view * ROW;
   // Every rendered row's href, in DOM order. A page contributes `cPerPage(p)` plain rows
   // and `pageSize - cPerPage(p)` project-scoped ones.
@@ -167,6 +178,16 @@ function makeLazyRoot({
   let fetching = false;
   let reads = 0;
   let countableFromRead = 0; // reads before this still hide the newest page
+  let errored = listError === 'start' || listError === 'stuck';
+  let retryClicks = 0;
+  const retryButton = {
+    click: (): void => {
+      retryClicks++;
+      if (listError !== 'start') return;
+      errored = false;
+      maybeFetch();
+    },
+  } as unknown as Element;
   // The loader asks for two different row sets: `a[href^="/c/"]` (conversations it collects)
   // and `a[href*="/c/"]` (every conversation row, the parity counter). Honour the difference
   // — collapsing them is exactly the blindness this fixture exists to reproduce.
@@ -185,7 +206,12 @@ function makeLazyRoot({
           }) as unknown as Element,
       );
   const maybeFetch = (): void => {
-    if (fetching || pagesIn >= pages) return;
+    if (errored) return;
+    if (pagesIn >= pages) {
+      if (listError === 'end') errored = true;
+      return;
+    }
+    if (fetching) return;
     if (listRoot._top + clientHeight < hrefs.length * ROW - 1) return; // more to scroll first
     fetching = true;
     const incoming = pagesIn;
@@ -223,15 +249,17 @@ function makeLazyRoot({
       else if (hydrateSplit > 0 && reads === countableFromRead) upTo -= hydrateSplit;
       return anchorsFor(sel, upTo);
     },
-    querySelector: (): Element | null =>
-      loading === 'always' || (loading === 'fetching' && fetching) ? ({} as Element) : null,
+    querySelector: (sel: string): Element | null => {
+      if (sel === selectors.sidebarListRetry) return errored ? retryButton : null;
+      return loading === 'always' || (loading === 'fetching' && fetching) ? ({} as Element) : null;
+    },
   };
   const root = {
     querySelector: () => listRoot,
     querySelectorAll: (sel: string) =>
       sel.includes('/g/g-p-') ? [{ closest: () => listRoot } as unknown as Element] : [],
   } as unknown as ParentNode;
-  return { root, conversationCount: (): number => nextPlain };
+  return { root, conversationCount: (): number => nextPlain, retryClicks: (): number => retryClicks };
 }
 
 const fast = { stepDelayMs: 0, stableRounds: 3, maxSteps: 200 };
@@ -407,6 +435,60 @@ describe('loadMoreConversations (history sidebar)', () => {
     const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
     expect(result.map((c) => c.id)).toEqual(idsUpTo(7));
     expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports possible incompleteness when the list stops under the page\'s load-error row', async () => {
+    // Measured 2026-10-03: a page fetch answered 429 mid-list, the page rendered what it had
+    // already fetched, then DROPPED its loading row and showed an error status after the list.
+    // The last rendered increment was short, so parity reads a genuine end and nothing else is
+    // left on screen — the error row is the only evidence the list was cut (AGENTS.md #4).
+    const incomplete = vi.fn();
+    const { root } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 2, fetchMs: 0, listError: 'end' });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(7));
+    expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicks the page\'s retry button once when a walk starts under the load-error row', async () => {
+    // The page never retries a 429'd fetch on its own, and scrolling does not resume it — only
+    // its own retry button did (2026-10-03). So the re-run the incomplete warning asks for
+    // must press it, or "click Load more again" can never recover the list.
+    const incomplete = vi.fn();
+    const { root, retryClicks } = makeLazyRoot({
+      pageSize: 5,
+      pages: 3,
+      lastPageRows: 2,
+      fetchMs: 0,
+      listError: 'start',
+    });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(retryClicks()).toBe(1);
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(12));
+    expect(incomplete).not.toHaveBeenCalled();
+  });
+
+  it('presses retry only once, and still reports incompleteness, while the rate limit holds', async () => {
+    // Inside the window the page swallows the click (four clicks in the 53 s after a 429 sent
+    // no request, 2026-10-03). Pressing it every round would change nothing; the walk must neither
+    // spin on it nor present the short list as complete.
+    const incomplete = vi.fn();
+    const { root, retryClicks } = makeLazyRoot({
+      pageSize: 5,
+      pages: 3,
+      lastPageRows: 2,
+      fetchMs: 0,
+      listError: 'stuck',
+    });
+    const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
+    expect(retryClicks()).toBe(1);
+    expect(result.map((c) => c.id)).toEqual(idsUpTo(5));
+    expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('presses nothing on a healthy list', async () => {
+    const { root, retryClicks } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 2, fetchMs: 0 });
+    await loadMoreConversations(root, fast);
+    expect(retryClicks()).toBe(0);
   });
 
   it('reports possible incompleteness when the list ends on a full-size page', async () => {
