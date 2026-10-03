@@ -30,6 +30,11 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### PR #109 — Rewrite the Claude not-recents error and pluralize unreadable-rows (2026-10-03)
+
+- [ ] [debt] `errClaudeNotRecentsPage` reaches no user: `returnToStart` rejections are caught and only `console.warn`'d, and the recents panel mounts only on `/recents` — surface the failure in the bulk panel, or mark the key console-only in its description (source: code-review) — src/content/mount.ts:589
+- [ ] [debt] `errClaudeUnreadableRowsMessage` interpolates zero-based positions, so the first message reads "position 0" / "0번 위치" — add 1 at the string boundary (source: code-review) — src/strings.ts:276
+
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
@@ -131,8 +136,6 @@ The larger hazard that measurement exposed is filed above.)*
 > Non-blocking findings from the pre-release evaluation (verdict SHIP).
 
 - [ ] *(blocked by: same rate-limit session as the ChatGPT list 429 item above)* [FIX] A ChatGPT list that gets 429 at offset 0 renders its cached rows, drops the loading row, and shows no incomplete marker (`docs/live-dom-verification.md` → 2026-09-29 "429 is the failure mode") — so the bulk panel offers a short list as if complete. Needs a DOM or timing signal that separates this from a genuine end before the loader can warn.
-- [ ] [FIX] `errClaudeNotRecentsPage` is developer wording in `en` ("Asked to return to a Claude page that is not the recents list.") and reads clumsily in `zh_CN`/`zh_TW` ("收到返回的目标不是…"). Rewrite the `en` source as user-facing copy, then re-author all five catalogs.
-- [ ] [FIX] `errClaudeUnreadableRows` (`en`) says "messages at position $positions$" where `$positions$` can list several — use "positions" (or pluralize with the count), and re-check the other four catalogs read the same way.
 
 ## Next (roadmap — not v1)
 
