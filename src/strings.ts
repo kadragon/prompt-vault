@@ -223,6 +223,7 @@ export const ERR_CLAUDE_PROJECT_OPEN_TIMED_OUT = m('errClaudeProjectOpenTimedOut
 export const ERR_CLAUDE_PROJECT_HOME_URL_MISSING = m('errClaudeProjectHomeUrlMissing');
 export const ERR_CLAUDE_PROJECT_HOME_HISTORY_UNAVAILABLE = m('errClaudeProjectHomeHistoryUnavailable');
 export const ERR_CLAUDE_PROJECT_HOME_TIMED_OUT = m('errClaudeProjectHomeTimedOut');
+// Console-only: thrown solely by the post-batch return hook, which the bulk driver only logs.
 export const ERR_CLAUDE_PROJECT_HOME_MISMATCH = m('errClaudeProjectHomeMismatch');
 export const ERR_CLAUDE_RECENTS_LIST_MISSING = m('errClaudeRecentsListMissing');
 export const ERR_CLAUDE_RECENTS_ROW_MALFORMED = m('errClaudeRecentsRowMalformed');
@@ -230,6 +231,7 @@ export const ERR_CLAUDE_RECENTS_LINKS_INCOMPLETE = m('errClaudeRecentsLinksIncom
 export const ERR_CLAUDE_RECENTS_LINK_MISSING = m('errClaudeRecentsLinkMissing');
 export const ERR_CLAUDE_RECENTS_HISTORY_UNAVAILABLE = m('errClaudeRecentsHistoryUnavailable');
 export const ERR_CLAUDE_RECENTS_RETURN_TIMED_OUT = m('errClaudeRecentsReturnTimedOut');
+// Console-only: thrown solely by the post-batch return hook, which the bulk driver only logs.
 export const ERR_CLAUDE_NOT_RECENTS_PAGE = m('errClaudeNotRecentsPage');
 export const ERR_CLAUDE_NO_MESSAGES = m('errClaudeNoMessages');
 export const ERR_CLAUDE_STREAMING_SETTLE_TIMED_OUT = m('errClaudeStreamingSettleTimedOut');
@@ -259,9 +261,9 @@ export function errClaudeFirstTurnsNeverLoadedMessage(count: number): string {
   return count === 1 ? m('errClaudeFirstTurnNeverLoaded') : m('errClaudeFirstTurnsNeverLoaded', [String(count)]);
 }
 
-/** Turns between two read positions are missing. */
-export function errClaudeTurnGapMessage(from: number, to: number): string {
-  return m('errClaudeTurnGap', [String(from), String(to)]);
+/** Turns between two read positions are missing. Indices arrive zero-based; users count from one. */
+export function errClaudeTurnGapMessage(fromIndex: number, toIndex: number): string {
+  return m('errClaudeTurnGap', [String(fromIndex + 1), String(toIndex + 1)]);
 }
 
 /** The last `count` turns never loaded; Claude declared `declared` messages, `read` were read. */
@@ -271,8 +273,8 @@ export function errClaudeLastTurnsNeverLoadedMessage(count: number, declared: nu
     : m('errClaudeLastTurnsNeverLoaded', [String(count), String(declared), String(read)]);
 }
 
-/** Rendered rows at `positions` yielded no readable message. */
-export function errClaudeUnreadableRowsMessage(positions: readonly number[]): string {
-  const list = positions.join(', ');
-  return positions.length === 1 ? m('errClaudeUnreadableRow', [list]) : m('errClaudeUnreadableRows', [list]);
+/** Rendered rows at `rowIndices` yielded no readable message. Indices arrive zero-based; users count from one. */
+export function errClaudeUnreadableRowsMessage(rowIndices: readonly number[]): string {
+  const list = rowIndices.map((index) => index + 1).join(', ');
+  return rowIndices.length === 1 ? m('errClaudeUnreadableRow', [list]) : m('errClaudeUnreadableRows', [list]);
 }

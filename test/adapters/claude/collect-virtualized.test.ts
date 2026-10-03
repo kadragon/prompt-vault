@@ -559,7 +559,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     const turns = alternating(12);
     for (let i = 8; i < turns.length; i++) turns[i] = { ...turns[i], indexOverride: i + 1 };
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
-      /between positions 7 and 9/,
+      /between positions 8 and 10/,
     );
   });
 
@@ -594,7 +594,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
       if (sel === '[data-index]') return out;
       return out.filter((n) => n.closest?.('[data-index]')?.getAttribute('data-index') !== '0');
     };
-    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/position 0 that this/);
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/position 1 that this/); // row 0, shown one-based
   });
 
   // The failure this shape used to cause was total: one attachment-only turn made the whole
@@ -792,6 +792,23 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     // contiguous and starts at zero — which is exactly why this used to export as complete.
     const doc = makeWindowedDoc({ turns: alternating(10), setSize: 12 });
     await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/last 2 turns never loaded/);
+  });
+
+  // The trailing split's other half: the last declared row rendered but held nothing readable.
+  // Pins the one-based position end to end — the trailing caller builds its own index list.
+  it('names the last row one-based when it rendered but could not be read', async () => {
+    const doc = makeWindowedDoc({ turns: alternating(12), setSize: 12 });
+    const original = doc.querySelectorAll.bind(doc);
+    (doc as unknown as { querySelectorAll: (sel: string) => unknown[] }).querySelectorAll = (
+      sel: string,
+    ) => {
+      const out = original(sel) as unknown as {
+        closest?: (s: string) => { getAttribute(n: string): string | null } | null;
+      }[];
+      if (sel === '[data-index]') return out;
+      return out.filter((n) => n.closest?.('[data-index]')?.getAttribute('data-index') !== '11');
+    };
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/position 12 that this/);
   });
 
   // The same shape with nothing declared must behave exactly as it did before. A markup

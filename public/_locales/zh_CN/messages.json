@@ -424,7 +424,7 @@
   },
   "errClaudeProjectHomeMismatch": {
     "message": "返回到的 Claude 项目主页与批量导出开始时的不同。",
-    "description": "Bulk export error (Claude): after the batch, the page landed on a different project home than the one the batch started from."
+    "description": "Bulk export error (Claude): after the batch, the page landed on a different project home than the one the batch started from. Console-only: thrown solely by the post-batch return step, whose failure the bulk driver logs with console.warn and never renders."
   },
   "errClaudeRecentsListMissing": {
     "message": "在 Claude 最近对话页面上找不到对话列表。Claude 的页面结构可能已更改，请反馈此问题。",
@@ -452,7 +452,7 @@
   },
   "errClaudeNotRecentsPage": {
     "message": "导出并非从 Claude 最近对话页面开始，因此无法返回该页面。",
-    "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
+    "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list. Console-only: thrown solely by the post-batch return step, whose failure the bulk driver logs with console.warn and never renders."
   },
   "errClaudeNoMessages": {
     "message": "页面上找不到任何消息。可能是对话尚未加载，或 Claude 的页面结构已更改，需要更新提取选择器。",
@@ -481,7 +481,7 @@
   },
   "errClaudeTurnGap": {
     "message": "对话中位置 $from$ 与 $to$ 之间的内容缺失。请从头到尾滚动整个对话后重试。",
-    "description": "Extraction error (Claude): turns between two read positions are missing. $from$ and $to$ are zero-based turn positions.",
+    "description": "Extraction error (Claude): turns between two read positions are missing. $from$ and $to$ are one-based turn positions.",
     "placeholders": {
       "from": {
         "content": "$1"
@@ -524,7 +524,7 @@
   },
   "errClaudeUnreadableRow": {
     "message": "对话中位置 $positions$ 有一条消息无法被本扩展程序读取——可能是 Claude 的页面结构已更改，或是尚不支持的消息类型。请反馈此问题。",
-    "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its zero-based position. Singular form of errClaudeUnreadableRows.",
+    "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its one-based position. Singular form of errClaudeUnreadableRows.",
     "placeholders": {
       "positions": {
         "content": "$1"
@@ -533,7 +533,7 @@
   },
   "errClaudeUnreadableRows": {
     "message": "对话中位置 $positions$ 有多条消息无法被本扩展程序读取——可能是 Claude 的页面结构已更改，或是尚不支持的消息类型。请反馈此问题。",
-    "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of zero-based positions.",
+    "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of one-based positions.",
     "placeholders": {
       "positions": {
         "content": "$1"

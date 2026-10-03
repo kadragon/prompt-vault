@@ -424,7 +424,7 @@
   },
   "errClaudeProjectHomeMismatch": {
     "message": "일괄 내보내기를 시작한 곳과 다른 Claude 프로젝트 홈으로 돌아왔습니다.",
-    "description": "Bulk export error (Claude): after the batch, the page landed on a different project home than the one the batch started from."
+    "description": "Bulk export error (Claude): after the batch, the page landed on a different project home than the one the batch started from. Console-only: thrown solely by the post-batch return step, whose failure the bulk driver logs with console.warn and never renders."
   },
   "errClaudeRecentsListMissing": {
     "message": "Claude 최근 대화 페이지에서 대화 목록을 찾지 못했습니다. Claude 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
@@ -452,7 +452,7 @@
   },
   "errClaudeNotRecentsPage": {
     "message": "내보내기를 최근 대화 페이지에서 시작하지 않아 Claude 최근 대화 페이지로 돌아가지 못했습니다.",
-    "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list."
+    "description": "Bulk export error (Claude): the batch was asked to return to a page that is not the recents list. Console-only: thrown solely by the post-batch return step, whose failure the bulk driver logs with console.warn and never renders."
   },
   "errClaudeNoMessages": {
     "message": "페이지에서 메시지를 찾지 못했습니다. 대화가 아직 불러와지지 않았거나, Claude 페이지 구조가 바뀌어 추출 선택자를 고쳐야 할 수 있습니다.",
@@ -481,7 +481,7 @@
   },
   "errClaudeTurnGap": {
     "message": "대화에서 $from$번과 $to$번 위치 사이의 항목이 빠졌습니다. 대화 전체를 한 번 스크롤한 뒤 다시 시도해 주세요.",
-    "description": "Extraction error (Claude): turns between two read positions are missing. $from$ and $to$ are zero-based turn positions.",
+    "description": "Extraction error (Claude): turns between two read positions are missing. $from$ and $to$ are one-based turn positions.",
     "placeholders": {
       "from": {
         "content": "$1"
@@ -524,7 +524,7 @@
   },
   "errClaudeUnreadableRow": {
     "message": "대화의 $positions$번 위치에 확장 프로그램이 읽지 못한 메시지가 있습니다. Claude 페이지 구조가 바뀌었거나, 아직 지원하지 않는 유형의 메시지일 수 있습니다. 제보해 주세요.",
-    "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its zero-based position. Singular form of errClaudeUnreadableRows.",
+    "description": "Extraction error (Claude): a rendered message could not be read. $positions$ is its one-based position. Singular form of errClaudeUnreadableRows.",
     "placeholders": {
       "positions": {
         "content": "$1"
@@ -533,7 +533,7 @@
   },
   "errClaudeUnreadableRows": {
     "message": "대화의 $positions$번 위치에 확장 프로그램이 읽지 못한 메시지가 있습니다. Claude 페이지 구조가 바뀌었거나, 아직 지원하지 않는 유형의 메시지일 수 있습니다. 제보해 주세요.",
-    "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of zero-based positions.",
+    "description": "Extraction error (Claude): several rendered messages could not be read. $positions$ is a comma-separated list of one-based positions.",
     "placeholders": {
       "positions": {
         "content": "$1"
