@@ -559,7 +559,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     const turns = alternating(12);
     for (let i = 8; i < turns.length; i++) turns[i] = { ...turns[i], indexOverride: i + 1 };
     await expect(collectVirtualizedTurns(makeWindowedDoc({ turns }), fast)).rejects.toThrow(
-      /between positions 7 and 9/,
+      /between positions 8 and 10/,
     );
   });
 
@@ -594,7 +594,7 @@ describe('collectVirtualizedTurns — recycling message list', () => {
       if (sel === '[data-index]') return out;
       return out.filter((n) => n.closest?.('[data-index]')?.getAttribute('data-index') !== '0');
     };
-    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/position 0 that this/);
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/position 1 that this/); // row 0, shown one-based
   });
 
   // The failure this shape used to cause was total: one attachment-only turn made the whole

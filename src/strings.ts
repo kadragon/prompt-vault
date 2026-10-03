@@ -259,9 +259,9 @@ export function errClaudeFirstTurnsNeverLoadedMessage(count: number): string {
   return count === 1 ? m('errClaudeFirstTurnNeverLoaded') : m('errClaudeFirstTurnsNeverLoaded', [String(count)]);
 }
 
-/** Turns between two read positions are missing. */
+/** Turns between two read positions are missing. Positions arrive zero-based; users count from one. */
 export function errClaudeTurnGapMessage(from: number, to: number): string {
-  return m('errClaudeTurnGap', [String(from), String(to)]);
+  return m('errClaudeTurnGap', [String(from + 1), String(to + 1)]);
 }
 
 /** The last `count` turns never loaded; Claude declared `declared` messages, `read` were read. */
@@ -271,8 +271,8 @@ export function errClaudeLastTurnsNeverLoadedMessage(count: number, declared: nu
     : m('errClaudeLastTurnsNeverLoaded', [String(count), String(declared), String(read)]);
 }
 
-/** Rendered rows at `positions` yielded no readable message. */
+/** Rendered rows at `positions` yielded no readable message. Positions arrive zero-based; users count from one. */
 export function errClaudeUnreadableRowsMessage(positions: readonly number[]): string {
-  const list = positions.join(', ');
+  const list = positions.map((position) => position + 1).join(', ');
   return positions.length === 1 ? m('errClaudeUnreadableRow', [list]) : m('errClaudeUnreadableRows', [list]);
 }
