@@ -17,6 +17,10 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### PR #113 — live DOM measurement recording (2026-10-05)
+
+- [ ] *(blocked by: needs a fresh per-row probe during Claude recents paging)* [doc] Classify the extra row in the intermediate 32-row / 30-link / 1-blank snapshot, or explicitly mark it unclassified. Counts alone do not establish that every anchorless row is the measured 1px blank row. (source: greptile) — docs/live-dom-verification.md:809 (introduced here)
+
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
