@@ -318,3 +318,42 @@ describe.each(['/recents', '/chats'])('transient history rows on %s', (path) => 
     expect(incomplete).toEqual([true]);
   });
 });
+
+describe.each(['/recents', '/chats'])('pending history readiness on %s', (path) => {
+  it.each([SPACER, SKELETON, SPACER + SKELETON])('rejects a placeholder-only public list', (row) => {
+    expect(() => claudeAdapter.listRecentsConversations?.(historyRows(row, path))).toThrow(ExtractionError);
+  });
+  const thirtyRows = Array.from({ length: 30 }, (_, id) =>
+    `<tr><td><a href="/chat/${id}">Chat ${id}</a></td></tr>`).join('');
+  function installFixedPort(doc: Document, update: (writes: number) => void): void {
+    let writes = 0;
+    Object.defineProperties(doc.querySelector('table'), {
+      clientHeight: { configurable: true, value: 60 },
+      scrollHeight: { configurable: true, value: 600 },
+      scrollTop: { configurable: true, get: () => 540, set: () => update(++writes) },
+    });
+  }
+  it('waits past stability while spacer precedes delayed Skeleton and real rows', async () => {
+    const doc = historyRows(thirtyRows + SPACER, path);
+    installFixedPort(doc, (writes) => {
+      if (writes === 4) doc.querySelector('tbody')!.innerHTML = thirtyRows + SPACER + SKELETON;
+      if (writes === 7) doc.querySelector('tbody')!.innerHTML = thirtyRows + CHAT_ROW;
+    });
+    const incomplete: boolean[] = [];
+    const result = await claudeAdapter.loadMoreRecentsConversations?.(doc, {
+      stepDelayMs: 0, stableRounds: 2, maxSteps: 12, onIncomplete: () => incomplete.push(true),
+    });
+    expect(result?.map((chat) => chat.id)).toEqual([...Array.from({ length: 30 }, (_, id) => String(id)), 'ready']);
+    expect(incomplete).toEqual([]);
+  });
+  it('preserves thirty available chats and signals incomplete while spacer remains', async () => {
+    const doc = historyRows(thirtyRows + SPACER, path);
+    installFixedPort(doc, () => {});
+    const incomplete: boolean[] = [];
+    const result = await claudeAdapter.loadMoreRecentsConversations?.(doc, {
+      stepDelayMs: 0, stableRounds: 2, maxSteps: 6, onIncomplete: () => incomplete.push(true),
+    });
+    expect(result).toHaveLength(30);
+    expect(incomplete).toEqual([true]);
+  });
+});

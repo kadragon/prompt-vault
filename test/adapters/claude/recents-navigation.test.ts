@@ -317,4 +317,110 @@ describe.each(['/recents', '/chats'])('Claude %s navigation openers', (RECENTS_P
       ExtractionError,
     );
   });
+  it.each(['home', 'conversation'])('waits for real rows after placeholder-only route landing (%s)', async (opener) => {
+    const placeholder = '<main><table><tbody><tr style="height:1px"><td></td></tr></tbody></table></main>';
+    const { doc, state, backs } = installRecentsPage('<body>previous conversation</body>', '/chat/previous');
+    backs.onBack = () => {
+      setPathname(state, RECENTS_PATH);
+      doc.body.innerHTML = placeholder;
+      setTimeout(() => {
+        doc.body.innerHTML = RECENTS_TABLE;
+        doc.querySelector('a')?.addEventListener('click', () => {
+          setPathname(state, '/chat/next');
+          doc.body.innerHTML = '<div data-index="0"><div class="standard-markdown">next answer</div></div>';
+        });
+      }, 10);
+    };
+    if (opener === 'home') {
+      await claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, { pollMs: 1, timeoutMs: 200 });
+      expect(doc.querySelector('a')?.getAttribute('href')).toBe('/chat/next');
+      expect(state.pathname).toBe(RECENTS_PATH);
+    } else {
+      await claudeAdapter.openRecentsConversation?.('https://claude.ai/chat/next', { pollMs: 1, timeoutMs: 200 });
+      expect(state.pathname).toBe('/chat/next');
+    }
+    expect(backs.count).toBe(1);
+  });
+
+  it.each(['home', 'conversation'])('waits for real rows when already on a placeholder-only history (%s)', async (opener) => {
+    const { doc, state, backs } = installRecentsPage(
+      '<body><main><table><tbody><tr><td><div data-cds="Skeleton" role="status">Loading</div></td>' +
+      '<td><div data-cds="Skeleton" role="status">Loading</div></td><td></td></tr></tbody></table></main></body>',
+      RECENTS_PATH,
+    );
+    setTimeout(() => {
+      doc.body.innerHTML = RECENTS_TABLE;
+      doc.querySelector('a')?.addEventListener('click', () => {
+        setPathname(state, '/chat/next');
+        doc.body.innerHTML = '<div data-index="0"><div class="standard-markdown">next answer</div></div>';
+      });
+    }, 10);
+    if (opener === 'home') {
+      await claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, { pollMs: 1, timeoutMs: 200 });
+      expect(doc.querySelector('a')?.getAttribute('href')).toBe('/chat/next');
+    } else {
+      await claudeAdapter.openRecentsConversation?.('https://claude.ai/chat/next', { pollMs: 1, timeoutMs: 200 });
+      expect(state.pathname).toBe('/chat/next');
+    }
+    expect(backs.count).toBe(0);
+  });
+
+  it.each(['home', 'conversation'])('accepts readable chats before loading rows finish (%s)', async (opener) => {
+    const html = RECENTS_TABLE.replace('</tbody>', '<tr style="height:1px"><td></td></tr></tbody>');
+    const { doc, state, backs } = installRecentsPage(html, RECENTS_PATH);
+    doc.querySelector('a')?.addEventListener('click', () => {
+      setPathname(state, '/chat/next');
+      doc.body.innerHTML = '<div data-index="0"><div class="standard-markdown">next answer</div></div>';
+    });
+    if (opener === 'home') {
+      await claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, { pollMs: 1, timeoutMs: 100 });
+      expect(state.pathname).toBe(RECENTS_PATH);
+    } else {
+      await claudeAdapter.openRecentsConversation?.('https://claude.ai/chat/next', { pollMs: 1, timeoutMs: 100 });
+      expect(state.pathname).toBe('/chat/next');
+    }
+    expect(backs.count).toBe(0);
+  });
+
+  it('returns to the exact originating history route when currently on the other alias', async () => {
+    const otherPath = RECENTS_PATH === '/chats' ? '/recents' : '/chats';
+    const { doc, state, backs } = installRecentsPage(RECENTS_TABLE, otherPath);
+    backs.onBack = () => { setPathname(state, RECENTS_PATH); doc.body.innerHTML = RECENTS_TABLE; };
+    await claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, { pollMs: 1, timeoutMs: 100 });
+    expect(state.pathname).toBe(RECENTS_PATH);
+    expect(backs.count).toBe(1);
+  });
+
+  it('does not report success when the originating history route cannot be restored', async () => {
+    const otherPath = RECENTS_PATH === '/chats' ? '/recents' : '/chats';
+    const { backs } = installRecentsPage(RECENTS_TABLE, otherPath);
+    await expect(claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, {
+      pollMs: 1, timeoutMs: 20,
+    })).rejects.toBeInstanceOf(ExtractionError);
+    expect(backs.count).toBe(1);
+  });
+
+  it('normalizes a trailing slash for an already restored history home', async () => {
+    const { backs } = installRecentsPage(RECENTS_TABLE, `${RECENTS_PATH}/`);
+    await claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, { pollMs: 1, timeoutMs: 100 });
+    expect(backs.count).toBe(0);
+    await claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}/`, { pollMs: 1, timeoutMs: 100 });
+    expect(backs.count).toBe(0);
+  });
+
+  it('bounds retries while the wrong history alias remains rendered', async () => {
+    vi.useFakeTimers();
+    try {
+      const otherPath = RECENTS_PATH === '/chats' ? '/recents' : '/chats';
+      const { backs } = installRecentsPage(RECENTS_TABLE, otherPath);
+      const settled = claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, {
+        pollMs: 100, timeoutMs: 15000,
+      });
+      const rejected = expect(settled).rejects.toBeInstanceOf(ExtractionError);
+      await vi.advanceTimersByTimeAsync(16000);
+      await rejected;
+      expect(backs.count).toBe(3);
+    } finally { vi.useRealTimers(); }
+  });
+
 });

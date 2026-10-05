@@ -703,7 +703,11 @@ function resolveRecentsTable(root: ParentNode = document): Element | null {
  * (a caller probing an arbitrary document) an empty list stays the honest answer.
  */
 function listRecentsConversations(root: ParentNode = document): SidebarConversation[] {
-  return readRecentsConversations(root).conversations;
+  const snapshot = readRecentsConversations(root);
+  if (snapshot.loading && snapshot.conversations.length === 0) {
+    throw new ExtractionError(ERR_CLAUDE_RECENTS_LIST_MISSING);
+  }
+  return snapshot.conversations;
 }
 
 function readRecentsConversations(root: ParentNode): { conversations: SidebarConversation[]; loading: boolean } {
@@ -768,7 +772,7 @@ function readRecentsConversations(root: ParentNode): { conversations: SidebarCon
   }
   return {
     conversations: collectNavigationConversations(links, origin, 'recents'),
-    loading: loading || (spacer && links.length === 0),
+    loading: loading || spacer,
   };
 }
 
@@ -780,6 +784,11 @@ function readRecentsConversations(root: ParentNode): { conversations: SidebarCon
  */
 function recentsToolbarMount(root: ParentNode = document): Element | null {
   return resolveRecentsTable(root)?.parentElement ?? null;
+}
+
+/** A table containing only loading rows has not restored the selectable history yet. */
+function hasReadableRecentsConversations(): boolean {
+  return Boolean(resolveRecentsTable(document)) && readRecentsConversations(document).conversations.length > 0;
 }
 
 /** Open a `/recents` member through the measured `/chat/<id>` route and wait for its render. */
@@ -795,7 +804,7 @@ async function openRecentsConversation(url: string, opts: OpenConversationOption
   // The ROUTE decides whether `/recents` still has to be restored, never a rendered table: an
   // assistant markdown table also matches `main table` from a `/chat/<id>` page, and trusting it
   // would skip the return and fail every remaining member of the batch.
-  if (!matchesRecents(currentPageUrl())) {
+  if (!matchesRecents(currentPageUrl()) || !hasReadableRecentsConversations()) {
     await returnToRecents(pollMs, timeoutMs);
   }
 
@@ -823,18 +832,24 @@ function findRecentsConversationAnchor(id: string): HTMLAnchorElement | null {
   return null;
 }
 
+/** Member opens accept either history alias; the final return honors its supplied home URL. */
+function isRecentsHomeRoute(expectedPath?: string): boolean {
+  return matchesRecents(currentPageUrl()) &&
+    (expectedPath === undefined || location.pathname.replace(/\/$/, '') === expectedPath);
+}
+
 /**
- * Return to `/recents` before opening the next member. A twin of `returnToProjectHome` rather
+ * Return to history before opening the next member. A twin of `returnToProjectHome` rather
  * than a shared generic: that function waits on `selectors.projectTable` and carries the project
  * track's own user-facing wording, and parameterizing it would mean threading both a table
  * resolver and a message bundle through a two-caller helper — more coupling than the ~15 shared
  * lines are worth, and it would put the shipped project error strings at risk for no gain.
  *
- * No cached home URL is needed: history.back restores either measured history route,
- * /recents or /chats, and the same route gate waits for its table.
+ * Member opens can restore either measured history route. The final return supplies its
+ * originating pathname, so history.back must restore that route and its readable rows.
  */
-async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void> {
-  // Only navigate when the page actually left `/recents`. Firing `back()` while already there
+async function returnToRecents(pollMs: number, timeoutMs: number, expectedPath?: string): Promise<void> {
+  // Only navigate when the page is off the requested history route. Firing `back()` while there
   // pops to the PREVIOUS entry — a `/chat/<id>` route — and the wait below would then poll for a
   // page the call itself just abandoned. A list still hydrating only needs waiting out.
   // Set only when a rewind was actually owed, so the already-there case still fires no `back()`
@@ -842,7 +857,7 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
   let rewind: (() => void) | null = null;
   let backSteps = 0;
   let lastBackAt = 0;
-  if (!matchesRecents(currentPageUrl())) {
+  if (!isRecentsHomeRoute(expectedPath)) {
     const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
     if (!historyObject?.back) {
       throw new ExtractionError(ERR_CLAUDE_RECENTS_HISTORY_UNAVAILABLE);
@@ -855,7 +870,7 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await delay(pollMs);
-    if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
+    if (isRecentsHomeRoute(expectedPath) && hasReadableRecentsConversations()) return;
     // Same two-entry recovery as `returnToProjectHome`: when the open pushed a second history
     // entry, `/recents` is one further back and polling alone never reaches it. Capped, because
     // each step past the pushed entry rewinds the user's own history. Gated on still being off
@@ -863,7 +878,7 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
     // not another rewind.
     if (
       rewind &&
-      !matchesRecents(currentPageUrl()) &&
+      !isRecentsHomeRoute(expectedPath) &&
       backSteps < MAX_RETURN_BACK_STEPS &&
       Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS
     ) {
@@ -881,8 +896,9 @@ async function openRecentsHome(homeUrl: string, opts: OpenConversationOptions = 
   if (!matchesRecents(homeUrl)) {
     throw new ExtractionError(ERR_CLAUDE_NOT_RECENTS_PAGE);
   }
-  if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
-  await returnToRecents(pollMs, timeoutMs);
+  const expectedPath = new URL(homeUrl).pathname.replace(/\/$/, '');
+  if (isRecentsHomeRoute(expectedPath) && hasReadableRecentsConversations()) return;
+  await returnToRecents(pollMs, timeoutMs, expectedPath);
 }
 
 /**

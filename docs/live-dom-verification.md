@@ -828,9 +828,10 @@ The two Skeleton divs on `/chats` carried inline dimensions `14rem × 0.75rem` a
 selector contracts. These observations classify the *fresh* intermediate samples.
 The extra row in the earlier recording below remains unclassified because its own
 per-row structure was not retained; matching counts do not retroactively prove its identity.
-Unknown anchorless rows must still fail loud. Loading rows must not advance the
-loader's stable termination counter, and exhausting its step budget while they remain
-must signal an incomplete list.
+Unknown anchorless rows must still fail loud. A placeholder-only public list must
+fail loud rather than report an empty history; both spacers and Skeleton rows keep
+the loader pending. These rows must not advance the loader's stable termination
+counter, and exhausting its step budget while they remain must signal an incomplete list.
 
 Scope: populated history, one account, one locale and window. Document-only projects,
 zero-history accounts and Japanese/Chinese artifact separators remain unmeasurable in
