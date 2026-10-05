@@ -15,20 +15,11 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 - [ ] [HARNESS] Add `addons-linter` (web-ext lint) as a CI step — validates the MV3 manifest and flags extension-unsafe patterns (`eval`, remote scripts, over-broad permissions). *(deferred: addons-linter is Firefox/AMO-oriented — on our Chrome-only MV3 manifest it only emits Firefox false-positives (`ADDON_ID_REQUIRED` gecko id, `gecko/data_collection_permissions`). No real Chrome value now; static analysis is covered by CodeQL + type-checked eslint + the privacy gate. Revisit if Firefox support is ever added.)*
 
-## Claude adapter follow-ups (PR #58 review, 2026-08-10)
-
-> Findings from the PR #58 panel that were out of scope for that PR. The route/locale defects
-> themselves were fixed there; these are the parts that need a live-DOM session or a separate
-> behaviour decision.
-
-- [ ] *(blocked by: needs a live-DOM session on an account holding a project reachable at the bare `/project/<id>` route — the 2026-08-10 session only exercised `/cowork/project/<id>`)*
-      [FIX] Measure the `/project/<id>` project-home family. `PROJECT_PATHS`
-      (`src/adapters/claude/matches.ts`) advertises it as supported, but nothing has been
-      measured there — including whether its list is the same `data-cds` table. Until it is,
-      any attribute pinning of `selectors.projectTable` would rest on an unmeasured assumption
-      for half the supported routes (AGENTS.md #5).
-
 ## Review Backlog
+
+### PR #113 — live DOM measurement recording (2026-10-05)
+
+- [ ] *(blocked by: needs a fresh per-row probe during Claude recents paging)* [doc] Classify the extra row in the intermediate 32-row / 30-link / 1-blank snapshot, or explicitly mark it unclassified. Counts alone do not establish that every anchorless row is the measured 1px blank row. (source: greptile) — docs/live-dom-verification.md:809 (introduced here)
 
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
@@ -57,18 +48,24 @@ continuation line is invisible to it and the blocked item is offered as actionab
       the absence of a table, so it is correct either way — but whether such a project renders a
       document table at all is still unmeasured, and the answer would let the row contract be
       tightened.
-- [ ] *(blocked by: needs the same `/project/<id>` live-DOM session as the item above)*
-      [FIX] A Claude project list rendered outside `<main>` would read as `[]` rather than failing
+- [ ] [FIX] A Claude project list rendered outside `<main>` would read as `[]` rather than failing
       loud. `listProjectConversations` scopes its stranded-link probe to `main a[href^="/chat/"]`
       because the app shell's `aside` carries up to 20 recent-chat anchors matching the same
       selector. `projectTable` (`main table`) has always carried that assumption, so this is not a
-      new one — but no measurement would have seen links outside `main`, and `/project/<id>` is
-      unmeasured entirely.
-- [ ] *(deferred: `/recents` measured non-paging and fully rendered at 26 rows on 2026-08-11, so this loop barely turns; revisit if a paging `/recents` is observed)*
-      [FIX] The `/recents` walk aborts the whole enumeration when a row transiently renders with
+      new one — the 2026-10-05 bare-route session measured all project links inside `main` on
+      one empty and two populated homes. The measurement prerequisite is resolved; any new
+      guard must preserve the distinction between project links and sidebar history.
+- [ ] [FIX] The `/recents` walk aborts the whole enumeration when a row transiently renders with
       no anchor, because it re-enters `listRecentsConversations` each round. That is the fail-loud
       direction and matches the row contract, but it is more brittle than the sidebar loader, which
-      skips unreadable anchors.
+      skips unreadable anchors. Prerequisite met on 2026-10-05: native scrolling grew 30 to
+      34 links; opening the bulk panel with one blank anchorless row reproduced the visible
+      extraction error. Preserve fail-loud handling of malformed conversation rows while
+      distinguishing measured non-conversation rows; counts alone do not prove hydration.
+- [ ] [FIX] Support Claude's native View all destination `/chats`, observed 2026-10-05.
+      `RECENTS_PATH` currently accepts only `/recents`, which remains directly accessible.
+      Verify the `/chats` list contract and route the history bulk entry point without
+      broadening matches to unrelated pages.
 - [ ] *(blocked by: needs a ja-JP or zh UI account — the measuring account is ko-KR only)*
       [VERIFY] Measure the artifact card's kind separator outside ko-KR. `artifactFormatToken`
       accepts U+00B7, U+30FB and U+2022 and passes any other shape through verbatim, so a different
@@ -101,16 +98,14 @@ The larger hazard that measurement exposed is filed above.)*
 > against, now buys the longer dwell WITHOUT claiming the list is short, so `onIncomplete` is a
 > narrower signal than the one those items describe.
 
-- [ ] *(blocked by: the row-vs-anchor hydration order was not measured on 2026-08-10, so whether
-      Gemini ever exposes the window is unknown)*
+- [ ] *(blocked by: cold/subframe row-vs-anchor hydration remains unmeasured; expanded paging on 2026-10-05 showed equal row/anchor counts at 52, 72, 92, and 112)*
       [FIX] A partially hydrated sidebar — rows attached, their inner `<a>` not yet — is
       indistinguishable from a collapsed one, so `assertSidebarExpanded` tells the user to open a
       sidebar that is already open. Wrong-but-recoverable (a retry succeeds) and never a silent
       empty list, so it violates no golden principle. Angular renders a component template
       atomically and the anchor lives inside the row template, so the window is likely sub-frame.
       Cheapest hardening if it turns out real: one `requestAnimationFrame` re-check before throwing.
-- [ ] *(deferred: inherent to the node-identity mechanism, and closing it would need the exchange
-      id-value stability that is unmeasured — see docs/live-dom-verification.md → 2026-08-20)*
+- [ ] *(deferred: provider-wide exchange identity remains unverified; 2026-10-05 A/B/A revisits preserved ordered IDs across new nodes in two conversations, which is insufficient to guarantee identity)*
       [FIX] `openConversation` accepts an outgoing view that was destroyed and recreated as fresh
       nodes with a byte-identical id and text (QA's PROBE4: resolves at 455 ms with the outgoing
       content). Node identity proves a render *occurred*, not *which* conversation rendered.

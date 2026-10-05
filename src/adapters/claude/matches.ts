@@ -16,7 +16,9 @@ export const SUPPORTED_HOSTS = new Set(['claude.ai']);
 // loosely rather than pinned to a UUID shape. Verified against the live page (2026-07-25).
 export const CONVERSATION_PATH = /^\/chat\/[^/]+\/?$/;
 
-// Claude exposes two measured project-home route families. Keep the id segment loose —
+// Claude exposes two measured project-home route families: /cowork/project/<id> (2026-08-10)
+// and /project/<id> (2026-10-05: one empty and two populated homes, no redirect).
+// Keep the id segment loose —
 // the adapter only needs the route family here, while the project member links provide
 // the stable conversation ids used by the bulk track.
 export const PROJECT_PATHS = [/^\/cowork\/project\/[^/]+\/?$/, /^\/project\/[^/]+\/?$/] as const;
@@ -41,7 +43,7 @@ export function matches(url: string): boolean {
   return SUPPORTED_HOSTS.has(parsed.hostname) && CONVERSATION_PATH.test(parsed.pathname);
 }
 
-/** True only for Claude Project home routes measured on 2026-08-09. */
+/** True only for Claude Project home routes measured on 2026-08-10 and 2026-10-05. */
 export function matchesProject(url: string): boolean {
   let parsed: URL;
   try {
