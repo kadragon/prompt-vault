@@ -440,7 +440,7 @@ interface LoadMoreArgs {
   /**
    * Whether some earlier walk reported the list may be incomplete. Lives with the panel, not
    * the walk, so the doubt survives the retry the warning asks the user to make. `rateLimited`
-   * records whether the walk that reported it named a rate limit, which picks the warning.
+   * records whether the latest walk named a rate limit, which picks the warning.
    */
   doubt: { reported: boolean; rateLimited: boolean };
 }
@@ -495,7 +495,13 @@ async function loadMore(args: LoadMoreArgs): Promise<void> {
     if (mayBeIncomplete) {
       doubt.reported = true;
       doubt.rateLimited = rateLimited;
-    } else if (grew) doubt.reported = false;
+    } else {
+      // ChatGPT reports its error row on every walk that ends under it. Silence can mean
+      // that retry cleared the error but only excluded project/GPT rows arrived; keep the
+      // incompleteness doubt without retaining a rate limit that is no longer observed.
+      doubt.rateLimited = false;
+      if (grew) doubt.reported = false;
+    }
 
     if (doubt.reported) {
       status.textContent = doubt.rateLimited

@@ -347,7 +347,10 @@ describe('openBulkPanel', () => {
       await flush();
       expect(call).toBe(2);
       if (nextWalk === 'silent retry') {
-        expect(panel.textContent).toContain(bulkLoadMoreRateLimitedMessage(CONVS.length));
+        // A silent adapter has no error row left at the end. The retry may have loaded only
+        // excluded project/GPT rows, so collected-count stasis is not evidence of a rate limit.
+        expect(panel.textContent).toContain(bulkLoadMoreIncompleteMessage(CONVS.length));
+        expect(panel.textContent).not.toContain(bulkLoadMoreRateLimitedMessage(CONVS.length));
       } else if (nextWalk === 'ordinary incompleteness') {
         expect(panel.textContent).toContain(bulkLoadMoreIncompleteMessage(CONVS.length));
         expect(panel.textContent).not.toContain(bulkLoadMoreRateLimitedMessage(CONVS.length));
