@@ -17,6 +17,10 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### PR #114 — queue cleanup harness follow-up (2026-10-05)
+
+- [ ] [harness] Make `task_nodes.py prune-backlog` remove a selected multiline item's indented continuation block; this run removed only its three checkbox lines and left orphan prose. Add a regression preserving neighboring blocked items. *(blocked by: fix belongs to the external dev plugin repository, outside this sprint and repository scope)*
+
 ### PR #113 — live DOM measurement recording (2026-10-05)
 
 - [ ] *(blocked by: needs a fresh per-row probe during Claude recents paging)* [doc] Classify the extra row in the intermediate 32-row / 30-link / 1-blank snapshot, or explicitly mark it unclassified. Counts alone do not establish that every anchorless row is the measured 1px blank row. (source: greptile) — docs/live-dom-verification.md:809 (introduced here)
@@ -48,21 +52,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
       the absence of a table, so it is correct either way — but whether such a project renders a
       document table at all is still unmeasured, and the answer would let the row contract be
       tightened.
-      loud. `listProjectConversations` scopes its stranded-link probe to `main a[href^="/chat/"]`
-      because the app shell's `aside` carries up to 20 recent-chat anchors matching the same
-      selector. `projectTable` (`main table`) has always carried that assumption, so this is not a
-      new one — the 2026-10-05 bare-route session measured all project links inside `main` on
-      one empty and two populated homes. The measurement prerequisite is resolved; any new
-      guard must preserve the distinction between project links and sidebar history.
-      no anchor, because it re-enters `listRecentsConversations` each round. That is the fail-loud
-      direction and matches the row contract, but it is more brittle than the sidebar loader, which
-      skips unreadable anchors. Prerequisite met on 2026-10-05: native scrolling grew 30 to
-      34 links; opening the bulk panel with one blank anchorless row reproduced the visible
-      extraction error. Preserve fail-loud handling of malformed conversation rows while
-      distinguishing measured non-conversation rows; counts alone do not prove hydration.
-      `RECENTS_PATH` currently accepts only `/recents`, which remains directly accessible.
-      Verify the `/chats` list contract and route the history bulk entry point without
-      broadening matches to unrelated pages.
 - [ ] *(blocked by: needs a ja-JP or zh UI account — the measuring account is ko-KR only)*
       [VERIFY] Measure the artifact card's kind separator outside ko-KR. `artifactFormatToken`
       accepts U+00B7, U+30FB and U+2022 and passes any other shape through verbatim, so a different
