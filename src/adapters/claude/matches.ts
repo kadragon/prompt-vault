@@ -26,8 +26,8 @@ export const PROJECT_PATHS = [/^\/cowork\/project\/[^/]+\/?$/, /^\/project\/[^/]
 // Claude's full-history list page. An EXACT path (optionally trailing-slashed), not a
 // prefix: nothing below `/recents` was measured, and matching a nested route would offer
 // the bulk trigger on a page whose table this adapter has never seen. Verified against the
-// live page (2026-08-11).
-export const RECENTS_PATH = /^\/recents\/?$/;
+// live page (/recents 2026-08-11; native View all → /chats 2026-10-05).
+export const RECENTS_PATH = /^\/(?:recents|chats)\/?$/;
 
 /**
  * True only for a Claude conversation page: a supported host with a `/chat/<id>`
@@ -55,7 +55,7 @@ export function matchesProject(url: string): boolean {
 }
 
 /**
- * True only for Claude's `/recents` history page, measured 2026-08-11. Same host + path
+ * True only for Claude's `/recents` and `/chats` history pages, measured 2026-08-11 / 2026-10-05. Same host + path
  * shape as `matchesProject`; invalid URLs return false rather than throwing.
  */
 export function matchesRecents(url: string): boolean {

@@ -362,6 +362,10 @@ export const selectors = {
   recentsTable: 'main table',
   recentsRow: 'tbody > tr',
   recentsConversationLink: 'a[href^="/chat/"]',
+  /** Loading cells measured on /chats and /recents, 2026-10-05: two DIVs in a 3-TD row. */
+  recentsSkeleton: 'div[data-cds="Skeleton"][role="status"]',
+  recentsRowControl: 'a, button',
+
 
   /**
    * The header action bar holding Claude's native controls (Share, chat options). The

@@ -320,6 +320,13 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
   const pageUrl = ownerDocument(root)?.defaultView?.location?.href ?? '';
   const onProjectRoute = Boolean(pageUrl) && matchesProject(pageUrl);
   if (onProjectRoute) activeProjectHomeUrl = pageUrl;
+  // Chat links outside both measured regions are list drift, never an empty project.
+  if (onProjectRoute) {
+    const mainLinks = new Set(root.querySelectorAll(selectors.projectMainConversationLink));
+    const stranded = Array.from(root.querySelectorAll(selectors.projectConversationLink))
+      .some((link) => !mainLinks.has(link) && !link.closest(selectors.sidebar));
+    if (stranded) throw new ExtractionError(ERR_CLAUDE_PROJECT_LIST_MISSING);
+  }
   // The EMPTY project, decided before any table is trusted. A project home that has rendered and
   // holds no conversation link at all in `main` has no conversations — whether or not it renders a
   // table. That "whether or not" is the point: the project measured empty on 2026-08-11 held no
@@ -682,9 +689,10 @@ function resolveRecentsTable(root: ParentNode = document): Element | null {
 }
 
 /**
- * Enumerate the measured `/recents` table. Every observed row had exactly one chat anchor
- * (26/26 on 2026-08-11); a row without one is a visible structural failure rather than a
- * silently shortened history.
+ * Enumerate the measured history table. Conversation rows carry exactly one chat anchor;
+ * the 2026-10-05 /chats and /recents observations also showed a blank 1px spacer and
+ * three-cell Skeleton loading rows. Only those narrow exceptions are skipped; all other
+ * anchorless or ambiguous rows remain visible structural failures.
  *
  * No table at all ON the `/recents` route fails loud, for the same reason as
  * `listProjectConversations`: downstream, `[]` is the bulk panel's "no conversations" state,
@@ -695,18 +703,51 @@ function resolveRecentsTable(root: ParentNode = document): Element | null {
  * (a caller probing an arbitrary document) an empty list stays the honest answer.
  */
 function listRecentsConversations(root: ParentNode = document): SidebarConversation[] {
+  const snapshot = readRecentsConversations(root);
+  if (snapshot.loading && snapshot.conversations.length === 0) {
+    throw new ExtractionError(ERR_CLAUDE_RECENTS_LIST_MISSING);
+  }
+  return snapshot.conversations;
+}
+
+function readRecentsConversations(root: ParentNode): { conversations: SidebarConversation[]; loading: boolean } {
   const pageUrl = ownerDocument(root)?.defaultView?.location?.href ?? '';
   const table = resolveRecentsTable(root);
   if (!table) {
     if (pageUrl && matchesRecents(pageUrl)) {
       throw new ExtractionError(ERR_CLAUDE_RECENTS_LIST_MISSING);
     }
-    return [];
+    return { conversations: [], loading: false };
   }
 
   const links: Element[] = [];
+  let loading = false;
+  let spacer = false;
   for (const row of Array.from(table.querySelectorAll(selectors.recentsRow))) {
     const rowLinks = Array.from(row.querySelectorAll(selectors.recentsConversationLink));
+    if (rowLinks.length === 0) {
+      const cells = Array.from(row.children);
+      const noControls = !row.querySelector(selectors.recentsRowControl);
+      // Exact measured blank row: one empty TD, inline 1px height, no children or controls.
+      if ((row as HTMLElement).style.height === '1px' && cells.length === 1 &&
+          cells[0].tagName === 'TD' && cells[0].children.length === 0 &&
+          !row.textContent?.trim() && noControls) {
+        spacer = true;
+        continue;
+      }
+      const skeletons = Array.from(row.querySelectorAll(selectors.recentsSkeleton));
+      // Status labels are localized. Remove only the measured loading nodes before checking
+      // remaining content, so arbitrary anchorless rows cannot disappear as loading.
+      if (cells.length === 3 && cells.every((cell) => cell.tagName === 'TD') &&
+          skeletons.length === 2 && noControls) {
+        const remaining = row.cloneNode(true) as Element;
+        for (const skeleton of remaining.querySelectorAll(selectors.recentsSkeleton)) skeleton.remove();
+        if (!remaining.textContent?.trim()) {
+          loading = true;
+          continue;
+        }
+      }
+    }
     if (rowLinks.length !== 1) {
       throw new ExtractionError(ERR_CLAUDE_RECENTS_ROW_MALFORMED);
     }
@@ -729,7 +770,10 @@ function listRecentsConversations(root: ParentNode = document): SidebarConversat
   if (unreadable > 0) {
     throw new ExtractionError(ERR_CLAUDE_RECENTS_LINKS_INCOMPLETE);
   }
-  return collectNavigationConversations(links, origin, 'recents');
+  return {
+    conversations: collectNavigationConversations(links, origin, 'recents'),
+    loading: loading || spacer,
+  };
 }
 
 /**
@@ -740,6 +784,11 @@ function listRecentsConversations(root: ParentNode = document): SidebarConversat
  */
 function recentsToolbarMount(root: ParentNode = document): Element | null {
   return resolveRecentsTable(root)?.parentElement ?? null;
+}
+
+/** A table containing only loading rows has not restored the selectable history yet. */
+function hasReadableRecentsConversations(): boolean {
+  return Boolean(resolveRecentsTable(document)) && readRecentsConversations(document).conversations.length > 0;
 }
 
 /** Open a `/recents` member through the measured `/chat/<id>` route and wait for its render. */
@@ -755,7 +804,7 @@ async function openRecentsConversation(url: string, opts: OpenConversationOption
   // The ROUTE decides whether `/recents` still has to be restored, never a rendered table: an
   // assistant markdown table also matches `main table` from a `/chat/<id>` page, and trusting it
   // would skip the return and fail every remaining member of the batch.
-  if (!matchesRecents(currentPageUrl())) {
+  if (!matchesRecents(currentPageUrl()) || !hasReadableRecentsConversations()) {
     await returnToRecents(pollMs, timeoutMs);
   }
 
@@ -783,18 +832,24 @@ function findRecentsConversationAnchor(id: string): HTMLAnchorElement | null {
   return null;
 }
 
+/** Member opens accept either history alias; the final return honors its supplied home URL. */
+function isRecentsHomeRoute(expectedPath?: string): boolean {
+  return matchesRecents(currentPageUrl()) &&
+    (expectedPath === undefined || location.pathname.replace(/\/$/, '') === expectedPath);
+}
+
 /**
- * Return to `/recents` before opening the next member. A twin of `returnToProjectHome` rather
+ * Return to history before opening the next member. A twin of `returnToProjectHome` rather
  * than a shared generic: that function waits on `selectors.projectTable` and carries the project
  * track's own user-facing wording, and parameterizing it would mean threading both a table
  * resolver and a message bundle through a two-caller helper — more coupling than the ~15 shared
  * lines are worth, and it would put the shipped project error strings at risk for no gain.
  *
- * Unlike the project twin there is no cached home URL to pass in: `/recents` is a single exact
- * route (`RECENTS_PATH`), so the destination is known without recording where the run started.
+ * Member opens can restore either measured history route. The final return supplies its
+ * originating pathname, so history.back must restore that route and its readable rows.
  */
-async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void> {
-  // Only navigate when the page actually left `/recents`. Firing `back()` while already there
+async function returnToRecents(pollMs: number, timeoutMs: number, expectedPath?: string): Promise<void> {
+  // Only navigate when the page is off the requested history route. Firing `back()` while there
   // pops to the PREVIOUS entry — a `/chat/<id>` route — and the wait below would then poll for a
   // page the call itself just abandoned. A list still hydrating only needs waiting out.
   // Set only when a rewind was actually owed, so the already-there case still fires no `back()`
@@ -802,7 +857,7 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
   let rewind: (() => void) | null = null;
   let backSteps = 0;
   let lastBackAt = 0;
-  if (!matchesRecents(currentPageUrl())) {
+  if (!isRecentsHomeRoute(expectedPath)) {
     const historyObject = ownerDocument(document)?.defaultView?.history ?? globalThis.history;
     if (!historyObject?.back) {
       throw new ExtractionError(ERR_CLAUDE_RECENTS_HISTORY_UNAVAILABLE);
@@ -815,7 +870,7 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await delay(pollMs);
-    if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
+    if (isRecentsHomeRoute(expectedPath) && hasReadableRecentsConversations()) return;
     // Same two-entry recovery as `returnToProjectHome`: when the open pushed a second history
     // entry, `/recents` is one further back and polling alone never reaches it. Capped, because
     // each step past the pushed entry rewinds the user's own history. Gated on still being off
@@ -823,7 +878,7 @@ async function returnToRecents(pollMs: number, timeoutMs: number): Promise<void>
     // not another rewind.
     if (
       rewind &&
-      !matchesRecents(currentPageUrl()) &&
+      !isRecentsHomeRoute(expectedPath) &&
       backSteps < MAX_RETURN_BACK_STEPS &&
       Date.now() - lastBackAt >= RETURN_BACK_RETRY_MS
     ) {
@@ -841,8 +896,9 @@ async function openRecentsHome(homeUrl: string, opts: OpenConversationOptions = 
   if (!matchesRecents(homeUrl)) {
     throw new ExtractionError(ERR_CLAUDE_NOT_RECENTS_PAGE);
   }
-  if (matchesRecents(currentPageUrl()) && resolveRecentsTable(document)) return;
-  await returnToRecents(pollMs, timeoutMs);
+  const expectedPath = new URL(homeUrl).pathname.replace(/\/$/, '');
+  if (isRecentsHomeRoute(expectedPath) && hasReadableRecentsConversations()) return;
+  await returnToRecents(pollMs, timeoutMs, expectedPath);
 }
 
 /**
@@ -868,7 +924,8 @@ async function loadMoreRecentsConversations(
   // right place to start looking — unlike the sidebar, whose loader has to start from a link
   // because its outer aside is a non-scrolling layout shell.
   const container = findScrollableAncestor(table);
-  if (container.scrollHeight <= container.clientHeight) return listRecentsConversations(root);
+  const initial = readRecentsConversations(root);
+  if (container.scrollHeight <= container.clientHeight && !initial.loading) return initial.conversations;
 
   const acc = new Map<string, SidebarConversation>();
   let previousTop = -1;
@@ -881,13 +938,14 @@ async function loadMoreRecentsConversations(
   for (let step = 0; step < maxSteps; step++) {
     // Re-enumerated from `root` each round rather than from the table captured above, so a list
     // that re-renders its table while paging is still read.
-    for (const conversation of listRecentsConversations(root)) {
+    const snapshot = readRecentsConversations(root);
+    for (const conversation of snapshot.conversations) {
       if (!acc.has(conversation.id)) acc.set(conversation.id, conversation);
     }
     if (acc.size > lastCount) {
       options.onProgress?.(acc.size);
       stable = 0;
-    } else if (isPortClamped(container, previousTop)) {
+    } else if (!snapshot.loading && isPortClamped(container, previousTop)) {
       stable++;
       if (stable >= stableRounds) return [...acc.values()];
     } else {
