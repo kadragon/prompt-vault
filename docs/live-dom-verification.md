@@ -25,7 +25,7 @@ above should re-check the ones adapter code depends on:
 | Number | Where it is relied on | What drift does |
 |--------|----------------------|-----------------|
 | Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
-| ChatGPT `#history` raw page size (**28 rows**, zero variance across 72 full pages / 2 cold runs, 2026-07-28 — **pre-app-shell**; on the app-shell Recents list the rendered increment is ~10 rows against 20-row fetches, page size `[unknown — not measured]`, 2026-09-29) | `pageParityGate` in `src/adapters/chatgpt/index.ts`, counted via `sidebarConversationRow`; now secondary to the loading row (`sidebarLoadingStatus`) | The gate derives the size from the largest settled batch it observes rather than hardcoding 28, so a changed page size self-corrects. What drift breaks is the *shape*: the gate assumes a batch finishes growing before the next round, and classifies it then. If pages ever interleave, or hydration stretches a batch across a quiet round, a full page would read as short and the walk would settle early — silently. Re-measure the per-batch increment and its arrival pattern, not just the total. |
+| ChatGPT `#history` raw page size (**28 rows**, zero variance across 72 full pages / 2 cold runs, 2026-07-28 — **pre-app-shell**; on the app-shell Recents list the rendered increment is **10 rows** (51 of 52 batches, the final one 11) against 20-row fetches that run far ahead of rendering, 2026-10-03) | `pageParityGate` in `src/adapters/chatgpt/index.ts`, counted via `sidebarConversationRow`; now secondary to the loading row (`sidebarLoadingStatus`) | The gate derives the size from the largest settled batch it observes rather than hardcoding 28, so a changed page size self-corrects. What drift breaks is the *shape*: the gate assumes a batch finishes growing before the next round, and classifies it then. If pages ever interleave, or hydration stretches a batch across a quiet round, a full page would read as short and the walk would settle early — silently. Re-measure the per-batch increment and its arrival pattern, not just the total. |
 | ChatGPT message-list load-older latency (**first growth ≤ 4533 ms, later gaps ≤ 1602 ms**, 3 runs, 2026-09-29) | `LOAD_OLDER_DEFAULTS` dwell (24 × 250 ms = 6 s) in `src/adapters/chatgpt/index.ts`, pinned by `test/adapters/chatgpt/auto-scroll.test.ts` | The list declares no turn total, so the dwell is the only end-of-list signal. A backend slower than the dwell ends the load early and the export silently lacks the OLDEST turns — nothing downstream can detect it. Re-measure the gap to the first growth after a pin, not just the gaps between later batches: per run the first gap was 4533 / 1181 / 1320 ms and the longest later one 1602 / 1185 / 1387 ms — the 4533 outlier is what sizes the dwell. |
 | ChatGPT `#history` page latency (**1509–7516 ms** confirmed, re-measured 2026-07-28; a 1502 ms minimum was seen but is unconfirmed as an inter-batch gap — was 1418–2830 ms on 2026-07-24) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run (recorded below). The 2026-07-28 re-measurement found gaps above the shipped 5 s dwell in **both** runs (5 of 74 batches), so exceeding the dwell is not exotic — that is a count, not a claim about the tail's shape. |
 
@@ -391,6 +391,66 @@ alphanumeric does decode), so a correction that simply stopped decoding would ha
 
 ## ChatGPT
 
+### 2026-10-03 — the Recents list's true end, its 429 budget, and the load-error row
+
+Same account (ko-KR UI), Playwright MCP, 08:23–08:51 UTC. Fetches were read from
+`PerformanceResourceTiming` (`responseStatus`, URL `offset`), never from response bodies; evidence
+is counts, offsets, statuses, attribute names and ChatGPT's own UI strings. One run was cut short
+when the MCP page reported `Target page, context or browser has been closed` mid-walk (cause not
+established); its numbers up to that point are kept below.
+
+**Paging.** The page fetches `GET /backend-api/conversations?offset=N&limit=20&order=updated…`,
+20 per request, and once a pin starts it, chains requests back to back (each begins as the previous
+one ends) far ahead of what it renders — fetched offset 1180 while 600 rows were on screen. Rows
+render in increments of **10** (51 of 52 batches at the adapter's own pace, 0.9 viewport per
+500 ms; the last increment at the true end was 11). Gap between rendered batches at that pace:
+median **2007 ms**, max **3101 ms** (52 batches, 29 → 550 rows in 100 s) — inside the 11.5 s
+`SIDEBAR_SCROLL_DEFAULTS` stall window, so its sizing stands. Single request durations grow with
+offset: ~0.8 s near offset 20, 2.5–4.2 s past offset 900 (3 s pace); one outlier of **9306 ms**
+(offset 440, 10 s pace).
+
+**True end.** A 3 s-paced walk reached **1201 rows** (1201 distinct keys) after 62 requests, all
+200, the last at offset 1180. At the end the loading row was removed, the last list child was a
+conversation row, and 15 s more pinned to the bottom added nothing. Whether the load-error row
+(below) is absent at a genuine end was not checked on that walk, and a second full walk was not
+possible once the budget ran out — `[unknown — not measured]`. Treating that row as "incomplete"
+fails in the safe direction regardless: at worst it warns on a complete list.
+
+**Recents is not only top-level chats.** Of the 1201 rows, **961** link `/c/<id>`, **232**
+`/g/g-<gizmo>/c/<id>` (GPT chats) and **8** `/g/g-p-<id>/c/<id>` (project chats); the first 20–90
+are all `/c/`, which is what the 2026-09-29 entry saw. The loader collects only `/c/` — unchanged,
+as on the pre-app-shell `#history` (852 of 1042, 2026-07-24) — while `pageParityGate` counts every row.
+
+**429 is a session budget, not a pace.** Before the first 429 the session had made ~210 requests
+in ~17 minutes, all 200: a 10 s-paced walk (61, until the page closed), the 3 s-paced walk to the
+end (62), an adapter-paced walk (56 in ~110 s), then pins every 50 ms (32). The 33rd request of
+that last run, offset 620, got **429** (08:40:18). Afterwards:
+
+| Time after a 429 | What happened |
+|---|---|
+| 0–115 s | The page sent **no** retry; pinning every 5 s changed nothing. Rows already fetched kept rendering up to 629, then the loading row was **removed** — and an error status appeared (held 30 s+) |
+| ~3 min 31 s | A click on that status's button: offsets 620, 640 → 200 and loading resumed; on the next pins 660 → 200, 680 → **429** again (08:44:08) |
+| +8, +23, +38, +53 s (after the 680 429) | Four clicks: **no request sent at all** |
+| +68 s | A click: offset 680 → 200; on the next pins 700 → 200, 720 → **429** |
+| Reload inside the window | 20 → 109 rows rendered from cache with **no** `conversations` request in resource timing; the loading row disappeared at 109; the error status was up from the first read |
+| Reload after 5 min idle | No error status; offsets 0, 20 → 200, 40 → **429** |
+
+So the budget refills at roughly two or three requests per several minutes, and a large account
+cannot be completed by waiting inside one walk — the loader does not back off. Mechanism (token
+bucket or otherwise) not established.
+
+**The load-error row.** The error state is `div[role="status"][aria-busy="false"]` rendered as the
+`[role="list"]`'s **next sibling** — not a list item, which is why the 2026-09-29 check (scoped to
+list items) saw nothing — holding the text "대화 기록을 불러올 수 없습니다" and one
+`button` ("다시 시도"). It is the only on-screen difference between a list cut by a 429 and a
+complete one, mid-list or at offset 0. `selectors.sidebarListRetry` matches its button: the walk
+treats it as a page still owed (so it reports incomplete) and presses it once when it starts, so a
+re-run after the window recovers the list. The rate-limit warning asks the user to wait a few
+minutes as soon as this error row is present; generic incompleteness retains the ordinary rerun
+warning. An error-row stall skips the 20 extra pending rounds (10 seconds), since no page will
+arrive without a retry; the base 23-round dwell and healthy pending grace remain unchanged.
+Fixture: `test/fixtures/chatgpt/sidebar-error.html`.
+
 ### 2026-09-29 — the "app-shell" conversation page: what moved, and three things that are not selectors
 
 ChatGPT shipped a redesigned DOM ("app-shell"); every conversation-page selector matched 0 and
@@ -446,8 +506,9 @@ and holds `section[data-app-action-sidebar-section]` blocks whose
 on a ko-KR UI). Recents wraps `[data-sidebar-project-container-id="chats"] > … > [role="list"]`,
 one `[role="listitem"][data-sidebar-chatgpt-conversation-key="chatgpt:conversation:<id>"]` per
 conversation holding one `a[href^="/c/"][data-interactive-row-link][aria-label]`. Every row in it
-was a top-level `/c/` chat (20 of 20, then 90 of 90); project chats are not listed there, and the
-Projects section rows carry no anchors at all (buttons that expand in place).
+was a top-level `/c/` chat (20 of 20, then 90 of 90); the Projects section rows carry no anchors at
+all (buttons that expand in place). *(Corrected 2026-10-03: deeper in the list Recents DOES hold
+GPT- and project-scoped rows — 240 of 1201 — see that entry.)*
 
 - **Paging.** 20 rows at load; pinning the bottom grew it 29, 30, 40 … 90 in ~10-row steps, while
   the page itself fetched `backend-api/conversations?limit=20&offset=…` 20 at a time (offsets
@@ -463,7 +524,9 @@ Projects section rows carry no anchors at all (buttons that expand in place).
   incomplete). A later fresh load got 429 at offset **0**: the list rendered 29 cached rows, then
   the loading row **disappeared** with nothing else on the page saying the list was cut short. So
   the row's presence is evidence of more rows; its absence is not evidence of the end. That
-  second case is not detectable from the DOM — record, not guard.
+  second case is not detectable from the DOM — record, not guard. *(Superseded 2026-10-03: it is
+  detectable — the error status renders as the list's next sibling, outside the list items this
+  session looked at. See that entry.)*
 - **Unmeasured:** the list's true end (the rate limit held for the rest of the session, so no walk
   reached it) and inter-batch latency on this DOM. `SIDEBAR_SCROLL_DEFAULTS` keeps its 2026-07-28
   sizing.

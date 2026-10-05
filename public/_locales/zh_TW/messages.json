@@ -137,6 +137,15 @@
       }
     }
   },
+  "bulkLoadMoreRateLimitedMessage": {
+    "message": "已載入 $count$ 則對話。ChatGPT 暫時停止載入清單，請等幾分鐘後再按一次「載入更多」。",
+    "description": "Shown instead of bulkLoadMoreIncompleteMessage when ChatGPT's list showed its load-error row (its list endpoint answered 429, a rate limit lasting a few minutes), so a rerun right away would stop at the same point. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "bulkEmptyMessage": {
     "message": "找不到可以匯出的對話。",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."

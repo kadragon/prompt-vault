@@ -137,6 +137,15 @@
       }
     }
   },
+  "bulkLoadMoreRateLimitedMessage": {
+    "message": "Conversations loaded: $count$. ChatGPT has paused loading the list for now — wait a few minutes, then click Load more again.",
+    "description": "Shown instead of bulkLoadMoreIncompleteMessage when ChatGPT's list showed its load-error row (its list endpoint answered 429, a rate limit lasting a few minutes), so a rerun right away would stop at the same point. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "bulkEmptyMessage": {
     "message": "No conversations were found to export.",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."

@@ -1,6 +1,6 @@
 import { pickAdapter, pickProjectAdapter, pickRecentsAdapter } from '../adapters';
 import type { ConversationAdapter } from '../adapters';
-import type { SidebarConversation } from '../core/sidebar';
+import type { IncompleteCause, SidebarConversation } from '../core/sidebar';
 import { ExtractionError } from '../core/errors';
 import { bulkExport, type BulkTarget } from './bulk-export';
 import { openBulkPanel } from './bulk-panel';
@@ -547,12 +547,12 @@ interface BulkTrack {
    * Optional: load not-yet-rendered conversations from a virtualized source and resolve
    * with the full updated list (wired to the adapter's `loadMore*` + `list*`). Absent
    * when the track's source is not virtualized — the panel then shows no "Load more".
-   * Accepts an optional `onProgress(loaded)` and `onIncomplete()`, forwarded into the
+   * Accepts an optional `onProgress(loaded)` and `onIncomplete(cause?)`, forwarded into the
    * adapter's options bag.
    */
   loadMore?: (
     onProgress?: (loaded: number) => void,
-    onIncomplete?: () => void,
+    onIncomplete?: (cause?: IncompleteCause) => void,
   ) => Promise<SidebarConversation[]>;
 }
 

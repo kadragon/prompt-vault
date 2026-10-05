@@ -121,16 +121,8 @@ The larger hazard that measurement exposed is filed above.)*
 > Left open by the sidebar/project/load-older batch; evidence in `docs/live-dom-verification.md`
 > → 2026-09-29 "app-shell sidebar, project pages …".
 
-- [ ] *(blocked by: needs a live session after ChatGPT's list rate-limit window resets — measure the window's length first)* [FIX] ChatGPT's conversation-list endpoint answers 429 after ~7 pages (~140 rows) at both the page's own and the adapter's pace, so "Load more" on a large account ends at ~76–90 rows with the incomplete warning. Loud, not silent — but the list cannot be completed. Measure how long the 429 lasts, then decide whether the loader should back off while `sidebarLoadingStatus` persists instead of ending.
-- [ ] *(blocked by: same rate-limit session as the item above)* [VERIFY] Measure the app-shell Recents list's true end — does the loading row disappear at a genuine end, and what are the page size and inter-batch latency now? `SIDEBAR_SCROLL_DEFAULTS` and `pageParityGate` still carry their 2026-07-28 `#history` sizing.
 - [ ] *(blocked by: needs a ChatGPT project holding more conversations than fit on its home page — the demo project has 8)* [VERIFY] Does a long project home list page or virtualize, and does `revealFromProjectHome` still find a target below the fold after returning home?
 - [ ] *(deferred: no positive "no older turns" marker exists — the 2026-09-29 live session searched and found none; revisit only with new DOM evidence)* [debt] A conversation that never renders the "loading earlier messages" status still waits the full 6 s load-older dwell (the drift-safe variant was chosen on 2026-09-29); only a positive "no older turns" marker would let short conversations skip it — none was found.
-
-### product-evaluator pass on v1.14.1 (2026-09-29)
-
-> Non-blocking findings from the pre-release evaluation (verdict SHIP).
-
-- [ ] *(blocked by: same rate-limit session as the ChatGPT list 429 item above)* [FIX] A ChatGPT list that gets 429 at offset 0 renders its cached rows, drops the loading row, and shows no incomplete marker (`docs/live-dom-verification.md` → 2026-09-29 "429 is the failure mode") — so the bulk panel offers a short list as if complete. Needs a DOM or timing signal that separates this from a genuine end before the loader can warn.
 
 ## Next (roadmap — not v1)
 

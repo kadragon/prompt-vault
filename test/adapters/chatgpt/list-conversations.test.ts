@@ -14,6 +14,12 @@ function docFrom(html: string): Document {
 // The app-shell left sidebar, captured live 2026-09-29 and sanitized: a Projects section,
 // then the Recents section holding three conversation rows and its trailing loading row.
 const SIDEBAR = readFileSync(fileURLToPath(new URL('../../fixtures/chatgpt/sidebar.html', import.meta.url)), 'utf8');
+// The same sidebar after a Recents page fetch answered 429 (measured 2026-10-03): no loading row,
+// and an error status with a retry button rendered as the list's next sibling.
+const SIDEBAR_ERROR = readFileSync(
+  fileURLToPath(new URL('../../fixtures/chatgpt/sidebar-error.html', import.meta.url)),
+  'utf8',
+);
 
 /** The fixture with extra markup appended inside the Recents list or the page body. */
 function sidebarWith({ recentsRow = '', outside = '' }: { recentsRow?: string; outside?: string }): Document {
@@ -65,6 +71,37 @@ describe('chatgptAdapter.listConversations', () => {
         '<a href="/c/x" aria-label="X">X</a><span role="status">generating</span></div></div></div></body>',
     );
     expect(doc.querySelector(selectors.sidebarHistory)?.querySelector(selectors.sidebarLoadingStatus)).toBeNull();
+  });
+
+  it('finds the retry button of the load-error status the page shows after a 429', () => {
+    const history = docFrom(SIDEBAR_ERROR).querySelector(selectors.sidebarHistory);
+    expect(history?.querySelector(selectors.sidebarListRetry)?.tagName).toBe('BUTTON');
+    // The measured error state carries no loading row: that signal alone would read as an end.
+    expect(history?.querySelector(selectors.sidebarLoadingStatus)).toBeNull();
+  });
+
+  it('finds no retry button on the healthy captured sidebar or inside a conversation row', () => {
+    expect(docFrom(SIDEBAR).querySelector(selectors.sidebarHistory)?.querySelector(selectors.sidebarListRetry)).toBeNull();
+    const doc = docFrom(
+      '<body><div data-sidebar-project-container-id="chats"><div role="list">' +
+        '<div role="listitem" data-sidebar-chatgpt-conversation-key="chatgpt:conversation:x">' +
+        '<a href="/c/x" aria-label="X">X</a><div role="status"><button>B</button></div></div></div></div></body>',
+    );
+    expect(doc.querySelector(selectors.sidebarHistory)?.querySelector(selectors.sidebarListRetry)).toBeNull();
+  });
+
+  it('does not treat a busy sibling status button as the retry control', () => {
+    const doc = docFrom(SIDEBAR_ERROR);
+    const history = doc.querySelector(selectors.sidebarHistory);
+    const status = history?.querySelector('[role="list"] + [role="status"]');
+    expect(status).not.toBeNull();
+    status?.setAttribute('aria-busy', 'true');
+    expect(history?.querySelector(selectors.sidebarListRetry)).toBeNull();
+  });
+
+  it('lists the rows of the error-state sidebar like the healthy one', () => {
+    const list = chatgptAdapter.listConversations?.(docFrom(SIDEBAR_ERROR)) ?? [];
+    expect(list.map((c) => c.id)).toEqual(['conv-aaa', 'conv-bbb', 'conv-ccc']);
   });
 
   it('returns an empty list when the Recents list is absent', () => {

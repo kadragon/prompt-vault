@@ -1,5 +1,5 @@
 import type { Conversation } from '../core/conversation';
-import type { SidebarConversation } from '../core/sidebar';
+import type { IncompleteCause, SidebarConversation } from '../core/sidebar';
 
 // The contract every provider implements (docs/architecture.md). A new provider is
 // a new directory under src/adapters/{provider}/ exporting one of these, plus a
@@ -249,9 +249,10 @@ export interface LoadMoreOptions {
    * Fired once if the walk gave up while the provider still had structural evidence that more
    * items were owed, so the resolved list may be short. Callers must surface this rather than
    * present the result as complete (AGENTS.md #4). Optional on both sides: a provider with no
-   * such evidence simply never calls it, and omitting it leaves the loop unchanged.
+   * such evidence simply never calls it, and omitting it leaves the loop unchanged. `cause`
+   * names a known reason when the provider has one, so the caller can say what to do about it.
    */
-  onIncomplete?: () => void;
+  onIncomplete?: (cause?: IncompleteCause) => void;
   /**
    * A page size an earlier walk over the same list reported through `onPageSize`. A provider
    * whose completeness evidence is page-size parity cannot derive that size on a **re-run over

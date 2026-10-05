@@ -137,6 +137,15 @@
       }
     }
   },
+  "bulkLoadMoreRateLimitedMessage": {
+    "message": "대화 $count$개를 불러왔습니다. ChatGPT가 잠시 목록을 더 내주지 않고 있으니 몇 분 뒤에 '더 불러오기'를 다시 눌러 주세요.",
+    "description": "Shown instead of bulkLoadMoreIncompleteMessage when ChatGPT's list showed its load-error row (its list endpoint answered 429, a rate limit lasting a few minutes), so a rerun right away would stop at the same point. Worded to avoid a count-governed plural noun — chrome.i18n has no plural forms and $count$ can be 1.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "bulkEmptyMessage": {
     "message": "내보낼 대화를 찾지 못했습니다.",
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."

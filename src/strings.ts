@@ -104,6 +104,14 @@ export function bulkLoadMoreIncompleteMessage(loaded: number): string {
   return m('bulkLoadMoreIncompleteMessage', [String(loaded)]);
 }
 
+/**
+ * The incomplete warning when the walk named a rate limit as the cause (ChatGPT's load-error
+ * row after a 429): a rerun right away stops at the same point, so it asks for a wait.
+ */
+export function bulkLoadMoreRateLimitedMessage(loaded: number): string {
+  return m('bulkLoadMoreRateLimitedMessage', [String(loaded)]);
+}
+
 // Shown when the history sidebar lists no conversations to choose from (fail-loud:
 // the panel opens but makes clear there is nothing to export rather than showing an
 // empty, actionless list).

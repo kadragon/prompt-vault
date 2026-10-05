@@ -7,7 +7,7 @@
 // regardless of the host page's CSS, and survives the host SPA re-rendering during
 // the cross-conversation navigation a batch performs (it is mounted on <body>).
 
-import type { SidebarConversation } from '../core/sidebar';
+import type { IncompleteCause, SidebarConversation } from '../core/sidebar';
 import type { ExportFormat } from './save-conversation';
 import type { BulkExportSummary } from './bulk-export';
 import {
@@ -23,6 +23,7 @@ import {
   BULK_PANEL_TITLE,
   bulkExportButtonLabel,
   bulkLoadMoreIncompleteMessage,
+  bulkLoadMoreRateLimitedMessage,
   bulkLoadMoreProgressMessage,
   bulkProgressMessage,
   bulkSummaryMessage,
@@ -62,12 +63,12 @@ export interface BulkPanelDeps {
    * Omit when the source is not virtualized — the button is then not shown. Accepts an
    * optional `onProgress(loaded)` reporting the running count surfaced so far, so the
    * panel can stream a status line during the (potentially multi-minute) scroll, and an
-   * optional `onIncomplete()` fired when the walk gave up with items still owed — the
-   * panel then warns instead of reporting the list as fully loaded.
+   * optional `onIncomplete(cause?)` fired when the walk gave up with items still owed — the
+   * panel then warns instead of reporting the list as fully loaded, naming the cause if known.
    */
   loadMore?: (
     onProgress?: (loaded: number) => void,
-    onIncomplete?: () => void,
+    onIncomplete?: (cause?: IncompleteCause) => void,
   ) => Promise<SidebarConversation[]>;
 }
 
@@ -390,7 +391,7 @@ function renderSelection(
   // read this shared flag.
   let batchStarted = false;
   // Panel-lifetime, so a second Load more click still knows the first one ended in doubt.
-  const doubt = { reported: false };
+  const doubt = { reported: false, rateLimited: false };
   if (loadMoreBtn) {
     loadMoreBtn.addEventListener('click', () => {
       void loadMore({
@@ -438,9 +439,10 @@ interface LoadMoreArgs {
   isBatchStarted: () => boolean;
   /**
    * Whether some earlier walk reported the list may be incomplete. Lives with the panel, not
-   * the walk, so the doubt survives the retry the warning asks the user to make.
+   * the walk, so the doubt survives the retry the warning asks the user to make. `rateLimited`
+   * records whether the latest walk named a rate limit, which picks the warning.
    */
-  doubt: { reported: boolean };
+  doubt: { reported: boolean; rateLimited: boolean };
 }
 
 /**
@@ -465,14 +467,16 @@ async function loadMore(args: LoadMoreArgs): Promise<void> {
   loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE_BUSY;
   const before = shown.length;
   let mayBeIncomplete = false;
+  let rateLimited = false;
   try {
     const updated = await deps.loadMore(
       (loaded) => {
         if (isBatchStarted() || loaded <= 0) return;
         status.textContent = bulkLoadMoreProgressMessage(loaded);
       },
-      () => {
+      (cause) => {
         mayBeIncomplete = true;
+        if (cause === 'rate-limited') rateLimited = true;
       },
     );
     if (isBatchStarted()) return; // A batch took over while loading — leave the modal to it.
@@ -488,11 +492,21 @@ async function loadMore(args: LoadMoreArgs): Promise<void> {
     // so treating this walk's silence as proof would let the very retry the warning asks for
     // latch "All conversations loaded" over a page still missing. Only a walk that actually
     // surfaced new rows without re-reporting clears it — silence alone never does.
-    if (mayBeIncomplete) doubt.reported = true;
-    else if (grew) doubt.reported = false;
+    if (mayBeIncomplete) {
+      doubt.reported = true;
+      doubt.rateLimited = rateLimited;
+    } else {
+      // ChatGPT reports its error row on every walk that ends under it. Silence can mean
+      // that retry cleared the error but only excluded project/GPT rows arrived; keep the
+      // incompleteness doubt without retaining a rate limit that is no longer observed.
+      doubt.rateLimited = false;
+      if (grew) doubt.reported = false;
+    }
 
     if (doubt.reported) {
-      status.textContent = bulkLoadMoreIncompleteMessage(shown.length);
+      status.textContent = doubt.rateLimited
+        ? bulkLoadMoreRateLimitedMessage(shown.length)
+        : bulkLoadMoreIncompleteMessage(shown.length);
       loadMoreBtn.textContent = BULK_PANEL_LOAD_MORE;
       loadMoreBtn.disabled = false;
     } else if (grew) {
