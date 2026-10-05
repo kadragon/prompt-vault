@@ -5,7 +5,7 @@ import { ExtractionError } from '../../../src/core/errors';
 
 afterEach(() => vi.unstubAllGlobals());
 
-const RECENTS_PATH = '/recents';
+
 
 // The measured `/recents` shell (2026-08-11): `main` carries `[data-testid="page-header"]` beside
 // a plain `div` whose only child is the conversation table.
@@ -22,14 +22,14 @@ const RECENTS_TABLE =
  */
 function installRecentsPage(
   html: string,
-  pathname: string = RECENTS_PATH,
+  pathname: string,
   withBack = true,
 ): {
   doc: Document;
   state: { pathname: string };
   backs: { count: number; onBack?: () => void };
 } {
-  const window = new Window({ url: `https://claude.ai${RECENTS_PATH}` });
+  const window = new Window({ url: `https://claude.ai${pathname}` });
   window.document.write(html);
   const state = { pathname };
   const backs: { count: number; onBack?: () => void } = { count: 0 };
@@ -56,10 +56,10 @@ function setPathname(state: { pathname: string }, pathname: string): void {
   (globalThis.location as unknown as { pathname: string }).pathname = pathname;
 }
 
-describe('Claude /recents navigation openers', () => {
+describe.each(['/recents', '/chats'])('Claude %s navigation openers', (RECENTS_PATH) => {
   it('clicks a verified recents anchor and waits for the target conversation to render', async () => {
     const { doc, state, backs } = installRecentsPage(
-      `<body>${RECENTS_TABLE}</body>`,
+      `<body>${RECENTS_TABLE}</body>`, RECENTS_PATH,
     );
     doc.querySelector('a')?.addEventListener('click', () => {
       setPathname(state, '/chat/next');
@@ -103,7 +103,7 @@ describe('Claude /recents navigation openers', () => {
   });
 
   it('reports an unreachable recents target instead of extracting the current chat', async () => {
-    const { doc, state } = installRecentsPage(`<body>${RECENTS_TABLE}</body>`);
+    const { doc, state } = installRecentsPage(`<body>${RECENTS_TABLE}</body>`, RECENTS_PATH);
     await expect(
       claudeAdapter.openRecentsConversation?.('https://claude.ai/chat/missing', { pollMs: 0, timeoutMs: 10 }),
     ).rejects.toBeInstanceOf(ExtractionError);
@@ -156,7 +156,7 @@ describe('Claude /recents navigation openers', () => {
         doc.body.innerHTML = RECENTS_TABLE;
       };
 
-      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+      const settled = claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, {
         pollMs: 100,
         timeoutMs: 15000,
       });
@@ -179,7 +179,7 @@ describe('Claude /recents navigation openers', () => {
         '/chat/previous',
       );
 
-      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+      const settled = claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, {
         pollMs: 100,
         timeoutMs: 15000,
       });
@@ -216,7 +216,7 @@ describe('Claude /recents navigation openers', () => {
         doc.body.innerHTML = '<main>still hydrating</main>';
       };
 
-      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+      const settled = claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, {
         pollMs: 100,
         timeoutMs: 15000,
       });
@@ -236,12 +236,12 @@ describe('Claude /recents navigation openers', () => {
   });
 
   it('waits out a hydrating /recents instead of navigating away from it', async () => {
-    const { doc, state, backs } = installRecentsPage('<body><main>still hydrating</main></body>');
+    const { doc, state, backs } = installRecentsPage('<body><main>still hydrating</main></body>', RECENTS_PATH);
     setTimeout(() => {
       doc.body.innerHTML = RECENTS_TABLE;
     }, 5);
 
-    await claudeAdapter.openRecentsHome?.('https://claude.ai/recents', { pollMs: 1, timeoutMs: 200 });
+    await claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, { pollMs: 1, timeoutMs: 200 });
     expect(backs.count).toBe(0);
     expect(state.pathname).toBe(RECENTS_PATH);
   });
@@ -249,8 +249,8 @@ describe('Claude /recents navigation openers', () => {
   it('waits past the rewind retry threshold for a slow /recents hydration without going back', async () => {
     vi.useFakeTimers();
     try {
-      const { doc, state, backs } = installRecentsPage('<body><main>still hydrating</main></body>');
-      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+      const { doc, state, backs } = installRecentsPage('<body><main>still hydrating</main></body>', RECENTS_PATH);
+      const settled = claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, {
         pollMs: 100,
         timeoutMs: 10000,
       });
@@ -284,7 +284,7 @@ describe('Claude /recents navigation openers', () => {
         }, 4000);
       };
 
-      const settled = claudeAdapter.openRecentsHome?.('https://claude.ai/recents', {
+      const settled = claudeAdapter.openRecentsHome?.(`https://claude.ai${RECENTS_PATH}`, {
         pollMs: 100,
         timeoutMs: 10000,
       });
@@ -304,14 +304,14 @@ describe('Claude /recents navigation openers', () => {
   it('refuses to treat a non-recents URL as the recents home', async () => {
     // `openRecentsHome` is the bulk driver's "return the user where they started" hook. Accepting
     // any URL would silently send a `/recents` run somewhere else.
-    installRecentsPage(`<body>${RECENTS_TABLE}</body>`);
+    installRecentsPage(`<body>${RECENTS_TABLE}</body>`, RECENTS_PATH);
     await expect(claudeAdapter.openRecentsHome?.('https://claude.ai/project/project-1')).rejects.toBeInstanceOf(
       ExtractionError,
     );
   });
 
   it('rejects malformed navigation URLs visibly', async () => {
-    installRecentsPage(`<body>${RECENTS_TABLE}</body>`);
+    installRecentsPage(`<body>${RECENTS_TABLE}</body>`, RECENTS_PATH);
     await expect(claudeAdapter.openRecentsConversation?.('not a URL')).rejects.toBeInstanceOf(ExtractionError);
     await expect(claudeAdapter.openRecentsConversation?.('https://claude.ai/recents')).rejects.toBeInstanceOf(
       ExtractionError,

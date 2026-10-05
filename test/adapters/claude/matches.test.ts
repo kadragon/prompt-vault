@@ -64,6 +64,8 @@ describe('claude matchesRecents', () => {
   it('accepts the measured history page, with or without a trailing slash', () => {
     expect(matchesRecents('https://claude.ai/recents')).toBe(true);
     expect(matchesRecents('https://claude.ai/recents/')).toBe(true);
+    expect(matchesRecents('https://claude.ai/chats')).toBe(true);
+    expect(matchesRecents('https://claude.ai/chats/?from=all#history')).toBe(true);
   });
 
   it('rejects look-alike hosts', () => {
@@ -77,6 +79,9 @@ describe('claude matchesRecents', () => {
     // be offered on a page whose table this adapter has never seen.
     expect(matchesRecents('https://claude.ai/recents/archived')).toBe(false);
     expect(matchesRecents('https://claude.ai/recentsly')).toBe(false);
+    expect(matchesRecents('https://claude.ai/chats/archive')).toBe(false);
+    expect(matchesRecents('https://claude.ai/chatsly')).toBe(false);
+    expect(matchesRecents('https://example.com/chats')).toBe(false);
     expect(matchesRecents('https://claude.ai/chat/abc-123')).toBe(false);
   });
 });
@@ -84,6 +89,7 @@ describe('claude matchesRecents', () => {
 describe('pickRecentsAdapter', () => {
   it('routes Claude’s history page to the Claude adapter', () => {
     expect(pickRecentsAdapter('https://claude.ai/recents')?.provider).toBe('claude');
+    expect(pickRecentsAdapter('https://claude.ai/chats')?.provider).toBe('claude');
   });
 
   it('returns null where no registered adapter claims a history page', () => {

@@ -102,11 +102,11 @@ describe('claudeAdapter.listRecentsConversations', () => {
     expect(() => claudeAdapter.listRecentsConversations?.(doc)).toThrow(ExtractionError);
   });
 
-  it('fails loud when the recents route renders no table at all', () => {
+  it.each(['/recents', '/chats'])('fails loud when %s renders no table at all', (path) => {
     // Downstream, `[]` is the bulk panel's "no conversations" state — indistinguishable from a
     // whole history reported as empty (AGENTS.md #4). On the `/recents` ROUTE a missing table is
     // markup drift, so it must be loud.
-    const doc = docAt(RECENTS_URL, '<body><main>still hydrating</main></body>');
+    const doc = docAt(`https://claude.ai${path}`, '<body><main>still hydrating</main></body>');
     expect(() => claudeAdapter.listRecentsConversations?.(doc)).toThrow(ExtractionError);
   });
 
@@ -251,10 +251,70 @@ describe('claudeAdapter.loadMoreRecentsConversations', () => {
     expect(incomplete).toEqual([]);
   });
 
-  it('fails loud when the recents route renders no table at all', async () => {
-    const doc = docAt(RECENTS_URL, '<body><main>still hydrating</main></body>');
+  it.each(['/recents', '/chats'])('fails loud when %s renders no table at all', async (path) => {
+    const doc = docAt(`https://claude.ai${path}`, '<body><main>still hydrating</main></body>');
     await expect(claudeAdapter.loadMoreRecentsConversations?.(doc, { stepDelayMs: 0 })).rejects.toThrow(
       ExtractionError,
     );
+  });
+});
+
+// Fresh /chats measurement, 2026-10-05: one blank 1px cell and a three-cell loading row.
+const SPACER = '<tr style="height: 1px;"><td></td></tr>';
+const SKELETON = '<tr><td><div data-cds="Skeleton" role="status" style="width:14rem;height:.75rem">Loading</div></td>' +
+  '<td><div data-cds="Skeleton" role="status" style="width:5rem;height:.625rem">Loading</div></td><td></td></tr>';
+const CHAT_ROW = '<tr><td><a href="/chat/ready">Ready</a></td></tr>';
+function historyRows(rows: string, path = '/chats'): Document {
+  return docAt(`https://claude.ai${path}`, `<body><main><table><tbody>${rows}</tbody></table></main></body>`);
+}
+
+describe.each(['/recents', '/chats'])('transient history rows on %s', (path) => {
+  it('enumerates real chats around measured blank and loading rows', () => {
+    expect(claudeAdapter.listRecentsConversations?.(historyRows(SPACER + CHAT_ROW + SKELETON, path))
+      .map((chat) => chat.id)).toEqual(['ready']);
+  });
+  it.each([
+    '<tr><td></td></tr>', '<tr style="height:1px"><td><div></div></td></tr>',
+    '<tr style="height:1px"><td>broken</td></tr>', '<tr style="height:2px"><td></td></tr>',
+    SKELETON.replace('role="status"', 'role="presentation"'),
+    SKELETON.replace('<td></td>', '<td>broken</td>'),
+    SKELETON.replace('<td></td>', '<td><button>Action</button></td>'),
+  ])('keeps malformed anchorless rows loud (%s)', (row) => {
+    expect(() => claudeAdapter.listRecentsConversations?.(historyRows(CHAT_ROW + row, path)))
+      .toThrow(ExtractionError);
+  });
+  it.each([SKELETON, SPACER])('never declares a placeholder-only table complete', async (row) => {
+    const incomplete: boolean[] = [];
+    const result = await claudeAdapter.loadMoreRecentsConversations?.(historyRows(row, path), {
+      stepDelayMs: 0, maxSteps: 5, stableRounds: 1, onIncomplete: () => incomplete.push(true),
+    });
+    expect(result).toEqual([]);
+    expect(incomplete).toEqual([true]);
+  });
+  it('waits for delayed loading on a non-overflowing port and collects landed chats', async () => {
+    const doc = historyRows(CHAT_ROW + SKELETON, path);
+    let writes = 0;
+    Object.defineProperty(doc.querySelector('table'), 'scrollTop', {
+      configurable: true, get: () => 0, set: () => {
+        writes++;
+        if (writes === 4) doc.querySelector('tbody')!.innerHTML = CHAT_ROW +
+          '<tr><td><a href="/chat/landed">Landed</a></td></tr>';
+      },
+    });
+    const incomplete: boolean[] = [];
+    const result = await claudeAdapter.loadMoreRecentsConversations?.(doc, {
+      stepDelayMs: 0, maxSteps: 10, stableRounds: 1, onIncomplete: () => incomplete.push(true),
+    });
+    expect(result?.map((chat) => chat.id)).toEqual(['ready', 'landed']);
+    expect(writes).toBe(5);
+    expect(incomplete).toEqual([]);
+  });
+  it('reports pending loading as incomplete while preserving available chats', async () => {
+    const incomplete: boolean[] = [];
+    const result = await claudeAdapter.loadMoreRecentsConversations?.(historyRows(CHAT_ROW + SKELETON, path), {
+      stepDelayMs: 0, maxSteps: 5, stableRounds: 1, onIncomplete: () => incomplete.push(true),
+    });
+    expect(result?.map((chat) => chat.id)).toEqual(['ready']);
+    expect(incomplete).toEqual([true]);
   });
 });

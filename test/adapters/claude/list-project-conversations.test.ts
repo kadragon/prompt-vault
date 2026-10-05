@@ -154,3 +154,20 @@ describe('claudeAdapter.listProjectConversations', () => {
     expect(claudeAdapter.listProjectConversations?.(doc)).toEqual([]);
   });
 });
+
+// Outside the measured aside, chat links indicate structural drift even outside main.
+describe.each(['/project/p', '/cowork/project/p'])('project drift on %s', (path) => {
+  it.each(['<ul><li><a href="/chat/stranded">Stranded</a></li></ul>',
+    '<table><tbody><tr><td><a href="/chat/stranded">Stranded</a></td></tr></tbody></table>'])
+  ('rejects a stranded body list before reporting an empty project', (list) => {
+    const doc = docAt(`https://claude.ai${path}`,
+      `<body><aside aria-label="History"><a href="/chat/sidebar">Sidebar history</a></aside><main><div data-testid="project-doc-upload"></div></main>${list}</body>`);
+    expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
+  });
+  it('rejects a stranded body list even beside a valid project table', () => {
+    const doc = docAt(`https://claude.ai${path}`,
+      '<body><main><table><tbody><tr><td><a href="/chat/valid">Valid</a></td></tr></tbody></table></main>' +
+      '<a href="/chat/stranded">Stranded</a></body>');
+    expect(() => claudeAdapter.listProjectConversations?.(doc)).toThrow(ExtractionError);
+  });
+});

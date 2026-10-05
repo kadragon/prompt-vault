@@ -48,21 +48,18 @@ continuation line is invisible to it and the blocked item is offered as actionab
       the absence of a table, so it is correct either way — but whether such a project renders a
       document table at all is still unmeasured, and the answer would let the row contract be
       tightened.
-- [ ] [FIX] A Claude project list rendered outside `<main>` would read as `[]` rather than failing
       loud. `listProjectConversations` scopes its stranded-link probe to `main a[href^="/chat/"]`
       because the app shell's `aside` carries up to 20 recent-chat anchors matching the same
       selector. `projectTable` (`main table`) has always carried that assumption, so this is not a
       new one — the 2026-10-05 bare-route session measured all project links inside `main` on
       one empty and two populated homes. The measurement prerequisite is resolved; any new
       guard must preserve the distinction between project links and sidebar history.
-- [ ] [FIX] The `/recents` walk aborts the whole enumeration when a row transiently renders with
       no anchor, because it re-enters `listRecentsConversations` each round. That is the fail-loud
       direction and matches the row contract, but it is more brittle than the sidebar loader, which
       skips unreadable anchors. Prerequisite met on 2026-10-05: native scrolling grew 30 to
       34 links; opening the bulk panel with one blank anchorless row reproduced the visible
       extraction error. Preserve fail-loud handling of malformed conversation rows while
       distinguishing measured non-conversation rows; counts alone do not prove hydration.
-- [ ] [FIX] Support Claude's native View all destination `/chats`, observed 2026-10-05.
       `RECENTS_PATH` currently accepts only `/recents`, which remains directly accessible.
       Verify the `/chats` list contract and route the history bulk entry point without
       broadening matches to unrelated pages.

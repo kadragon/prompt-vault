@@ -796,6 +796,61 @@ extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-s
 
 ## Claude
 
+### 2026-10-05 — history row classification and `/chats` contract
+
+Fresh read-only probes in logged-in native Google Chrome via Computer Use and the
+DevTools Console. Aside's daemon was unavailable; no DOM-enabled browser connector
+was exposed. Same DevTools revision as the bare-project recording below, `ko-KR`,
+one account with 34 history entries. No conversation text or identifiers were
+returned. MutationObservers watched `main` while native scrolling triggered paging;
+all observers were disconnected after reading their results. No latency claim follows
+from operator/tool pauses.
+
+Both `/chats` and `/recents` resolve one `main table`; rows use `tbody > tr` and
+conversation anchors use `a[href^="/chat/"]`. On `/chats`, the table's ancestor
+chain exposed a scrolling `div` with `clientHeight=464`, `scrollHeight=1687`, and
+an inner non-overflowing `div` with both heights 1607. The existing ancestor-based
+scroll-port resolution therefore applies. The table is mounted beneath a `div`;
+no provider-specific route selector outside the Claude adapter is needed.
+
+The `/chats` observer recorded `(rows, links)` as `(31, 30)`, `(32, 30)`, then
+`(34, 34)`. A fresh `/recents` observer recorded `(32, 30)` then `(34, 34)`.
+Every anchorless row in these fresh samples was classified individually:
+
+| Row shape | `/chats` | `/recents` | Meaning supported by observation |
+|---|---|---|---|
+| One `td`, inline `height: 1px`, no child element, text, anchor or button | 1 before paging completes | 1 before paging completes | Empty non-conversation spacer; not a positive end-of-list marker |
+| Three `td` cells, no anchor/button, two `div[data-cds="Skeleton"][role="status"]`, nonempty status text | 1 during paging | 1 during paging | Loading placeholder; must prevent a complete verdict while present |
+| One conversation anchor per row | 30 initially, 34 finally | 30 during paging, 34 finally | Conversation rows |
+
+The two Skeleton divs on `/chats` carried inline dimensions `14rem × 0.75rem` and
+`5rem × 0.625rem`; dimensions and localized status text are incidental and are not
+selector contracts. These observations classify the *fresh* intermediate samples.
+The extra row in the earlier recording below remains unclassified because its own
+per-row structure was not retained; matching counts do not retroactively prove its identity.
+Unknown anchorless rows must still fail loud. Loading rows must not advance the
+loader's stable termination counter, and exhausting its step budget while they remain
+must signal an incomplete list.
+
+Scope: populated history, one account, one locale and window. Document-only projects,
+zero-history accounts and Japanese/Chinese artifact separators remain unmeasurable in
+this account without creating fixtures or changing locale; those actions are out of
+this sprint's scope. Built-extension checks are recorded separately after implementation.
+
+**Loaded-candidate smoke check (1.14.3).** After the final source checks/build, the
+user approved a temporary switch from the enabled store build 1.14.1 to the existing
+unpacked `~/Dev/prompt-vault/dist` extension. Reloading that extension showed 1.14.3;
+reloading `/chats` displayed the recent-history bulk trigger. Opening the panel
+listed 30 conversations without the previous blank-row extraction error. Its
+**Load more** action reached 34 conversation checkboxes (excluding Select all),
+settled with the action enabled again, and showed no extraction error or incomplete
+warning. `/recents` also displayed the trigger and opened its panel without an
+extraction error. No export was requested and no conversation content downloaded.
+The original activation state was restored and observed: unpacked extension off,
+store build on. This covers the mounted UI and real paging, not a live bulk export
+or its per-chat round trip; both history route families' open/return behavior is
+covered by the deterministic navigation tests.
+
 ### 2026-10-05 — recents paging and native history-route drift
 
 Same native Chrome session as the bare-project check below. Counts exclude
