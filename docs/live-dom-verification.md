@@ -391,6 +391,17 @@ alphanumeric does decode), so a correction that simply stopped decoding would ha
 
 ## ChatGPT
 
+### 2026-10-05 — long-project prerequisite remains unavailable
+
+Same native Chrome session as the Claude bare-project measurement. Counts exclude
+conversation text and identifiers. No export or runtime change was performed.
+
+**ChatGPT long-project prerequisite:** three inspected projects held 8, 0, and 0
+conversations. With DevTools closed, the eight-link project had viewport height
+963, no links below the viewport, and no scrollable ancestor in the measured
+project-link region. Overflow induced by docked DevTools is not evidence for
+a naturally long project. The prerequisite remains unavailable in these samples.
+
 ### 2026-10-03 — the Recents list's true end, its 429 budget, and the load-error row
 
 Same account (ko-KR UI), Playwright MCP, 08:23–08:51 UTC. Fetches were read from
@@ -785,7 +796,7 @@ extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-s
 
 ## Claude
 
-### 2026-10-05 — additional authenticated measurement prerequisites
+### 2026-10-05 — recents paging and native history-route drift
 
 Same native Chrome session as the bare-project check below. Counts exclude
 conversation text and identifiers. Elapsed times include operator/tool pauses;
@@ -802,37 +813,10 @@ hydration from removal of the blank row. The native View all action now reaches
 `/chats`; `RECENTS_PATH` in `src/adapters/claude/matches.ts` still accepts only
 `/recents`. Direct navigation to `/recents` remains available in this sample.
 
-**Gemini expanded sidebar:** paging produced 52, 72, 92, then 112 rows with equal
-anchor counts at every recorded state. No expanded row-before-anchor state was
-observed. A separate collapse/reopen sample retained 32 rows, removed their
-anchors while collapsed, then restored all 32 anchors. Observation started
-after startup; cold hydration and subframe transitions remain unknown.
-
-**Gemini exchange identity:** A/B/A revisits of two existing conversations yielded
-2/1/2 nonempty unique exchange IDs. A's ordered IDs matched after returning,
-A/B shared no IDs, and A reused zero exchange nodes. This supports stability in
-two sampled conversations, not a provider-wide identity contract. A transient
-three-exchange view settled to two during the return; no new export was attempted.
-
-**Gemini initial page:** an existing 31-exchange conversation initially rendered
-10 exchanges. Native upward scrolling loaded 20, 30, then 31. This reconfirms
-`INITIAL_PAGE_SIZE=10` for the sample. Sanitized observation trace:
-
-```json
-{"columns":["elapsedMs","sidebarRows","anchors","missing","exchanges"],"states":[[0,52,52,0,2],[10578,72,72,0,2],[11865,92,92,0,2],[39688,92,92,0,1],[39697,92,92,0,0],[40138,92,92,0,10],[40245,112,112,0,10],[111130,112,112,0,20],[150729,112,112,0,30],[164293,112,112,0,31]]}
-```
-
-**ChatGPT long-project prerequisite:** three inspected projects held 8, 0, and 0
-conversations. With DevTools closed, the eight-link project had viewport height
-963, no links below the viewport, and no scrollable ancestor in the measured
-project-link region. Overflow induced by docked DevTools is not evidence for
-a naturally long project. The prerequisite remains unavailable in these samples.
-
-**Unavailable fixtures:** inspected Claude projects had no knowledge documents;
-the account had recent history; Gemini's Notebook section offered only creation.
-Document-only projects, empty history, Notebook behavior, and Japanese/Chinese
-artifact separators remain unverified. No fixture creation or locale change was
-authorized in this recording pass. Browser-local observers and timers were stopped.
+**Unavailable fixtures:** inspected Claude projects had no knowledge documents,
+and the account had recent history. Document-only projects, empty history, and
+Japanese/Chinese artifact separators remain unverified. No fixture creation or
+locale change was authorized in this recording pass. Observers and timers were stopped.
 
 ### 2026-10-05 — bare `/project/<id>` homes retain the measured project-table shape
 
@@ -1670,6 +1654,35 @@ Scope limits: one account, `ko-KR`, 26 conversations, three projects (0, 1 and 4
 `[unknown — not measured]`). `/project/<id>` remains `[unknown — not measured]`.
 
 ## Gemini
+
+### 2026-10-05 — expanded sidebar, exchange identity, and initial page samples
+
+Same native Chrome session as the Claude bare-project measurement. Counts exclude
+conversation text and identifiers. Elapsed times include operator/tool pauses and
+do not measure network latency. No export or runtime change was performed.
+
+**Gemini expanded sidebar:** paging produced 52, 72, 92, then 112 rows with equal
+anchor counts at every recorded state. No expanded row-before-anchor state was
+observed. A separate collapse/reopen sample retained 32 rows, removed their
+anchors while collapsed, then restored all 32 anchors. Observation started
+after startup; cold hydration and subframe transitions remain unknown.
+
+**Gemini exchange identity:** A/B/A revisits of two existing conversations yielded
+2/1/2 nonempty unique exchange IDs. A's ordered IDs matched after returning,
+A/B shared no IDs, and A reused zero exchange nodes. This supports stability in
+two sampled conversations, not a provider-wide identity contract. A transient
+three-exchange view settled to two during the return; no new export was attempted.
+
+**Gemini initial page:** an existing 31-exchange conversation initially rendered
+10 exchanges. Native upward scrolling loaded 20, 30, then 31. This reconfirms
+`INITIAL_PAGE_SIZE=10` for the sample. Sanitized observation trace:
+
+```json
+{"columns":["elapsedMs","sidebarRows","anchors","missing","exchanges"],"states":[[0,52,52,0,2],[10578,72,72,0,2],[11865,92,92,0,2],[39688,92,92,0,1],[39697,92,92,0,0],[40138,92,92,0,10],[40245,112,112,0,10],[111130,112,112,0,20],[150729,112,112,0,30],[164293,112,112,0,31]]}
+```
+
+**Unavailable fixture:** the Notebook section offered only creation, so Notebook
+behavior remains unverified. No fixture was created. Observers and timers were stopped.
 
 ### 2026-07-25 — the exchange list pages in older turns on scroll-up, 10 at a time
 
