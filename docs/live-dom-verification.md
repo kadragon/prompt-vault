@@ -785,6 +785,109 @@ extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-s
 
 ## Claude
 
+### 2026-10-05 — additional authenticated measurement prerequisites
+
+Same native Chrome session as the bare-project check below. Counts exclude
+conversation text and identifiers. Elapsed times include operator/tool pauses;
+they do not measure network latency. No runtime behavior changed.
+
+**Claude recents:** `/recents` initially exposed 31 table rows, 30 conversation
+links, and one anchorless blank row. That row had one cell, no buttons, no text,
+and `style="height: 1px;"`. Opening the installed extension's recent-conversations
+panel reproduced its visible extraction error for a row without exactly one
+conversation link. Native scrolling changed `(rows, links, blank, distinct links)`
+from `(31, 30, 1, 30)` to `(32, 30, 1, 30)`, then `(34, 34, 0, 34)`.
+This satisfies the deferred paging prerequisite. Counts do not distinguish
+hydration from removal of the blank row. The native View all action now reaches
+`/chats`; `RECENTS_PATH` in `src/adapters/claude/matches.ts` still accepts only
+`/recents`. Direct navigation to `/recents` remains available in this sample.
+
+**Gemini expanded sidebar:** paging produced 52, 72, 92, then 112 rows with equal
+anchor counts at every recorded state. No expanded row-before-anchor state was
+observed. A separate collapse/reopen sample retained 32 rows, removed their
+anchors while collapsed, then restored all 32 anchors. Observation started
+after startup; cold hydration and subframe transitions remain unknown.
+
+**Gemini exchange identity:** A/B/A revisits of two existing conversations yielded
+2/1/2 nonempty unique exchange IDs. A's ordered IDs matched after returning,
+A/B shared no IDs, and A reused zero exchange nodes. This supports stability in
+two sampled conversations, not a provider-wide identity contract. A transient
+three-exchange view settled to two during the return; no new export was attempted.
+
+**Gemini initial page:** an existing 31-exchange conversation initially rendered
+10 exchanges. Native upward scrolling loaded 20, 30, then 31. This reconfirms
+`INITIAL_PAGE_SIZE=10` for the sample. Sanitized observation trace:
+
+```json
+{"columns":["elapsedMs","sidebarRows","anchors","missing","exchanges"],"states":[[0,52,52,0,2],[10578,72,72,0,2],[11865,92,92,0,2],[39688,92,92,0,1],[39697,92,92,0,0],[40138,92,92,0,10],[40245,112,112,0,10],[111130,112,112,0,20],[150729,112,112,0,30],[164293,112,112,0,31]]}
+```
+
+**ChatGPT long-project prerequisite:** three inspected projects held 8, 0, and 0
+conversations. With DevTools closed, the eight-link project had viewport height
+963, no links below the viewport, and no scrollable ancestor in the measured
+project-link region. Overflow induced by docked DevTools is not evidence for
+a naturally long project. The prerequisite remains unavailable in these samples.
+
+**Unavailable fixtures:** inspected Claude projects had no knowledge documents;
+the account had recent history; Gemini's Notebook section offered only creation.
+Document-only projects, empty history, Notebook behavior, and Japanese/Chinese
+artifact separators remain unverified. No fixture creation or locale change was
+authorized in this recording pass. Browser-local observers and timers were stopped.
+
+### 2026-10-05 — bare `/project/<id>` homes retain the measured project-table shape
+
+**Method and environment.** Logged-in Google Chrome, native Computer Use accessibility state
+for navigation and visible row counts, then a read-only expression in its DevTools Console.
+Aside CLI 1.26.916.1741 was installed but its daemon was not running; no DOM-enabled browser was
+connected to Computer Use. Chrome's DevTools frontend reported revision
+`f89f3a4363808e117c592adedcf9947882ac3b79`. Locale: `ko-KR`. No browser configuration or
+account locale was changed. This is DOM verification, not build parity or an export smoke test.
+
+The `/cowork/projects` list exposed three links to `/project/<id>`. All three settled on the bare
+family without redirecting to `/cowork/project/<id>`: one empty home and two populated homes.
+The populated homes showed 1 and 4 conversation rows in the accessibility tree, matching the
+Console counts. No conversation text, titles, or account/project/chat identifiers are stored here.
+
+**Raw count record.** The Console expression returned a JSON string. It queried `main`,
+`[data-testid="project-doc-upload"]`, `[data-cds="DataTable"]`, all `table` elements, and
+`a[href^="/chat/"]`. For each table it counted `tbody > tr`, chat links, and rows with exactly
+one chat link; `closest('main')`, `closest('aside')`, and `closest('[data-cds="DataTable"]')`
+classified placement. Route family was tested against the two regexes in `matches.ts`.
+
+```json
+[
+  {"family":"bare-project","lang":"ko-KR","main":1,"shell":1,"dataTables":0,"mainChats":0,"asideChats":20,"outsideMainAside":0,"tables":[]},
+  {"family":"bare-project","lang":"ko-KR","main":1,"shell":1,"dataTables":1,"mainChats":1,"asideChats":20,"outsideMainAside":0,"tables":[{"inMain":true,"dataCds":"Table","dataTableAncestor":true,"rows":1,"chats":1,"validRows":1}]},
+  {"family":"bare-project","lang":"ko-KR","main":1,"shell":1,"dataTables":1,"mainChats":4,"asideChats":20,"outsideMainAside":0,"tables":[{"inMain":true,"dataCds":"Table","dataTableAncestor":true,"rows":4,"chats":4,"validRows":4}]}
+]
+```
+
+**Consequence.** The bare route's settled DOM agrees with the existing project resolver and row
+contract at these scales. `main table`, the table attributes, `tbody > tr`, one chat anchor per row,
+and the shell marker were measured directly. No chat link was outside both `main` and `aside`;
+the 20 sidebar links on each home confirm why an unscoped empty-project probe would be wrong.
+Runtime selectors and behavior remain unchanged. This removes the route-measurement blocker on
+the separate fail-loud follow-up; it does not implement a new guard for a future list outside `main`.
+
+**Session coverage and limits.**
+
+- Bare-route home/table and current `main` placement: **measured**, three homes, one locale.
+- Documents with zero conversations: **unmeasurable in the inspected account state**; each of the
+  three homes displayed the context-upload empty state. No document was uploaded.
+- Empty `/recents`: **unmeasurable in this account**; its sidebar already held 20 recent chats.
+- Japanese/Chinese artifact separator: **unmeasurable in the current locale** (`ko-KR`). No locale
+  change or new artifact was requested.
+- Hydration timing, long-list paging/virtualization, conversation extraction, and extension build
+  parity: **out of scope**. Settled snapshots do not establish their behavior. No Claude numeric
+  quantity appears in the provider-dependent re-measurement table at the top of this document.
+
+**Navigation incident.** A keyboard navigation attempt entered a project URL into the chat input
+and submitted one unintended new conversation in the first populated project. The 1-row record
+above was captured before that incident; the 4-row record belongs to the other project. The
+response finished before a stop action could be applied. The conversation was not deleted.
+Subsequent navigation clicked and set the address-bar element explicitly.
+
+
 ### 2026-07-25 — the message list IS a recycling virtualizer (unlike ChatGPT's `#history`)
 
 Measured on a ~50-turn conversation, via a console snippet the user ran on the live logged-in page.

@@ -279,7 +279,11 @@ export const selectors = {
    *   selector the same drift changes nothing at all.
    * - **It was measured on one route family.** `PROJECT_PATHS` in `./matches.ts` matches both
    *   `/cowork/project/<id>` and `/project/<id>`; only the former was measured on 2026-08-10,
-   *   so pinning would rest on an unmeasured assumption for the other (AGENTS.md #5).
+   *   so pinning would have rested on an unmeasured assumption for the other (AGENTS.md #5).
+   *   The bare family was subsequently verified against the live page (2026-10-05): two
+   *   populated homes held 1 / 4 rows, each with one chat link, in one `main table` carrying
+   *   `data-cds="Table"` inside `[data-cds="DataTable"]`. One empty home held no table.
+   *   All three held the project shell; all project chat links were inside `main`.
    *
    * What the session did change is the missing-table case below it: `listProjectConversations`
    * now fails loud when it is ON a project route and resolves no table at all, instead of

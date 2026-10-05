@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Record Claude, Gemini, and ChatGPT DOM measurements and sync backlog prerequisites (2026-10-05) → docs/live-dom-verification.md
 - [done] Show ChatGPT-only rate-limit guidance and skip extra grace under the list error row (2026-10-05) → docs/live-dom-verification.md
 - [done] Detect ChatGPT's Recents load-error row after a 429, retry it on rerun, and record the list's true end (2026-10-03) → docs/live-dom-verification.md
 - [done] Show Claude message positions one-based and mark return-step-only error keys console-only (2026-10-03)
