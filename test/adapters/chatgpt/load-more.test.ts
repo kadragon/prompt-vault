@@ -443,10 +443,13 @@ describe('loadMoreConversations (history sidebar)', () => {
     // The last rendered increment was short, so parity reads a genuine end and nothing else is
     // left on screen — the error row is the only evidence the list was cut (AGENTS.md #4).
     const incomplete = vi.fn();
-    const { root } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 2, fetchMs: 0, listError: 'end' });
+    const { root, retryClicks } = makeLazyRoot({ pageSize: 5, pages: 2, lastPageRows: 2, fetchMs: 0, listError: 'end' });
     const result = await loadMoreConversations(root, { ...fast, onIncomplete: incomplete });
     expect(result.map((c) => c.id)).toEqual(idsUpTo(7));
     expect(incomplete).toHaveBeenCalledTimes(1);
+    expect(incomplete).toHaveBeenCalledWith('rate-limited');
+    // Retry is pressed only when a walk STARTS under the row, never on one that appears mid-walk.
+    expect(retryClicks()).toBe(0);
   });
 
   it('clicks the page\'s retry button once when a walk starts under the load-error row', async () => {
@@ -483,6 +486,27 @@ describe('loadMoreConversations (history sidebar)', () => {
     expect(retryClicks()).toBe(1);
     expect(result.map((c) => c.id)).toEqual(idsUpTo(5));
     expect(incomplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips exactly the pending grace rounds only while the load-error row is present', async () => {
+    vi.useFakeTimers();
+    try {
+      const elapsed: number[] = [];
+      for (const listError of ['stuck', 'never'] as const) {
+        const { root } = makeLazyRoot({ pageSize: 5, pages: 1, fetchMs: 0, listError, loading: listError === 'stuck' ? 'never' : 'always' });
+        const incomplete = vi.fn();
+        const started = Date.now();
+        const walk = loadMoreConversations(root, { onIncomplete: incomplete });
+        await vi.runAllTimersAsync();
+        await walk;
+        elapsed.push(Date.now() - started);
+        expect(incomplete).toHaveBeenCalledTimes(1);
+        expect(incomplete).toHaveBeenCalledWith(listError === 'stuck' ? 'rate-limited' : undefined);
+      }
+      expect(elapsed[1] - elapsed[0]).toBe(10_000); // 20 rounds at the production 500 ms step
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('presses nothing on a healthy list', async () => {

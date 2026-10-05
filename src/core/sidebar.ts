@@ -16,6 +16,13 @@ export interface SidebarConversation {
   url: string;
 }
 
+/**
+ * A known reason a `loadMore*` walk ended short. `'rate-limited'`: the site refused further
+ * pages for now (ChatGPT's load-error row after a 429), so a rerun right away stops at the
+ * same point.
+ */
+export type IncompleteCause = 'rate-limited';
+
 // --- Scroll-walk mechanics ---------------------------------------------------
 //
 // The pure machinery every provider's conversation-list loader runs on, extracted

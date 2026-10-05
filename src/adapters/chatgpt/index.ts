@@ -4,6 +4,7 @@ import {
   delay,
   findScrollableAncestor,
   isPortClamped,
+  type IncompleteCause,
   type SidebarConversation,
 } from '../../core/sidebar';
 import { ownerDocument } from '../../core/dom';
@@ -165,9 +166,10 @@ export interface LoadMoreScrollOptions extends AutoScrollOptions {
   /**
    * Fired once if the walk gave up while the page-size parity oracle still said another page
    * was owed — i.e. the returned list may be short. Callers should surface this rather than
-   * present the result as complete (AGENTS.md #4); omit it and the loop is unchanged.
+   * present the result as complete (AGENTS.md #4); omit it and the loop is unchanged. Called
+   * with `'rate-limited'` when the list's load-error row was up at the end of the walk.
    */
-  onIncomplete?: () => void;
+  onIncomplete?: (cause?: IncompleteCause) => void;
   /**
    * A page size an earlier walk over the same list measured (see `onPageSize`). Supplying it
    * lets `pageParityGate` judge parity on a **re-run over an already-loaded list**, where its
@@ -966,9 +968,10 @@ export async function loadMoreConversations(
       settled: endOfListGate(),
       pending: sidebarPagePending(history, options),
       pendingExtraRounds: SIDEBAR_PENDING_EXTRA_ROUNDS,
+      cut: () => history.querySelector(selectors.sidebarListRetry) !== null,
       defaults: SIDEBAR_SCROLL_DEFAULTS,
       onProgress: options.onProgress,
-      onIncomplete: options.onIncomplete,
+      onIncomplete: (cut) => options.onIncomplete?.(cut ? 'rate-limited' : undefined),
     },
   );
   return [...acc.values()];
@@ -1213,6 +1216,7 @@ async function scrollUntilStable(
     settled = () => true,
     pending = () => false,
     pendingExtraRounds = 0,
+    cut = () => false,
     endConfirmed = () => false,
     confirmedStableRounds,
     defaults = {},
@@ -1230,6 +1234,12 @@ async function scrollUntilStable(
     /** Extra stall rounds allowed while `pending()` holds. */
     pendingExtraRounds?: number;
     /**
+     * Positive evidence the list was cut and will not resume on its own (ChatGPT's load-error
+     * row: the page never retries a 429'd fetch). A stall then ends after `stableRounds` without
+     * the `pendingExtraRounds` grace, since waiting longer cannot bring a page in.
+     */
+    cut?: () => boolean;
+    /**
      * Positive evidence that the list has reached its end (the load-older status was seen and
      * has cleared). While it holds, `confirmedStableRounds` replaces `stableRounds`.
      */
@@ -1239,8 +1249,8 @@ async function scrollUntilStable(
     defaults?: AutoScrollOptions;
     /** Fired with `count()`'s value, but only on a round that actually grew it. */
     onProgress?: (count: number) => void;
-    /** Fired once if the loop gave up while `pending()` still held. */
-    onIncomplete?: () => void;
+    /** Fired once if the loop gave up while `pending()` still held; `cut` is `cut()` then. */
+    onIncomplete?: (cut: boolean) => void;
   },
 ): Promise<void> {
   const {
@@ -1269,8 +1279,9 @@ async function scrollUntilStable(
       // owed, which buys a longer (but still bounded) wait before giving up.
       const required =
         confirmedStableRounds !== undefined && endConfirmed() ? confirmedStableRounds : stableRounds;
-      if (stalls >= required + (morePagesOwed ? pendingExtraRounds : 0)) {
-        if (morePagesOwed) onIncomplete?.();
+      const listCut = cut();
+      if (stalls >= required + (morePagesOwed && !listCut ? pendingExtraRounds : 0)) {
+        if (morePagesOwed) onIncomplete?.(listCut);
         return;
       }
     }

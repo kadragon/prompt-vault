@@ -90,6 +90,15 @@ describe('chatgptAdapter.listConversations', () => {
     expect(doc.querySelector(selectors.sidebarHistory)?.querySelector(selectors.sidebarListRetry)).toBeNull();
   });
 
+  it('does not treat a busy sibling status button as the retry control', () => {
+    const doc = docFrom(SIDEBAR_ERROR);
+    const history = doc.querySelector(selectors.sidebarHistory);
+    const status = history?.querySelector('[role="list"] + [role="status"]');
+    expect(status).not.toBeNull();
+    status?.setAttribute('aria-busy', 'true');
+    expect(history?.querySelector(selectors.sidebarListRetry)).toBeNull();
+  });
+
   it('lists the rows of the error-state sidebar like the healthy one', () => {
     const list = chatgptAdapter.listConversations?.(docFrom(SIDEBAR_ERROR)) ?? [];
     expect(list.map((c) => c.id)).toEqual(['conv-aaa', 'conv-bbb', 'conv-ccc']);

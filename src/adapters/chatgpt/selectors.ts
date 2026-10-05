@@ -223,7 +223,7 @@ export const selectors = {
    * a cut list from a complete one; the page never retries on its own, and only a click on
    * this button resumed the fetches. Verified against the live page (2026-10-03).
    */
-  sidebarListRetry: '[role="list"] + [role="status"] button',
+  sidebarListRetry: '[role="list"] + [role="status"][aria-busy="false"] button',
 
   /**
    * A conversation link on a Project home page (`/g/g-p-<id>/project`) or in the

@@ -445,8 +445,11 @@ list items) saw nothing — holding the text "대화 기록을 불러올 수 없
 `button` ("다시 시도"). It is the only on-screen difference between a list cut by a 429 and a
 complete one, mid-list or at offset 0. `selectors.sidebarListRetry` matches its button: the walk
 treats it as a page still owed (so it reports incomplete) and presses it once when it starts, so a
-re-run after the window recovers the list. The copy asks the user to wait a few minutes when a
-re-run stops at the same point. Fixture: `test/fixtures/chatgpt/sidebar-error.html`.
+re-run after the window recovers the list. The rate-limit warning asks the user to wait a few
+minutes as soon as this error row is present; generic incompleteness retains the ordinary rerun
+warning. An error-row stall skips the 20 extra pending rounds (10 seconds), since no page will
+arrive without a retry; the base 23-round dwell and healthy pending grace remain unchanged.
+Fixture: `test/fixtures/chatgpt/sidebar-error.html`.
 
 ### 2026-09-29 — the "app-shell" conversation page: what moved, and three things that are not selectors
 

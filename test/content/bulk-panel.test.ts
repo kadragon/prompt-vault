@@ -4,7 +4,7 @@ import type { SidebarConversation } from '../../src/core/sidebar';
 import type { ExportFormat } from '../../src/content/save-conversation';
 import type { BulkExportSummary } from '../../src/content/bulk-export';
 import { openBulkPanel, BULK_PANEL_ID, type BulkPanelDeps } from '../../src/content/bulk-panel';
-import { bulkLoadMoreIncompleteMessage, bulkLoadMoreProgressMessage } from '../../src/strings';
+import { bulkLoadMoreIncompleteMessage, bulkLoadMoreRateLimitedMessage, bulkLoadMoreProgressMessage } from '../../src/strings';
 
 function freshDoc(): Document {
   const window = new Window();
@@ -319,6 +319,47 @@ describe('openBulkPanel', () => {
     expect(panel.textContent).not.toContain('All conversations loaded');
     expect(buttonByText(panel, 'Load more').disabled).toBe(false);
   });
+
+  it.each(['silent retry', 'healthy growth', 'ordinary incompleteness'] as const)(
+    'selects the rate-limit warning and handles %s on the next walk', async (nextWalk) => {
+      const doc = freshDoc();
+      let call = 0;
+      const d: BulkPanelDeps = {
+        ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }),
+        loadMore: (_onProgress, onIncomplete) => {
+          call += 1;
+          if (call === 1) onIncomplete?.('rate-limited');
+          else if (nextWalk === 'ordinary incompleteness') onIncomplete?.();
+          return Promise.resolve(nextWalk === 'healthy growth' && call > 1
+            ? [...CONVS, { id: 'd', title: 'Delta', url: 'https://chatgpt.com/c/d' }]
+            : CONVS);
+        },
+      };
+      openBulkPanel(doc, d);
+      const panel = panelOf(doc);
+      buttonByText(panel, 'Load more').click();
+      await flush();
+      expect(panel.textContent).toContain(bulkLoadMoreRateLimitedMessage(CONVS.length));
+      expect(panel.textContent).not.toContain(bulkLoadMoreIncompleteMessage(CONVS.length));
+      expect(buttonByText(panel, 'Load more').disabled).toBe(false);
+
+      buttonByText(panel, 'Load more').click();
+      await flush();
+      expect(call).toBe(2);
+      if (nextWalk === 'silent retry') {
+        expect(panel.textContent).toContain(bulkLoadMoreRateLimitedMessage(CONVS.length));
+      } else if (nextWalk === 'ordinary incompleteness') {
+        expect(panel.textContent).toContain(bulkLoadMoreIncompleteMessage(CONVS.length));
+        expect(panel.textContent).not.toContain(bulkLoadMoreRateLimitedMessage(CONVS.length));
+      } else {
+        expect(checkboxes(panel).map((box) => box.value)).toContain('d');
+        expect(panel.textContent).not.toContain(bulkLoadMoreRateLimitedMessage(CONVS.length));
+        expect(panel.textContent).not.toContain(bulkLoadMoreIncompleteMessage(CONVS.length));
+      }
+      expect(buttonByText(panel, 'Load more').disabled).toBe(false);
+      expect(panel.textContent).not.toContain('All conversations loaded');
+    },
+  );
 
   it('surfaces a rejected Load more in the status line and re-enables the button', async () => {
     const doc = freshDoc();
