@@ -130,13 +130,25 @@ Shipped screenshot set (in listing order):
    pixel is in frame, and a caption must not claim more than its own image shows.
 4. `screenshot-04-popup-settings` — the extension popup's format and bulk-icon toggles.
 5. `screenshot-05-exported-pdf` — a real exported PDF with mixed English/Korean prose and
-   code blocks, demonstrating selectable text and correctly rendered CJK glyphs. Its demo
-   conversation deliberately holds Python and shell only: the first capture used a JavaScript
-   answer and put both open PDF defects on display — the code font's ligature turned `=>` into
-   `⇒`, and an inline-code run kept its backticks (both filed in `backlog.md`). Choosing content
-   that avoids them keeps the caption true of the image, but it hides a defect that is still
-   there, so **re-capture this shot from a conversation containing `=>` once those two items
-   land** — that is the version worth shipping.
+   Python, JavaScript, and Bash code. Both locale images use the same existing non-sensitive
+   conversation from **Prompt Vault Demo**, with their original locale-specific captions.
+   The JavaScript block retains literal `=>`; the explanation renders inline `reduce()`
+   without backticks. This replaces the earlier Python/Bash-only capture that avoided those
+   two rendering cases.
+
+**PDF re-capture, 2026-10-09:** native Chrome Computer Use clicked the installed extension's
+PDF button on the existing demo conversation titled `파이썬과 bash 예제`; no conversation or
+account settings were changed. The enabled store extension was 1.14.3; the unpacked 1.14.3
+copy was disabled. Chrome reported a completed 18.7 KB download,
+`chatgpt-파이썬과-bash-예제-20261009.pdf` (19,137 bytes, one A4 page). `pdftotext -layout`
+confirmed two literal `=>` occurrences, `reduce()`, and Korean text. Poppler rendered the
+actual downloaded PDF; its content crop was scaled uniformly into the existing white panel,
+preserving the original caption bands. No product content was reconstructed. Both PNGs
+remain 1280×800. The source PDF SHA-256 is
+`fbe0727c7ca4fcb1927ec378751a5f64ee3cfba2acd515bb4f81fea0e0e77b66`.
+Independent file verification reproduced the PDF render and matched its scaled crop
+pixel-for-pixel inside both PNGs; the original caption pixels were unchanged. The download
+completion and active extension version were observed by the capture operator only.
 
 **Capturing in English on a Korean machine.** macOS Chrome takes its UI language from the OS —
 there is no "display Chrome in this language" control in `chrome://settings/languages` — so
@@ -155,7 +167,8 @@ moves cover most of the frame without touching the user's own Chrome or any acco
 The Korean set needs none of that — it is what this machine produces untouched. Capture it
 *before* switching anything, or restore both settings first: the header order, and `dist/`'s own
 `ko` messages file. The two sets cover the same five views, so a change to what a view *shows* is a change to
-both — but they are separate captures, and their conversation content and counts differ.
+both. Shots 1–4 are separate captures whose conversation content and counts differ;
+shot 5 now shares the same exported PDF between locales.
 
 **What that does NOT cover, measured 2026-08-11:** strings Claude renders from
 `navigator.language` stay Korean regardless of the header — in the shipped
