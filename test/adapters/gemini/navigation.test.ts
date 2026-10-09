@@ -325,15 +325,8 @@ describe('geminiAdapter.openConversation', () => {
     }
   });
 
-  it('accepts a re-rendered target whose shape is indistinguishable from the outgoing one', async () => {
-    // `messageSignature()` carries only the exchange ids, the count and two text LENGTHS, so two
-    // same-shaped conversations produce the same string. Requiring it to CHANGE would stall until
-    // the timeout and report a correctly loaded chat as skipped, so the unchanged-signature branch
-    // has to exist — this pins that it does, and that a genuine re-render satisfies it.
-    //
-    // It does NOT pin the node-identity guard: neutralizing that guard only makes this branch more
-    // permissive, so this test would stay green. The stale-render test above is the one that goes
-    // red, and it is where that guard is pinned.
+  it('accepts settled changed text with the same IDs and text lengths', async () => {
+    // Equal-length aaa-to-bbb content must change the fingerprint even with identical IDs.
     vi.useFakeTimers();
     try {
       const { doc, state } = installLivePage(
@@ -342,7 +335,7 @@ describe('geminiAdapter.openConversation', () => {
       );
       doc.querySelector('a')?.addEventListener('click', () => {
         setPathname(state, `/app/${TARGET}`);
-        // A real re-render: new element objects carrying an identical fingerprint.
+        // New nodes carrying the same IDs and text lengths, but different content.
         doc.body.innerHTML = exchange('bbb', 'c_1');
       });
 
@@ -351,6 +344,62 @@ describe('geminiAdapter.openConversation', () => {
       await settled;
       expect(state.pathname).toBe(`/app/${TARGET}`);
       expect(doc.querySelector('user-query')?.textContent).toBe('bbb');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects a recreated outgoing view with byte-identical IDs and text at the production budget', async () => {
+    // PROBE4: node replacement proves a render, but cannot identify the clicked conversation.
+    vi.useFakeTimers();
+    try {
+      const { doc, state } = installLivePage(
+        `<body><infinite-scroller>${row(TARGET, 'Target')}</infinite-scroller>${exchange('outgoing', 'c_old')}</body>`,
+        `/app/${OTHER}`,
+      );
+      const outgoing = doc.querySelector('.conversation-container');
+      doc.querySelector('a')?.addEventListener('click', () => {
+        setPathname(state, `/app/${TARGET}`);
+        doc.body.innerHTML = exchange('outgoing', 'c_old');
+      });
+      const result = geminiAdapter.openConversation?.(`https://gemini.google.com/app/${TARGET}`).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(16000);
+      expect(await result).toBeInstanceOf(ExtractionError);
+      expect(doc.querySelector('.conversation-container')).not.toBe(outgoing);
+      expect(doc.querySelector('user-query')?.textContent).toBe('outgoing');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('observes equal-length changes in middle turns and waits for their text to settle', async () => {
+    vi.useFakeTimers();
+    try {
+      const turns = (middle: string) => exchange('first', 'c_1') + exchange(middle, 'c_2') + exchange('last', 'c_3');
+      const { doc, state } = installLivePage(
+        `<body><infinite-scroller>${row(TARGET, 'Target')}</infinite-scroller>${turns('aaa')}</body>`,
+        `/app/${OTHER}`,
+      );
+      doc.querySelector('a')?.addEventListener('click', () => {
+        setPathname(state, `/app/${TARGET}`);
+        doc.body.innerHTML = turns('bbb');
+        setTimeout(() => {
+          doc.querySelectorAll('user-query')[1].textContent = 'ccc';
+        }, 400);
+        setTimeout(() => {
+          doc.querySelectorAll('user-query')[1].textContent = 'ddd';
+        }, 800);
+      });
+      let middleAtResolve = '';
+      const settled = geminiAdapter.openConversation?.(`https://gemini.google.com/app/${TARGET}`).then(() => {
+        middleAtResolve = doc.querySelectorAll('user-query')[1].textContent ?? '';
+      });
+      await vi.advanceTimersByTimeAsync(4000);
+      await settled;
+      expect(middleAtResolve).toBe('ddd');
     } finally {
       vi.useRealTimers();
     }

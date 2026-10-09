@@ -9,7 +9,7 @@ import {
   ERR_GEMINI_OPEN_TIMED_OUT,
   ERR_GEMINI_OPEN_URL_MALFORMED,
   ERR_GEMINI_RESPONSE_UNREADABLE,
-  ERR_GEMINI_SIDEBAR_COLLAPSED,
+  ERR_GEMINI_SIDEBAR_NOT_READY,
   ERR_GEMINI_SIDEBAR_LINKS_UNREADABLE,
   ERR_GEMINI_SIDEBAR_MISSING,
   ERR_GEMINI_STILL_GENERATING,
@@ -120,22 +120,9 @@ const NAV_ABSOLUTE_MAX_STEPS = 400;
 // budget a bulk run spends before recording a miss and moving on.
 const OPEN_POLL_MS = 150;
 const OPEN_TIMEOUT_MS = 15000;
-// Consecutive polls on an IDENTICAL signature that count as "the incoming conversation rendered".
-// Needed because the signature carries no per-conversation identity (see `messageSignature`), so
-// two similarly shaped chats produce the same string and the change can never be observed.
-const OPEN_SETTLE_ROUNDS = 2;
-// Consecutive polls a CHANGED signature must hold before the fast path accepts it. Sized, not
-// mirrored: `OPEN_SETTLE_ROUNDS` polls span only 300 ms at the production `pollMs` of 150, and QA
-// measured a target rendering its turns 400 ms apart — so the mirrored count resolves mid-render,
-// two turns into a three-turn conversation. Three polls span 450 ms, past that gap.
-//
-// Be clear about what this can and cannot do. A stability window is evidence that the render has
-// stopped moving, which is a real observation (unlike elapsed time since the click, which the
-// unchanged-signature branch was wrongly built on once) — but it bounds only the inter-turn gaps
-// it exceeds, and 400 ms is one measurement on one account. A slower progressive render can still
-// be sampled mid-flight. That residual is a different and lesser class than the one the node
-// check guards: the content is the RIGHT conversation's, and `extract` runs its own paged walk
-// over the exchange list afterwards rather than trusting this snapshot.
+// Consecutive polls a changed fingerprint must hold before accepting the render. Three polls
+// span 450 ms at production defaults, past the measured 400 ms gap between arriving turns.
+// This bounds only gaps shorter than that window; slower progressive renders remain unproven.
 const OPEN_RENDER_SETTLE_ROUNDS = 3;
 
 
@@ -239,20 +226,15 @@ function requireSidebarScroller(root: ParentNode = document): Element {
 }
 
 /**
- * The COLLAPSED sidebar, which is the one shape that would otherwise export as an empty account.
- * Measured 2026-08-10: collapsed, a `/app` page still renders 31 conversation rows while the
- * document holds **0** `a[href^="/app/"]`, so `rows > 0 && anchors === 0` is positive evidence of
- * a collapsed sidebar rather than a guess. Left unchecked it returns `[]`, which the bulk panel
- * shows as "no conversations" — indistinguishable from a real empty account (AGENTS.md #4).
- *
- * The fix is asked of the USER rather than performed: Gemini's sidebar toggle button was never
- * measured, and inventing a selector for it is exactly what AGENTS.md #5 forbids.
+ * Rows without readable links are not an empty account. A collapsed sidebar has this measured
+ * shape, but it does not uniquely identify collapse or prove that partial hydration occurs.
+ * Fail synchronously and advise expanding the sidebar or retrying, without inventing a toggle.
  */
-function assertSidebarExpanded(scroller: Element): void {
+function assertSidebarLinksReady(scroller: Element): void {
   const rows = scroller.querySelectorAll(selectors.sidebarConversationRow).length;
   if (rows === 0) return;
   if (scroller.querySelector(selectors.sidebarConversationLink)) return;
-  throw new ExtractionError(ERR_GEMINI_SIDEBAR_COLLAPSED);
+  throw new ExtractionError(ERR_GEMINI_SIDEBAR_NOT_READY);
 }
 
 /**
@@ -262,7 +244,7 @@ function assertSidebarExpanded(scroller: Element): void {
  */
 function listConversations(root: ParentNode = document): SidebarConversation[] {
   const scroller = requireSidebarScroller(root);
-  assertSidebarExpanded(scroller);
+  assertSidebarLinksReady(scroller);
   return collectSidebarConversations(scroller.querySelectorAll(selectors.sidebarConversationLink), documentOrigin(root));
 }
 
@@ -274,7 +256,7 @@ function listConversations(root: ParentNode = document): SidebarConversation[] {
  * not cost the user every other conversation. What is kept is the half that matters: a sidebar
  * that rendered anchors and resolved NONE of them fails loud, so the panel can never show an
  * empty list where conversations exist (AGENTS.md #4). Zero anchors is not that case — the
- * caller has already proved the scroller is there and the sidebar is expanded.
+ * caller has already resolved the scroller and checked sidebar link availability.
  */
 function collectSidebarConversations(anchors: Iterable<Element>, origin: string): SidebarConversation[] {
   const acc = new Map<string, SidebarConversation>();
@@ -340,7 +322,7 @@ async function loadMoreConversations(
   options: LoadMoreOptions = {},
 ): Promise<SidebarConversation[]> {
   const scroller = requireSidebarScroller(root);
-  assertSidebarExpanded(scroller);
+  assertSidebarLinksReady(scroller);
 
   // Start from a row, not the scroller element: the scroller is the list's own shell and the
   // element that actually overflows may be an ancestor of it (Claude's aside behaves the same
@@ -527,39 +509,20 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
   }
 
   const beforeSignature = messageSignature();
-  // The NODES, not a description of them — see `exchangeNodesReplaced`.
-  const beforeExchanges = new Set(renderedExchanges());
   anchor.click();
-  if (await waitForOpenedConversation(target.id, beforeSignature, beforeExchanges, pollMs, timeoutMs)) return;
+  if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
   throw new ExtractionError(ERR_GEMINI_OPEN_TIMED_OUT);
 }
 
 /**
- * Wait for the clicked route to render its own exchanges.
- *
- * A changed `messageSignature()` is the primary proof that the outgoing conversation was
- * replaced, and it is the fast path: it resolves as soon as the swap is observed to have SETTLED
- * (see the branch itself for why "observed" is not enough on its own).
- *
- * The signature carries no per-conversation identity, though, so two similarly shaped chats
- * produce the same string and the change can never be observed — for that collision the wait also
- * accepts a signature that stayed IDENTICAL across `OPEN_SETTLE_ROUNDS` polls, but ONLY once
- * `exchangeNodesReplaced` shows a render actually happened. That second condition is not
- * optional: "unchanged signature" is equally consistent with "swapped to a chat that renders
- * identically" and "has not swapped yet", and Gemini's router flips the route before Angular
- * swaps the exchange DOM — so on the settle rounds alone this branch fires while the OUTGOING
- * conversation is still on screen, and the bulk driver then extracts and saves the previous chat
- * under this one's name (AGENTS.md #4).
- *
- * Node identity is what separates the two states; elapsed time is not. A minimum dwell was tried
- * first and rejected on evidence: it only moves the acceptance point (~450 ms → ~1520 ms) while
- * accepting the same thing, because time carries no information about whether a render occurred,
- * only an unmeasured prior about how long one takes.
+ * Require a changed, settled exchange fingerprint on the clicked route. Replacing DOM nodes
+ * alone cannot distinguish a target from a recreated outgoing view. Identical IDs and text
+ * therefore time out visibly, including genuinely distinct targets that render identically.
+ * A fingerprint change is observed content change, not a provider-wide identity guarantee.
  */
 async function waitForOpenedConversation(
   id: string,
   beforeSignature: string,
-  beforeExchanges: ReadonlySet<Element>,
   pollMs: number,
   timeoutMs: number,
 ): Promise<boolean> {
@@ -576,44 +539,9 @@ async function waitForOpenedConversation(
     const signature = messageSignature();
     stable = signature === previous ? stable + 1 : 0;
     previous = signature;
-    if (signature !== beforeSignature) {
-      // Fast path — but a CHANGED signature still has to hold still. A page that has begun
-      // rendering the target is already "changed" while it is one appended container or one
-      // streamed turn into the render, and resolving there hands the bulk driver a partially
-      // rendered conversation to export (QA measured both shapes at production defaults: 153 ms
-      // with the outgoing exchange still mounted beside one new container, and 459 ms on turn 1
-      // of 3). No node check is needed here — a changed signature already proves this is not the
-      // outgoing conversation — so stability is the whole test, and it is sized in
-      // `OPEN_RENDER_SETTLE_ROUNDS` rather than borrowed from the branch below.
-      if (stable >= OPEN_RENDER_SETTLE_ROUNDS) return true;
-      continue;
-    }
-    if (stable >= OPEN_SETTLE_ROUNDS && exchangeNodesReplaced(beforeExchanges)) return true;
+    if (signature !== beforeSignature && stable >= OPEN_RENDER_SETTLE_ROUNDS) return true;
   }
   return false;
-}
-
-/**
- * True once every rendered exchange is a DIFFERENT object from the ones captured before the
- * click — i.e. the page tore down the outgoing conversation's nodes and built new ones. This is a
- * browser guarantee about node replacement, not a claim about Gemini's markup, so unlike a
- * comparison of the exchanges' id VALUES it rests on nothing unmeasured (whether those ids are
- * stable per conversation or regenerated per render has never been measured — AGENTS.md #5).
- *
- * Deliberately `every`, not `some`: a mixed list still holds nodes from the outgoing chat, so
- * accepting it would be accepting a half-swapped page.
- *
- * **The residual is a false NEGATIVE, and it is not the harmless case.** If Angular ever reuses
- * the exchange nodes in place — rewriting their contents rather than replacing them — a
- * conversation that genuinely opened, and whose shape happens to match the outgoing one, is never
- * accepted here and `openConversation` times out. That conversation is then skipped from the
- * batch with a visible error. It is the deliberately chosen direction, because the alternative
- * failure is exporting the wrong conversation's content under the right conversation's name with
- * no error at all, and a visible skip is recoverable where a silently wrong file is not.
- */
-function exchangeNodesReplaced(beforeExchanges: ReadonlySet<Element>): boolean {
-  const current = renderedExchanges();
-  return current.length > 0 && current.every((exchange) => !beforeExchanges.has(exchange));
 }
 
 /** The exchange containers currently in the document, as object references. */
@@ -668,19 +596,9 @@ function hasRenderedMessages(): boolean {
   return document.querySelector(selectors.exchange) !== null;
 }
 
-/**
- * A compact internal fingerprint used only to distinguish outgoing from incoming SPA content.
- * Gemini exposes no `data-index`/`aria-setsize` analogue, so this is built from the exchange
- * containers' opaque ids plus the exchange count and two text LENGTHS — enough to notice a
- * replaced conversation, and deliberately not treated as an identity (see
- * `waitForOpenedConversation`).
- */
+/** Fingerprint every exchange's ID and complete text; structured encoding avoids delimiter collisions. */
 function messageSignature(): string {
-  const exchanges = renderedExchanges();
-  const ids = exchanges.map((exchange) => exchange.getAttribute('id') ?? '').join(',');
-  const first = exchanges[0]?.textContent?.trim() ?? '';
-  const last = exchanges.at(-1)?.textContent?.trim() ?? '';
-  return `${ids}:${exchanges.length}:${first.length}:${last.length}`;
+  return JSON.stringify(renderedExchanges().map((exchange) => [exchange.getAttribute('id') ?? '', exchange.textContent ?? '']));
 }
 
 /** Overridable knobs so the walk can be unit-tested without real timers. */

@@ -201,7 +201,7 @@ export const ERR_CHATGPT_PROJECT_LIST_SCROLL_TIMED_OUT = m('errChatgptProjectLis
 
 // Gemini.
 export const ERR_GEMINI_SIDEBAR_MISSING = m('errGeminiSidebarMissing');
-export const ERR_GEMINI_SIDEBAR_COLLAPSED = m('errGeminiSidebarCollapsed');
+export const ERR_GEMINI_SIDEBAR_NOT_READY = m('errGeminiSidebarNotReady');
 export const ERR_GEMINI_SIDEBAR_LINKS_UNREADABLE = m('errGeminiSidebarLinksUnreadable');
 export const ERR_GEMINI_OPEN_URL_MALFORMED = m('errGeminiOpenUrlMalformed');
 export const ERR_GEMINI_OPEN_LINK_MISSING = m('errGeminiOpenLinkMissing');

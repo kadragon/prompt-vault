@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Fix Gemini sidebar readiness guidance and reject unchanged outgoing conversation renders (2026-10-09)
 - [done] Fix Claude history paging, /chats support, and project list drift guards (2026-10-05)
 - [done] Record Claude, Gemini, and ChatGPT DOM measurements and sync backlog prerequisites (2026-10-05) → docs/live-dom-verification.md
 - [done] Show ChatGPT-only rate-limit guidance and skip extra grace under the list error row (2026-10-05) → docs/live-dom-verification.md

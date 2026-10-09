@@ -58,34 +58,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
 The larger hazard that measurement exposed is filed above.)*
 
-### QA pass on the Gemini bulk/sidebar track (2026-08-20)
-
-> Non-blocking findings from the independent QA of the sprint that shipped Gemini's
-> `listConversations` / `openConversation` / `loadMoreConversations`. The blocking finding — a
-> stale render resolving `openConversation`, which would export the outgoing conversation's
-> content under the target's name with no error — was fixed in that sprint, after a first
-> attempt (a minimum dwell since the click) was shown to move the window rather than close it.
->
-> Two items from this group are gone because the PR #71 review round fixed them rather than
-> deferring them: the `pageParityGate` monotonic-growth item (an established page size is now
-> never redefined, and a whole multiple of it counts as a page boundary) and the fast-path item
-> (a changed signature must now hold still before it is accepted). That same round also split the
-> parity verdict three ways — a first settled batch, which must define the size it would be tested
-> against, now buys the longer dwell WITHOUT claiming the list is short, so `onIncomplete` is a
-> narrower signal than the one those items describe.
-
-- [ ] [FIX] Replace Gemini's definite collapsed-sidebar diagnosis for rows without anchors with an unavailable/not-ready error advising expand or retry; update all five catalogs and regression tests.
-      Cold/subframe hydration remains unmeasured. Expanded paging on 2026-10-05 showed equal
-      row/anchor counts at 52, 72, 92, and 112; that does not prove the collapsed diagnosis is
-      exclusive. Preserve fail-loud behavior and the synchronous `listConversations` interface.
-      This wording fix needs no new selector or claim that partial hydration occurs live.
-- [ ] [FIX] Reject a recreated outgoing Gemini view with byte-identical IDs and text; strengthen the message fingerprint to distinguish different text of equal length and add a PROBE4 regression.
-      Node replacement alone does not establish target identity. Preserve settled acceptance of
-      genuinely changed text, including the existing same-length `aaa` to `bbb` regression.
-      A completely indistinguishable target must time out visibly rather than export an unproven
-      view. Provider-wide exchange identity remains unverified; the 2026-10-05 two-conversation
-      A/B/A sample is not a guarantee and must not become an acceptance assumption.
-
 ## ChatGPT app-shell follow-ups (2026-09-29)
 
 > Left open by the sidebar/project/load-older batch; evidence in `docs/live-dom-verification.md`
