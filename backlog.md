@@ -21,10 +21,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 - [ ] [harness] Make `task_nodes.py prune-backlog` remove a selected multiline item's indented continuation block; this run removed only its three checkbox lines and left orphan prose. Add a regression preserving neighboring blocked items. *(blocked by: fix belongs to the external dev plugin repository, outside this sprint and repository scope)*
 
-### PR #113 — live DOM measurement recording (2026-10-05)
-
-- [ ] *(blocked by: needs a fresh per-row probe during Claude recents paging)* [doc] Classify the extra row in the intermediate 32-row / 30-link / 1-blank snapshot, or explicitly mark it unclassified. Counts alone do not establish that every anchorless row is the measured 1px blank row. (source: greptile) — docs/live-dom-verification.md:809 (introduced here)
-
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
 - [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
@@ -34,11 +30,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
       moves it — see the capture notes in `docs/store-listing.md`. Re-capture once the browser can
       be launched in English, or drop shot 3 from the English set rather than ship mixed-language
       product chrome.
-- [ ] [FIX] Re-capture `screenshot-05-exported-pdf.png` (both locales) from a conversation containing `=>` and an inline-code run. *(deferred: authenticated headed browser + non-sensitive demo conversation required)*
-      The two PDF rendering items it waited on landed in
-      v1.10.3 (ligatures disabled, inline code styled), so this is now unblocked. The
-      shipped capture uses Python/shell only, which keeps the caption honest but means the shot no
-      longer exercises the two cases most likely to regress.
 
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 
