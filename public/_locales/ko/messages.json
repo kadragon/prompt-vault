@@ -315,9 +315,9 @@
     "message": "Gemini의 대화 사이드바를 찾지 못했습니다. Gemini 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
     "description": "Bulk export error (Gemini): the conversation sidebar could not be found on the page."
   },
-  "errGeminiSidebarCollapsed": {
-    "message": "Gemini의 대화 사이드바가 접혀 있어 대화 링크를 읽을 수 없습니다. 왼쪽 위 메뉴 버튼으로 사이드바를 연 뒤 다시 시도해 주세요.",
-    "description": "Bulk export error (Gemini): the sidebar is collapsed, so the conversation list cannot be read; tells the user how to open it."
+  "errGeminiSidebarNotReady": {
+    "message": "Gemini 대화 링크를 읽을 수 없습니다. 사이드바가 접혀 있다면 펼치거나, 잠시 후 다시 시도해 주세요.",
+    "description": "Bulk export error (Gemini): conversation rows exist but their links are unavailable; suggest expanding the sidebar or retrying without assuming a cause."
   },
   "errGeminiSidebarLinksUnreadable": {
     "message": "Gemini 사이드바의 대화 링크를 하나도 읽지 못했습니다. URL이 예상한 /app/<id> 형식이 아닙니다. Gemini 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",

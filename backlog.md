@@ -23,13 +23,12 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ### Store screenshot follow-ups (PR #65 review, 2026-08-11)
 
-- [ ] *(blocked by: needs `--lang=en-US` on the capture browser, which is a user-scoped Playwright MCP config change — propose it, do not assume it)*
-      [FIX] The English-listing `screenshot-03-claude-conversation.png` still shows Claude's
-      native Share control as `공유`. Claude renders that string from `navigator.language`, which
-      follows the OS UI language, so neither the `Accept-Language` reorder nor an account setting
-      moves it — see the capture notes in `docs/store-listing.md`. Re-capture once the browser can
-      be launched in English, or drop shot 3 from the English set rather than ship mixed-language
-      product chrome.
+- [ ] [DOCS] Exclude `screenshot-03-claude-conversation.png` from the English/global upload set and synchronize listing asset instructions; retain the original PNG and Korean set.
+      The existing shot contains Claude's native Korean Share control. The four remaining
+      English images provide an actionable fallback without changing browser or account language.
+      Update the English/global selection and locale fallback documentation together; distinguish
+      repository preparation from the separate Developer Dashboard upload. An English re-capture
+      remains optional and still needs an explicitly authorized capture-language setup.
 
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 
@@ -58,35 +57,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 *(No open items — the sidebar-recycling `[FIX]` was closed 2026-08-10 by measurement rather than by
 a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
 The larger hazard that measurement exposed is filed above.)*
-
-### QA pass on the Gemini bulk/sidebar track (2026-08-20)
-
-> Non-blocking findings from the independent QA of the sprint that shipped Gemini's
-> `listConversations` / `openConversation` / `loadMoreConversations`. The blocking finding — a
-> stale render resolving `openConversation`, which would export the outgoing conversation's
-> content under the target's name with no error — was fixed in that sprint, after a first
-> attempt (a minimum dwell since the click) was shown to move the window rather than close it.
->
-> Two items from this group are gone because the PR #71 review round fixed them rather than
-> deferring them: the `pageParityGate` monotonic-growth item (an established page size is now
-> never redefined, and a whole multiple of it counts as a page boundary) and the fast-path item
-> (a changed signature must now hold still before it is accepted). That same round also split the
-> parity verdict three ways — a first settled batch, which must define the size it would be tested
-> against, now buys the longer dwell WITHOUT claiming the list is short, so `onIncomplete` is a
-> narrower signal than the one those items describe.
-
-- [ ] *(blocked by: cold/subframe row-vs-anchor hydration remains unmeasured; expanded paging on 2026-10-05 showed equal row/anchor counts at 52, 72, 92, and 112)*
-      [FIX] A partially hydrated sidebar — rows attached, their inner `<a>` not yet — is
-      indistinguishable from a collapsed one, so `assertSidebarExpanded` tells the user to open a
-      sidebar that is already open. Wrong-but-recoverable (a retry succeeds) and never a silent
-      empty list, so it violates no golden principle. Angular renders a component template
-      atomically and the anchor lives inside the row template, so the window is likely sub-frame.
-      Cheapest hardening if it turns out real: one `requestAnimationFrame` re-check before throwing.
-- [ ] *(deferred: provider-wide exchange identity remains unverified; 2026-10-05 A/B/A revisits preserved ordered IDs across new nodes in two conversations, which is insufficient to guarantee identity)*
-      [FIX] `openConversation` accepts an outgoing view that was destroyed and recreated as fresh
-      nodes with a byte-identical id and text (QA's PROBE4: resolves at 455 ms with the outgoing
-      content). Node identity proves a render *occurred*, not *which* conversation rendered.
-      Recorded so the limit is on the record rather than rediscovered.
 
 ## ChatGPT app-shell follow-ups (2026-09-29)
 

@@ -67,14 +67,17 @@ describe('geminiAdapter.listConversations', () => {
 
   // Measured 2026-08-10: collapsed, a `/app` page renders 31 rows and ZERO anchors. Returning `[]`
   // there would show a full account as "no conversations".
-  it('fails loud on the collapsed sidebar shape rather than reporting an empty account', () => {
+  it('reports unreadable sidebar links without assuming a collapsed or partially hydrated state', () => {
     const doc = docFrom(
       '<body><infinite-scroller>' +
         '<gem-nav-list-item data-test-id="conversation"><span>제목</span></gem-nav-list-item>' +
         '<gem-nav-list-item data-test-id="conversation"><span>제목</span></gem-nav-list-item>' +
         '</infinite-scroller></body>',
     );
-    expect(() => geminiAdapter.listConversations?.(doc)).toThrow(/collapsed/i);
+    expect(() => geminiAdapter.listConversations?.(doc)).toThrow(ExtractionError);
+    expect(() => geminiAdapter.listConversations?.(doc)).toThrow(
+      'Gemini’s conversation links are not available yet. Expand the sidebar if needed, or wait a moment and try again.',
+    );
   });
 
   it('skips an anchor whose route was never measured and still returns the readable ones', () => {

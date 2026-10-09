@@ -426,6 +426,8 @@ describe('geminiAdapter.loadMoreConversations', () => {
     );
     await expect(
       geminiAdapter.loadMoreConversations?.(window.document as unknown as Document, { stepDelayMs: 0 }),
-    ).rejects.toThrow(/collapsed/i);
+    ).rejects.toThrow(
+      'Gemini’s conversation links are not available yet. Expand the sidebar if needed, or wait a moment and try again.',
+    );
   });
 });

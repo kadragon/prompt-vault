@@ -315,9 +315,9 @@
     "message": "找不到 Gemini 的對話側邊欄。Gemini 的頁面結構可能已變更，請回報此問題。",
     "description": "Bulk export error (Gemini): the conversation sidebar could not be found on the page."
   },
-  "errGeminiSidebarCollapsed": {
-    "message": "Gemini 的對話側邊欄已收合，無法讀取對話連結。請點左上角的選單按鈕展開側邊欄後再試一次。",
-    "description": "Bulk export error (Gemini): the sidebar is collapsed, so the conversation list cannot be read; tells the user how to open it."
+  "errGeminiSidebarNotReady": {
+    "message": "目前無法讀取 Gemini 的對話連結。如果側邊欄已收合，請先展開；也可以稍候再試一次。",
+    "description": "Bulk export error (Gemini): conversation rows exist but their links are unavailable; suggest expanding the sidebar or retrying without assuming a cause."
   },
   "errGeminiSidebarLinksUnreadable": {
     "message": "無法讀取 Gemini 側邊欄中的任何對話連結：連結網址不是預期的 /app/<id> 格式。Gemini 的頁面結構可能已變更，請回報此問題。",

@@ -315,9 +315,9 @@
     "message": "Gemini の会話サイドバーが見つかりません。Gemini のページ構成が変わった可能性があります。ご報告ください。",
     "description": "Bulk export error (Gemini): the conversation sidebar could not be found on the page."
   },
-  "errGeminiSidebarCollapsed": {
-    "message": "Gemini の会話サイドバーが閉じているため、会話のリンクを読み取れません。左上のメニューボタンでサイドバーを開いてから、もう一度お試しください。",
-    "description": "Bulk export error (Gemini): the sidebar is collapsed, so the conversation list cannot be read; tells the user how to open it."
+  "errGeminiSidebarNotReady": {
+    "message": "Gemini の会話リンクを読み取れません。サイドバーが閉じている場合は開くか、少し待ってからもう一度お試しください。",
+    "description": "Bulk export error (Gemini): conversation rows exist but their links are unavailable; suggest expanding the sidebar or retrying without assuming a cause."
   },
   "errGeminiSidebarLinksUnreadable": {
     "message": "Gemini サイドバーの会話リンクを 1 件も読み取れませんでした。URL が想定した /app/<id> の形式ではありません。Gemini のページ構成が変わった可能性があります。ご報告ください。",

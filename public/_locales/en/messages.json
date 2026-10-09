@@ -316,9 +316,9 @@
     "message": "Could not find Gemini’s conversation sidebar. Gemini’s markup may have changed — please report this.",
     "description": "Bulk export error (Gemini): the conversation sidebar could not be found on the page."
   },
-  "errGeminiSidebarCollapsed": {
-    "message": "Gemini’s conversation sidebar is collapsed, so its conversation links cannot be read. Open the sidebar (the menu button at the top left) and try again.",
-    "description": "Bulk export error (Gemini): the sidebar is collapsed, so the conversation list cannot be read; tells the user how to open it."
+  "errGeminiSidebarNotReady": {
+    "message": "Gemini’s conversation links are not available yet. Expand the sidebar if needed, or wait a moment and try again.",
+    "description": "Bulk export error (Gemini): conversation rows exist but their links are unavailable; suggest expanding the sidebar or retrying without assuming a cause."
   },
   "errGeminiSidebarLinksUnreadable": {
     "message": "Could not read any Gemini sidebar conversation link: their URLs are not the expected /app/<id> shape. Gemini’s markup may have changed — please report this.",
