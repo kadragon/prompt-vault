@@ -17,11 +17,11 @@ per-locale and live in one file each — paste from the file for the locale you 
 
 | Locale | File | Screenshots |
 |--------|------|-------------|
-| `en` (default) | [`store-listing/en.md`](store-listing/en.md) | `assets/store/screenshot-*.png` |
-| `ko` | [`store-listing/ko.md`](store-listing/ko.md) | `assets/store/ko/screenshot-*.png` |
-| `zh_CN` | [`store-listing/zh_CN.md`](store-listing/zh_CN.md) | none — falls back to the English set |
-| `zh_TW` | [`store-listing/zh_TW.md`](store-listing/zh_TW.md) | none — falls back to the English set |
-| `ja` | [`store-listing/ja.md`](store-listing/ja.md) | none — falls back to the English set |
+| `en` (default) | [`store-listing/en.md`](store-listing/en.md) | `assets/store/screenshot-01-*.png`, `-02-`, `-04-`, `-05-` — four images; shot 3 is not uploaded |
+| `ko` | [`store-listing/ko.md`](store-listing/ko.md) | `assets/store/ko/screenshot-*.png` — all five |
+| `zh_CN` | [`store-listing/zh_CN.md`](store-listing/zh_CN.md) | none — falls back to the four-image English set |
+| `zh_TW` | [`store-listing/zh_TW.md`](store-listing/zh_TW.md) | none — falls back to the four-image English set |
+| `ja` | [`store-listing/ja.md`](store-listing/ja.md) | none — falls back to the four-image English set |
 
 **A listing locale exists only if the package ships it.** The dashboard offers a localized
 listing for the locales the extension itself supports — "you will be able to provide a
@@ -108,7 +108,9 @@ disturbing the English one — `ko` does; `ja`, `zh_CN` and `zh_TW` do not yet. 
 until a set exists the English one is what those viewers see. Keep the two sets describing the same features — the store warns on localized
 metadata that changes the described feature set. The Korean set carries one view the English
 upload set omits (shot 3, Claude); the Claude support it illustrates is stated in every locale's
-description copy, so the omission drops an illustration, not a described feature.
+description copy, so this repository reads the omission as dropping an illustration, not a
+described feature. That reading is not confirmed against the store's own check
+`[unknown — read the Developer Dashboard preview for the default locale to verify]`.
 ([source](https://developer.chrome.com/docs/webstore/cws-dashboard-listing), checked 2026-08-11)
 
 Do not mock or reconstruct product screenshots. Capture the installed extension on a real,
@@ -172,7 +174,8 @@ moves cover most of the frame without touching the user's own Chrome or any acco
 The Korean set needs none of that — it is what this machine produces untouched. Capture it
 *before* switching anything, or restore both settings first: the header order, and `dist/`'s own
 `ko` messages file. Both directories hold the same five views, so a change to what a view *shows* is a change to
-both — including shot 3, whose English capture is retained even though it is not uploaded.
+both. The one exception is the English shot 3: it is not uploaded, so leave the existing PNG as it
+is until an authorized capture-language setup exists, rather than re-capturing it with `공유` again.
 Shots 1–4 are separate captures whose conversation content and counts differ;
 shot 5 now shares the same exported PDF between locales.
 
@@ -193,9 +196,14 @@ requirement, and `ja`, `zh_CN` and `zh_TW` inherit the same four through the fal
 itself is not deleted, and the Korean set is unaffected — `공유` is correct in a Korean listing.
 This is repository preparation only: which images the live listing shows changes when someone
 edits the default locale in the Developer Dashboard (checklist below), not when this file merges.
-An English re-capture of shot 3 remains optional. It needs the `--lang=en-US` capture-language
-setup described above, and that setup must be explicitly authorized first; once a clean capture
-exists, restore shot 3 to the English set here and in every `docs/store-listing/<locale>.md` that names the four-image set.
+An English re-capture of shot 3 remains optional. It needs a capture-language setup that renders
+Claude's `navigator.language` strings in English, and any such setup must be explicitly authorized
+first. `--lang=en-US` (above) is the only candidate named so far and is untested
+`[unknown — run the capture browser with it and read the Share control to verify]`. Once a clean
+capture exists, restore shot 3 to the English set everywhere this change touched: the locale
+table, the graphic-assets table, the per-locale paragraph, the shipped-set list, the capture notes
+and the dashboard checklist in this file, plus the **Screenshots** line of all five
+`docs/store-listing/<locale>.md` files (`en` and `ko` included).
 
 ## Submission checklist
 
@@ -226,7 +234,7 @@ exists, restore shot 3 to the English set here and in every `docs/store-listing/
   not upload `screenshot-03-claude-conversation.png` to the default locale, and remove it there
   if an earlier submission included it
 - [ ] Add the `ko` locale, paste `docs/store-listing/ko.md`, and upload the five
-  `assets/store/ko/screenshot-*.png` in the same order
+  `assets/store/ko/screenshot-*.png` — all five, in numbered order
 - [ ] Add the `zh_CN`, `zh_TW` and `ja` locales, paste the matching
   `docs/store-listing/<locale>.md`, and leave their screenshots empty so the four-image
   English set is served
