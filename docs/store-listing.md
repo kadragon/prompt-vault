@@ -93,9 +93,9 @@ Data-use declarations:
 | Asset | Requirement | Repository status |
 |-------|-------------|-------------------|
 | Store icon | 128×128 PNG | Ready: `public/icons/icon128.png` |
-| Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: four images — `assets/store/screenshot-01-*.png`, `-02-`, `-04-` and `-05-` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI). `screenshot-03-claude-conversation.png` stays in the repository but is **not** part of this upload set — see *English upload set* below |
+| Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: four images — `assets/store/screenshot-01-*.png`, `-02-`, `-04-` and `-05-` (shots 1, 2 and 4 captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI. Shot 5 re-captured 2026-10-09 against 1.14.3). `screenshot-03-claude-conversation.png` stays in the repository but is **not** part of this upload set — see *English upload set* below |
 | Screenshots (Korean listing) | same requirement, uploaded under the `ko` locale | Ready: `assets/store/ko/screenshot-0{1..5}-*.png` — the same five *views*, captured separately, so the content differs (Korean UI, Korean conversations, and a different selection count in shot 2) |
-| Screenshots (`zh_CN`, `zh_TW`, `ja` listings) | same requirement, per locale | None captured. Those locales carry description copy only and fall back to the four-image English set, so they show no Claude shot either. A native-UI capture became possible when the catalogs shipped; it is optional, and doing it means re-running the whole five-shot sequence in that language |
+| Screenshots (`zh_CN`, `zh_TW`, `ja` listings) | same requirement, per locale | None captured. Those locales carry description copy only and fall back to the English upload set, which is four images with no Claude shot once the default locale is updated in the Developer Dashboard. A native-UI capture became possible when the catalogs shipped; it is optional, and doing it means re-running the whole five-shot sequence in that language |
 | Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
 
@@ -106,12 +106,14 @@ marquee promo tile cannot be localized** — one set serves every locale, which 
 wordmark stays English. So a localized listing can carry its own native-UI screenshot set without
 disturbing the English one — `ko` does; `ja`, `zh_CN` and `zh_TW` do not yet. It is optional, and
 until a set exists the English one is what those viewers see. Keep the two sets describing the same features — the store warns on localized
-metadata that changes the described feature set. The Korean set carries one view the English
-upload set omits (shot 3, Claude); the Claude support it illustrates is stated in every locale's
-description copy, so this repository reads the omission as dropping an illustration, not a
-described feature. That reading is not confirmed against the store's own check
-`[unknown — read the Developer Dashboard preview for the default locale to verify]`.
+metadata that changes the described feature set.
 ([source](https://developer.chrome.com/docs/webstore/cws-dashboard-listing), checked 2026-08-11)
+
+The Korean set carries one view the English upload set omits (shot 3, Claude). The Claude support
+it illustrates is stated in every locale's description copy, so this repository reads the omission
+as dropping an illustration, not a described feature. That reading is this repository's own, not
+the source's, and is untested against the store's check
+`[unknown — read the store review outcome after submitting the four-image default locale beside the five-image ko set to verify]`.
 
 Do not mock or reconstruct product screenshots. Capture the installed extension on a real,
 logged-in session, then remove or obscure account details, private conversation titles,
@@ -176,6 +178,8 @@ The Korean set needs none of that — it is what this machine produces untouched
 `ko` messages file. Both directories hold the same five views, so a change to what a view *shows* is a change to
 both. The one exception is the English shot 3: it is not uploaded, so leave the existing PNG as it
 is until an authorized capture-language setup exists, rather than re-capturing it with `공유` again.
+That retained PNG can therefore go stale: never restore it to the upload set as it is — restoring
+shot 3 means a fresh capture.
 Shots 1–4 are separate captures whose conversation content and counts differ;
 shot 5 now shares the same exported PDF between locales.
 
@@ -195,7 +199,8 @@ the set is shots 1, 2, 4 and 5, uploaded in numbered order. Four images satisfy 
 requirement, and `ja`, `zh_CN` and `zh_TW` inherit the same four through the fallback. The PNG
 itself is not deleted, and the Korean set is unaffected — `공유` is correct in a Korean listing.
 This is repository preparation only: which images the live listing shows changes when someone
-edits the default locale in the Developer Dashboard (checklist below), not when this file merges.
+edits the default locale in the Developer Dashboard and that edit is published (checklist below),
+not when this file merges.
 An English re-capture of shot 3 remains optional. It needs a capture-language setup that renders
 Claude's `navigator.language` strings in English, and any such setup must be explicitly authorized
 first. `--lang=en-US` (above) is the only candidate named so far and is untested
@@ -203,7 +208,9 @@ first. `--lang=en-US` (above) is the only candidate named so far and is untested
 capture exists, restore shot 3 to the English set everywhere this change touched: the locale
 table, the graphic-assets table, the per-locale paragraph, the shipped-set list, the capture notes
 and the dashboard checklist in this file, plus the **Screenshots** line of all five
-`docs/store-listing/<locale>.md` files (`en` and `ko` included).
+`docs/store-listing/<locale>.md` files (`en` and `ko` included). Then upload the new shot 3 to the
+default locale in the Developer Dashboard, rewrite this paragraph to record the restoration, and
+close any backlog item that still asks for shot 3 to be removed.
 
 ## Submission checklist
 
