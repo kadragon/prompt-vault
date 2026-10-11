@@ -41,7 +41,8 @@ Claude 可以。
 ```
 
 **Screenshots:** None yet — the Chinese-UI screenshots have not been captured, so this locale
-falls back to the English set. Recapture them under the zh_TW UI when convenient.
+falls back to the four-image English set (shots 1, 2, 4 and 5; shot 3 is excluded from the
+English upload). Recapture them under the zh_TW UI when convenient.
 
 The extension UI is localized into Traditional Chinese (`public/_locales/zh_TW`), alongside
 English, Simplified Chinese, Japanese and Korean, so the last bullet lists all five and keeps

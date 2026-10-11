@@ -41,7 +41,8 @@ Claude, Gemini 모두 사이드바에서 되고, ChatGPT와 Claude는 프로젝�
 내보내기는 ChatGPT와 Claude에서 쓸 수 있습니다.
 ```
 
-**Screenshots:** `assets/store/ko/screenshot-0{1..5}-*.png`, in the same order as the English set.
+**Screenshots:** `assets/store/ko/screenshot-0{1..5}-*.png`, all five in numbered order. The
+English upload set omits shot 3; the Korean set keeps it.
 
 Korean prose shipped to users goes through the `humanize-korean` skill before it lands. The
 description below is that skill's output; the summary reuses its wording (`남겨 둡니다`,

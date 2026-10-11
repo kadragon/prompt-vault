@@ -17,11 +17,11 @@ per-locale and live in one file each — paste from the file for the locale you 
 
 | Locale | File | Screenshots |
 |--------|------|-------------|
-| `en` (default) | [`store-listing/en.md`](store-listing/en.md) | `assets/store/screenshot-*.png` |
-| `ko` | [`store-listing/ko.md`](store-listing/ko.md) | `assets/store/ko/screenshot-*.png` |
-| `zh_CN` | [`store-listing/zh_CN.md`](store-listing/zh_CN.md) | none — falls back to the English set |
-| `zh_TW` | [`store-listing/zh_TW.md`](store-listing/zh_TW.md) | none — falls back to the English set |
-| `ja` | [`store-listing/ja.md`](store-listing/ja.md) | none — falls back to the English set |
+| `en` (default) | [`store-listing/en.md`](store-listing/en.md) | `assets/store/screenshot-01-*.png`, `-02-`, `-04-`, `-05-` — four images; shot 3 is not uploaded |
+| `ko` | [`store-listing/ko.md`](store-listing/ko.md) | `assets/store/ko/screenshot-*.png` — all five |
+| `zh_CN` | [`store-listing/zh_CN.md`](store-listing/zh_CN.md) | none — falls back to the four-image English set |
+| `zh_TW` | [`store-listing/zh_TW.md`](store-listing/zh_TW.md) | none — falls back to the four-image English set |
+| `ja` | [`store-listing/ja.md`](store-listing/ja.md) | none — falls back to the four-image English set |
 
 **A listing locale exists only if the package ships it.** The dashboard offers a localized
 listing for the locales the extension itself supports — "you will be able to provide a
@@ -93,9 +93,9 @@ Data-use declarations:
 | Asset | Requirement | Repository status |
 |-------|-------------|-------------------|
 | Store icon | 128×128 PNG | Ready: `public/icons/icon128.png` |
-| Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: `assets/store/screenshot-0{1..5}-*.png` (captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI) |
+| Screenshots (global / English listing) | 1280×800 PNG/JPEG; 1–5 images; at least one required | Ready: four images — `assets/store/screenshot-01-*.png`, `-02-`, `-04-` and `-05-` (shots 1, 2 and 4 captured 2026-08-11 against v1.10.1; 1.10.2 changed listing copy only, no UI. Shot 5 re-captured 2026-10-09 against 1.14.3). `screenshot-03-claude-conversation.png` stays in the repository but is **not** part of this upload set — see *English upload set* below |
 | Screenshots (Korean listing) | same requirement, uploaded under the `ko` locale | Ready: `assets/store/ko/screenshot-0{1..5}-*.png` — the same five *views*, captured separately, so the content differs (Korean UI, Korean conversations, and a different selection count in shot 2) |
-| Screenshots (`zh_CN`, `zh_TW`, `ja` listings) | same requirement, per locale | None captured. Those locales carry description copy only and fall back to the English set. A native-UI capture became possible when the catalogs shipped; it is optional, and doing it means re-running the whole five-shot sequence in that language |
+| Screenshots (`zh_CN`, `zh_TW`, `ja` listings) | same requirement, per locale | None captured. Those locales carry description copy only and fall back to the English upload set, which is four images with no Claude shot once the default locale is updated in the Developer Dashboard. A native-UI capture became possible when the catalogs shipped; it is optional, and doing it means re-running the whole five-shot sequence in that language |
 | Small promotional tile | 440×280 PNG; required | Ready: `assets/store/small-promo-440x280.png`, rendered from the sibling `.svg` |
 | Marquee promotional tile | 1400×560 PNG; optional | Not prepared; omit for launch |
 
@@ -109,6 +109,12 @@ until a set exists the English one is what those viewers see. Keep the two sets 
 metadata that changes the described feature set.
 ([source](https://developer.chrome.com/docs/webstore/cws-dashboard-listing), checked 2026-08-11)
 
+The Korean set carries one view the English upload set omits (shot 3, Claude). The Claude support
+it illustrates is stated in every locale's description copy, so this repository reads the omission
+as dropping an illustration, not a described feature. That reading is this repository's own, not
+the source's, and is untested against the store's check
+`[unknown — read the store review outcome after submitting the four-image default locale beside the five-image ko set to verify]`.
+
 Do not mock or reconstruct product screenshots. Capture the installed extension on a real,
 logged-in session, then remove or obscure account details, private conversation titles,
 avatars, and other personal information. The shipped set was captured with the sidebar
@@ -118,7 +124,8 @@ The caption band and the highlight ring around the toolbar icons are composited 
 the unmodified capture — never edit the product pixels themselves. Keep each final image
 exactly 1280×800.
 
-Shipped screenshot set (in listing order):
+Shipped screenshot set (in listing order). The Korean listing uploads all five; the
+English/global listing uploads 1, 2, 4 and 5:
 
 1. `screenshot-01-chatgpt-toolbar` — ChatGPT conversation, MD/PDF/JSON/HTML/Bulk controls
    ringed in the conversation header.
@@ -127,7 +134,9 @@ Shipped screenshot set (in listing order):
    after another demo conversation was added).
 3. `screenshot-03-claude-conversation` — the same toolbar on Claude, evidence for the
    multi-provider claim. Captioned "Same buttons on Claude", not "…and Gemini": no Gemini
-   pixel is in frame, and a caption must not claim more than its own image shows.
+   pixel is in frame, and a caption must not claim more than its own image shows. Uploaded
+   under `ko` only; the English capture is kept in the repository and left out of the
+   English/global upload.
 4. `screenshot-04-popup-settings` — the extension popup's format and bulk-icon toggles.
 5. `screenshot-05-exported-pdf` — a real exported PDF with mixed English/Korean prose and
    Python, JavaScript, and Bash code. Both locale images use the same existing non-sensitive
@@ -166,8 +175,12 @@ moves cover most of the frame without touching the user's own Chrome or any acco
 
 The Korean set needs none of that — it is what this machine produces untouched. Capture it
 *before* switching anything, or restore both settings first: the header order, and `dist/`'s own
-`ko` messages file. The two sets cover the same five views, so a change to what a view *shows* is a change to
-both. Shots 1–4 are separate captures whose conversation content and counts differ;
+`ko` messages file. Both directories hold the same five views, so a change to what a view *shows* is a change to
+both. The one exception is the English shot 3: it is not uploaded, so leave the existing PNG as it
+is until an authorized capture-language setup exists, rather than re-capturing it with `공유` again.
+That retained PNG can therefore go stale: never restore it to the upload set as it is — restoring
+shot 3 means a fresh capture.
+Shots 1–4 are separate captures whose conversation content and counts differ;
 shot 5 now shares the same exported PDF between locales.
 
 **What that does NOT cover, measured 2026-08-11:** strings Claude renders from
@@ -179,6 +192,25 @@ the capture browser with `--lang=en-US`, which the Playwright MCP server is not 
 pass; changing that is a user-scoped MCP config edit, so propose it rather than assuming it.
 Collapse the sidebar before capturing either way — it is what keeps the conversation history and
 account name out of frame, and it removes most of the Korean nav at the same time.
+
+**English upload set (decided 2026-10-11).** Because of that Korean Share control,
+`assets/store/screenshot-03-claude-conversation.png` is excluded from the English/global upload:
+the set is shots 1, 2, 4 and 5, uploaded in numbered order. Four images satisfy the store's 1–5
+requirement, and `ja`, `zh_CN` and `zh_TW` inherit the same four through the fallback. The PNG
+itself is not deleted, and the Korean set is unaffected — `공유` is correct in a Korean listing.
+This is repository preparation only: which images the live listing shows changes when someone
+edits the default locale in the Developer Dashboard and that edit is published (checklist below),
+not when this file merges.
+An English re-capture of shot 3 remains optional. It needs a capture-language setup that renders
+Claude's `navigator.language` strings in English, and any such setup must be explicitly authorized
+first. `--lang=en-US` (above) is the only candidate named so far and is untested
+`[unknown — run the capture browser with it and read the Share control to verify]`. Once a clean
+capture exists, restore shot 3 to the English set everywhere this change touched: the locale
+table, the graphic-assets table, the per-locale paragraph, the shipped-set list, the capture notes
+and the dashboard checklist in this file, plus the **Screenshots** line of all five
+`docs/store-listing/<locale>.md` files (`en` and `ko` included). Then upload the new shot 3 to the
+default locale in the Developer Dashboard, rewrite this paragraph to record the restoration, and
+close any backlog item that still asks for shot 3 to be removed.
 
 ## Submission checklist
 
@@ -204,13 +236,15 @@ account name out of frame, and it removes most of the Korean nav at the same tim
 - [ ] Create or verify the Chrome Web Store developer account and complete registration payment
 - [ ] Upload `prompt-vault-v<version>.zip`
 - [ ] Paste `docs/store-listing/en.md` into the default locale and select Productivity
-- [ ] Upload `public/icons/icon128.png`, the five `assets/store/screenshot-*.png` in numbered
-  order, and `assets/store/small-promo-440x280.png`
+- [ ] Upload `public/icons/icon128.png`, the four English `assets/store/screenshot-01-*.png`,
+  `-02-`, `-04-` and `-05-` in numbered order, and `assets/store/small-promo-440x280.png`. Do
+  not upload `screenshot-03-claude-conversation.png` to the default locale, and remove it there
+  if an earlier submission included it
 - [ ] Add the `ko` locale, paste `docs/store-listing/ko.md`, and upload the five
-  `assets/store/ko/screenshot-*.png` in the same order
+  `assets/store/ko/screenshot-*.png` — all five, in numbered order
 - [ ] Add the `zh_CN`, `zh_TW` and `ja` locales, paste the matching
-  `docs/store-listing/<locale>.md`, and leave their screenshots empty so the English set
-  is served
+  `docs/store-listing/<locale>.md`, and leave their screenshots empty so the four-image
+  English set is served
 - [ ] Enter the single-purpose statement and permission justifications
 - [ ] Confirm the privacy-policy URL is publicly accessible, then enter it
 - [ ] Complete data-use certifications so they match the declarations above
