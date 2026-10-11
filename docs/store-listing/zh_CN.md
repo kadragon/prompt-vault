@@ -40,7 +40,8 @@ Claude 支持。
 ```
 
 **Screenshots:** None yet — no capture of the Simplified Chinese UI has been taken, so this
-locale is left empty and the English set is served. Recapture in zh_CN when convenient.
+locale is left empty and the four-image English set (shots 1, 2, 4 and 5; shot 3 is excluded
+from the English upload) is served. Recapture in zh_CN when convenient.
 
 The extension UI is localized into Simplified Chinese (`public/_locales` holds `en`, `ja`,
 `ko`, `zh_CN` and `zh_TW`), so the last bullet states the full locale list and the

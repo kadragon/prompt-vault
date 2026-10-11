@@ -21,15 +21,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 - [ ] [harness] Make `task_nodes.py prune-backlog` remove a selected multiline item's indented continuation block; this run removed only its three checkbox lines and left orphan prose. Add a regression preserving neighboring blocked items. *(blocked by: fix belongs to the external dev plugin repository, outside this sprint and repository scope)*
 
-### Store screenshot follow-ups (PR #65 review, 2026-08-11)
-
-- [ ] [DOCS] Exclude `screenshot-03-claude-conversation.png` from the English/global upload set and synchronize listing asset instructions; retain the original PNG and Korean set.
-      The existing shot contains Claude's native Korean Share control. The four remaining
-      English images provide an actionable fallback without changing browser or account language.
-      Update the English/global selection and locale fallback documentation together; distinguish
-      repository preparation from the separate Developer Dashboard upload. An English re-capture
-      remains optional and still needs an explicitly authorized capture-language setup.
-
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 
 > Non-blocking findings from the independent QA of the sprint that shipped the Claude `/recents`

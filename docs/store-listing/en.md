@@ -46,4 +46,7 @@ Supported sites: ChatGPT, Claude and Gemini. Bulk export works on all three; pro
 works on ChatGPT and Claude.
 ```
 
-**Screenshots:** `assets/store/screenshot-0{1..5}-*.png`, in numbered order.
+**Screenshots:** four images, in numbered order — `assets/store/screenshot-01-*.png`, `-02-`,
+`-04-` and `-05-`. `screenshot-03-claude-conversation.png` is kept in the repository but not
+uploaded here: Claude's native Share control reads `공유` in it (`docs/store-listing.md` →
+*English upload set*).

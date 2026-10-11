@@ -42,4 +42,6 @@ ChatGPT、Claude、Gemini で会話を開くと、ページの上部にエクス
 ```
 
 **Screenshots:** no Japanese-UI screenshots have been captured; this locale falls back to the
-English set, `assets/store/screenshot-0{1..5}-*.png`, in numbered order.
+four-image English set — `assets/store/screenshot-01-*.png`, `-02-`, `-04-` and `-05-`, in
+numbered order (shot 3 is excluded from the English upload; see `docs/store-listing.md` →
+*English upload set*).

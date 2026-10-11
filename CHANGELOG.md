@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Exclude the Claude screenshot from the English store upload set and sync listing asset docs (2026-10-11) → docs/store-listing.md
 - [done] Fix Gemini sidebar readiness guidance and reject unchanged outgoing conversation renders (2026-10-09)
 - [done] Fix Claude history paging, /chats support, and project list drift guards (2026-10-05)
 - [done] Record Claude, Gemini, and ChatGPT DOM measurements and sync backlog prerequisites (2026-10-05) → docs/live-dom-verification.md
