@@ -391,6 +391,30 @@ alphanumeric does decode), so a correction that simply stopped decoding would ha
 
 ## ChatGPT
 
+### 2026-10-15 — a 17-conversation project home renders every row; the reveal path finds a below-fold target
+
+Clears the long-project prerequisite of 2026-10-05 below. Playwright MCP session, ko-KR account,
+user logged in by hand. A project (`PV probe long project`) was created and filled with one-turn
+chats from its home composer; 24 sends were attempted and **17** produced a conversation (7 timed
+out waiting for the `/c/` route). The home composer is a `[contenteditable="true"]` labelled
+*… 의 새 채팅* — `#prompt-textarea` matched nothing there.
+
+- **No paging, no virtualization at 17.** `main section ol > li` **17** (`group/project-chat`),
+  17 project links, 17 distinct ids; viewport 941, **7** rows below the fold. The scroll port is a
+  `div` (`scrollHeight 1392 > clientHeight 849`), as on 2026-07-24. Scrolling it to the bottom and
+  waiting 4 s left the same 17 ids in the same order. Behaviour past 17 rows is
+  `[unknown — not measured]`.
+- **Reveal after returning home.** From the newest conversation, clicking
+  `header a[href$="/project"]` returned home and the **oldest** row's anchor (top 1382 > viewport
+  941) was in the DOM **332 ms** after the click; inside `[data-app-shell-active-page="true"]` the
+  home held 17 links, 7 below the fold. `findProjectConversationAnchor` does not need the row on
+  screen, so `revealFromProjectHome` resolves below-fold targets at this size.
+- **Changed since 2026-09-29: the sidebar now lists the project's chats.** On a project
+  conversation page there were **18** `a[href*="/g/g-p-"][href*="/c/"]`, all inside `nav`, under
+  `[data-sidebar-project-container-id="project:g-p-<id>"]`. Inside the active page scope there were
+  **0**, so the adapter's `activePage`-scoped lookup is unaffected and still takes the return-home
+  path.
+
 ### 2026-10-05 — long-project prerequisite remains unavailable
 
 Same native Chrome session as the Claude bare-project measurement. Counts exclude
@@ -795,6 +819,41 @@ arithmetic bottom is the list's end; see `endOfListGate` in the adapter. `.text-
 extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-snippet mis-picks.
 
 ## Claude
+
+### 2026-10-15 — a documents-only project renders no table; the artifact card was redesigned
+
+Playwright MCP session (the user logged in by hand; the Claude in Chrome extension was not
+connected). Counts only; no conversation text recorded beyond the artifact kind labels, which are
+UI strings.
+
+**Documents-only project.** A project (`PV probe docs-only project`) was created and measured
+before and after uploading one `.txt` through `input[data-testid="project-doc-upload"]`, then
+reloaded. Both states: `[data-testid="project-doc-upload"]` 1 (inside `main`), `main table` **0**,
+`[data-cds="DataTable"]` 0, `main a[href^="/chat/"]` 0, `aside a[href^="/chat/"]` 21, `lang`
+`ko-KR`. The upload succeeded (the side panel read *컨텍스트 · 파일 1개*). **Knowledge documents do
+not render a table on the project home**, so the shell marker + no-chat-link rule is unaffected by
+documents, and the row contract needs no document-row exclusion.
+
+**Artifact card redesign — the shipped artifact selectors are dead.** On an existing 3-artifact
+conversation, `div[class~="group/artifact-block"]` matched 3 cards, but per card:
+`[class~="artifact-block-cell"]` 0, `artifactTitle` 0, `artifactKind` 0. The card now holds a
+`button[data-testid="file-card-open"]`, a title `div` with `text-heading … line-clamp-2`, and a kind
+`div` with `text-footnote text-muted … line-clamp-2`. `artifactMarkers` requires the cell, so any
+row holding an artifact now throws `ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE` (read from the code
+against this DOM; not reproduced through the extension).
+
+**Kind separator across locales.** The account's UI language was switched through the user menu's
+language dialog, measured, and switched back to 한국어(대한민국) (`lang` re-read as `ko-KR`):
+
+| `lang` | kinds (3 cards) | non-alphanumeric code points |
+|---|---|---|
+| ko-KR | `PY`, `문서·MD`, `코드·JSX` | U+00B7 ×2 |
+| ja-JP | `PY`, `ドキュメント·MD`, `コード·JSX` | U+00B7 ×2 |
+| zh-Hans | `PY`, `文档·MD`, `代码·JSX` | U+00B7 ×2 |
+| zh-Hant | `PY`, `文件·MD`, `程式碼·JSX` | U+00B7 ×2 |
+
+The separator no longer has surrounding spaces (`문서·MD`, was `문서 · MD`), and a one-part kind
+(`PY`) now exists; `artifactFormatToken` already trims and passes one-part kinds through.
 
 ### 2026-10-05 — history row classification and `/chats` contract
 
@@ -1710,6 +1769,37 @@ Scope limits: one account, `ko-KR`, 26 conversations, three projects (0, 1 and 4
 `[unknown — not measured]`). `/project/<id>` remains `[unknown — not measured]`.
 
 ## Gemini
+
+### 2026-10-15 — a Notebook home lists its chats as id-less buttons, and they leave the global sidebar
+
+Clears the "Notebooks list markup is unmeasured" blocker. Playwright MCP session, logged-in
+ko-KR account. A notebook (`PV probe notebook`) and two one-turn chats inside it were created for
+the measurement; counts below exclude other conversation text.
+
+- **Routes.** `/notebooks/create` renders a name textbox (`노트북 이름`) and an *아이디어 정리* /
+  *학습* type choice; submitting lands on **`/notebook/<uuid>`** (singular, a 36-char UUID). A chat
+  started from the notebook composer navigates to an ordinary **`/app/<16-hex>`** URL.
+- **Sidebar.** `[data-test-id="notebooks-expandable-section"]` **no longer exists** (0 matches).
+  The section is `div#sidenav-section-content-notebooks` (`data-test-id="expandable-section-content"`)
+  inside an `expandable-section`, holding `project-sidenav-list` → `project-sidenav-list-item` →
+  `gem-nav-list-item[data-test-id="project-item-button-gem"]` → `a[href^="/notebook/"]`. The create
+  entry is `[data-test-id="new-notebook-button"]` / `a[href="/notebooks/create"]`. On a notebook
+  chat's `/app/<id>` page the notebook's item stays `project-sidenav-list-item--selected`.
+- **Member list.** The notebook home renders its chats under *이전 채팅* as
+  `project-chat-history` → `infinite-scroller.project-chat-history-scroller` → `project-chat-row` →
+  `button[data-test-id="navigate-to-recent-chat"]` → `h2[data-test-id="chat-title"]`, newest first.
+  **No row carries its conversation id**: 0 anchors per row, and neither id appears anywhere in the
+  row's `outerHTML`. Clicking the second row navigated to that chat's `/app/<16-hex>`. Enumerating
+  members therefore needs a click per row; there is no href to read. Paging of a long member list
+  (the scroller is an `infinite-scroller`) is `[unknown — 2 rows measured]`.
+- **Second `infinite-scroller`.** The notebook home adds a third `infinite-scroller` beside the two
+  the sidebar track already disambiguates (see 2026-08-20 below); the sidebar resolver was not
+  re-run on `/notebook/` pages.
+- **Notebook chats are absent from the global sidebar.** On `/app` and on a notebook chat's own
+  page, the sidebar held 32 `a[href^="/app/"]` rows and **0** of them were the two notebook chats,
+  although both were the account's newest conversations. The sidebar's filter menu offers only
+  status filters (*전체* ✓ / *준비됨* / *확인 필요* / *진행 중*), none for notebooks. Consequence:
+  the shipped sidebar bulk export cannot see any conversation that lives in a notebook.
 
 ### 2026-10-05 — expanded sidebar, exchange identity, and initial page samples
 
