@@ -104,6 +104,7 @@ deliberately not recorded here.
 |---|---|---|
 | Claude | `PV probe docs-only project` | one `.txt` knowledge document, zero conversations (2026-10-15); pinned on creation |
 | Claude | conversation `Multiple artifacts in one reply` | 3 artifact cards: kinds `PY`, `문서·MD`, `코드·JSX` (pre-existing) |
+| Claude | conversation `PV probe file creation` | 2 turns, 3 code-execution output cards: `표·CSV`, then `ZIP` + `문서·DOCX` (2026-10-15) |
 | ChatGPT | project `PV probe long project` | 17 one-turn conversations, 7 rows below a 941 px viewport (2026-10-15) |
 | Gemini | notebook `PV probe notebook` | 2 one-turn chats `PV Probe 1 Test` / `PV Probe 2 Confirmation` (2026-10-15) |
 
@@ -832,6 +833,30 @@ arithmetic bottom is the list's end; see `endOfListGate` in the adapter. `.text-
 extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-snippet mis-picks.
 
 ## Claude
+
+### 2026-10-15 — code-execution output files render as artifact cards; no root-less `file-card-open`
+
+Playwright MCP session, ko-KR account. Counts only. Closes the PR #119 review concern that a
+non-artifact file card carrying `data-testid="file-card-open"` would make `artifactMarkers` throw
+`ERR_CLAUDE_ARTIFACT_ROOT_UNRECOGNIZED` on a readable conversation.
+
+A conversation (`PV probe file creation`) was synthesized in which Claude's file-creation tool
+(the turn header read *파일 1개 생성함, 파일 1개 공유함*; the second turn ran a sandbox command
+after a one-time approval) produced three downloadable outputs across two assistant rows:
+
+| row `data-index` | kind | `file-card-open` | `text-heading` | `text-footnote` | `.standard-markdown` in row |
+|---|---|---|---|---|---|
+| 1 | `표·CSV` | 1 | 1 | 1 | 1 |
+| 3 | `ZIP` | 1 | 1 | 1 | 1 (shared) |
+| 3 | `문서·DOCX` | 1 | 1 | 1 | (shared) |
+
+Document-wide: `div[class~="group/artifact-block"]` 3, `[data-testid="file-card-open"]` 3, of
+which **0 outside an artifact root**; `artifact-block-cell` 0. The only `data-*` attributes inside
+a card were `data-testid="file-card-open"`, `data-cds="Icon"`, `data-cds="Button"`,
+`data-cds-part="paint"`. So a code-execution output is not a foreign card: it is the same
+redesigned card, exported as `[Artifact: <title> (CSV)]` etc., and the root-less rejection rule
+stays sound. No code change; the concern is re-opened only if a file card is ever measured
+outside `group/artifact-block`.
 
 ### 2026-10-15 — a documents-only project renders no table; the artifact card was redesigned
 

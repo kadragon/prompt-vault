@@ -25,10 +25,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 - [ ] [doc] Remove `screenshot-03-claude-conversation.png` from the default (English) locale's screenshots in the Developer Dashboard if the live listing still carries it, then confirm the published English listing — not only the Dashboard preview — shows shots 1, 2, 4 and 5 (source: code-review) — `docs/store-listing.md` → *English upload set* *(blocked by: human-only Developer Dashboard action — whether the live listing currently holds shot 3 is unverified)*
 
-### PR #119 — read Claude's redesigned artifact cards (2026-10-15)
-
-- [ ] [constraint] `artifactInner` treats any `[data-testid="file-card-open"]` without a `group/artifact-block` root as a renamed artifact root and aborts the whole export; a future non-artifact file card carrying that test id would make a readable conversation unexportable. Measured 0 outside artifact cards (one 3-artifact and one 6-attachment conversation); re-check on a code-execution output file and require the title/kind pair before rejecting if one appears (source: code-review + qa-verifier, low confidence) — `src/adapters/claude/selectors.ts:233` (introduced here)
-
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 
 > Non-blocking findings from the independent QA of the sprint that shipped the Claude `/recents`

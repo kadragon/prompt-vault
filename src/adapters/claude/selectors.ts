@@ -229,6 +229,13 @@ export const selectors = {
    * A descendant that marks a card even when the root token is renamed — the 2026-08-10 cell, or
    * the redesigned card's open button. A test id is a test hook, not a product API, but it is
    * the only card-unique attribute the redesign carries (the root's other tokens are styling).
+   *
+   * The test id is not artifact-exclusive in purpose — code-execution output files render a card
+   * too — but it IS root-exclusive in measurement (2026-10-15): three code-execution outputs
+   * (`표·CSV`, `ZIP`, `문서·DOCX`) each rendered inside `group/artifact-block` with exactly one
+   * open button, one title and one kind, and 0 `file-card-open` existed outside a root. So a
+   * root-less test id still means a renamed root, not a foreign card. Re-measure if Claude ships
+   * a new file-producing tool.
    */
   artifactInner: '[class~="artifact-block-cell"], [data-testid="file-card-open"]',
   artifactTitle:
