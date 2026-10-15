@@ -851,9 +851,13 @@ documents, and the row contract needs no document-row exclusion.
 conversation, `div[class~="group/artifact-block"]` matched 3 cards, but per card:
 `[class~="artifact-block-cell"]` 0, `artifactTitle` 0, `artifactKind` 0. The card now holds a
 `button[data-testid="file-card-open"]`, a title `div` with `text-heading … line-clamp-2`, and a kind
-`div` with `text-footnote text-muted … line-clamp-2`. `artifactMarkers` requires the cell, so any
-row holding an artifact now throws `ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE` (read from the code
-against this DOM; not reproduced through the extension).
+`div` with `text-footnote text-muted … line-clamp-2`. `artifactMarkers` required the cell, so any
+row holding an artifact threw `ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE`. **Reproduced through the
+loaded extension:** a pre-fix build (`npm run build` with the fix stashed, `#dev-reload-button`)
+raised that error's alert on *Markdown 다운로드* and saved nothing; the fixed build saved a file
+holding `[Artifact: Pv probe python (PY)]`, `(MD)` and `(JSX)` markers. Per card: exactly one
+`text-heading`, one `text-footnote`, one `[data-testid="file-card-open"]`; 0 `file-card-open` on a
+6-attachment conversation. The row is captured as `test/fixtures/claude/artifact-cards-2026-10-15.html`.
 
 **Kind separator across locales.** The account's UI language was switched through the user menu's
 language dialog, measured, and switched back to 한국어(대한민국) (`lang` re-read as `ko-KR`):

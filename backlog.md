@@ -31,8 +31,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > bulk track. None held the PR; each is either a pre-existing gap the sprint made visible or a
 > limit that needs a measurement session to close.
 
-- [ ] *(blocked by: the artifact card `[FIX]` in "Live-DOM session findings (2026-10-15)" — narrowing a separator set the current card markup never reaches is untestable until the card is read again)*
-      [debt] Narrow `ARTIFACT_KIND_SEPARATORS` to U+00B7. Measured 2026-10-15 on ko-KR, ja-JP,
+- [ ] [debt] Narrow `ARTIFACT_KIND_SEPARATORS` to U+00B7. Measured 2026-10-15 on ko-KR, ja-JP,
       zh-Hans and zh-Hant: every two-part kind uses U+00B7 and none uses U+30FB or U+2022
       (`docs/live-dom-verification.md` → Claude, 2026-10-15).
 - [ ] *(blocked by: needs an account holding zero conversations — the measuring account holds 26)*
@@ -45,17 +44,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 *(No open items — the sidebar-recycling `[FIX]` was closed 2026-08-10 by measurement rather than by
 a change: the sidebar does not page at all, so the mid-walk reveal it guarded against cannot occur.
 The larger hazard that measurement exposed is filed above.)*
-
-## Live-DOM session findings (2026-10-15)
-
-- [ ] [FIX] **P1** Claude artifact card markup changed, so exporting any Claude conversation that
-      holds an artifact throws `ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE`. `artifactCard`
-      (`group/artifact-block`) still matches, but `artifactCell`, `artifactTitle` and
-      `artifactKind` match 0 of 3 cards; the title is now `[class~="text-heading"]`, the kind
-      `[class~="text-footnote"]`, and the card carries `[data-testid="file-card-open"]`. Re-measure,
-      update `src/adapters/claude/selectors.ts` + `artifactMarkers`, refresh the fixture
-      (`docs/live-dom-verification.md` → Claude, 2026-10-15). The failure path was read from code
-      against the live DOM, not reproduced through the loaded extension.
 
 ## ChatGPT app-shell follow-ups (2026-09-29)
 
