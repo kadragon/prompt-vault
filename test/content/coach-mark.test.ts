@@ -4,6 +4,7 @@ import {
   COACH_MARK_ID,
   COACH_MARK_TEARDOWN_GRACE_TICKS,
   armCoachMark,
+  disarmCoachMark,
   isCoachMarkVisible,
   maybeShowCoachMark,
   removeCoachMark,
@@ -429,6 +430,16 @@ describe('syncCoachMark (the poll tick)', () => {
     tickPastTeardownGrace(doc);
 
     // The latch was spent by the first show; a re-mounted toolbar must not buy a second card.
+    doc.body.appendChild(createButtons(doc, 'overlay'));
+    syncCoachMark(doc);
+    expect(isCoachMarkVisible(doc)).toBe(false);
+  });
+
+  it('stays silent once disarmed, even with a mounted toolbar', () => {
+    const doc = docOf(bareWindow());
+    armCoachMark();
+    // Another tab persisted the dismissal: this tab must not raise the card afterwards.
+    disarmCoachMark();
     doc.body.appendChild(createButtons(doc, 'overlay'));
     syncCoachMark(doc);
     expect(isCoachMarkVisible(doc)).toBe(false);

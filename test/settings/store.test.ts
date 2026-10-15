@@ -90,6 +90,47 @@ describe('loadSettings / saveSettings', () => {
   });
 });
 
+describe('storage key stability', () => {
+  // A renamed key would silently reset every user's saved settings, so the literal is pinned.
+  it('persists under, reads from, and listens on the "toolbarSettings" key', async () => {
+    const written: Record<string, unknown>[] = [];
+    const requested: unknown[] = [];
+    let listener: ChangeListener | undefined;
+    const stored = { formats: { md: false, pdf: true, json: true, html: true }, bulk: false };
+    const g = globalThis as unknown as { chrome: Record<string, unknown> };
+    g.chrome = {
+      ...g.chrome,
+      storage: {
+        sync: {
+          get: (key: unknown): Promise<Record<string, unknown>> => {
+            requested.push(key);
+            return Promise.resolve({ toolbarSettings: stored });
+          },
+          set: (items: Record<string, unknown>): Promise<void> => {
+            written.push(items);
+            return Promise.resolve();
+          },
+        },
+        onChanged: {
+          addListener: (l: ChangeListener): void => void (listener = l),
+          removeListener: (): void => undefined,
+        },
+      },
+    };
+
+    await saveSettings(DEFAULT_SETTINGS);
+    expect(Object.keys(written[0])).toEqual(['toolbarSettings']);
+
+    expect(await loadSettings()).toEqual(stored);
+    expect(requested).toEqual(['toolbarSettings']);
+
+    const received: ToolbarSettings[] = [];
+    subscribeSettings((s) => received.push(s));
+    listener!({ toolbarSettings: { newValue: stored } }, 'sync');
+    expect(received).toEqual([stored]);
+  });
+});
+
 describe('subscribeSettings', () => {
   it('invokes the callback with the sanitized new value on a sync change, and unsubscribes', async () => {
     installStorageMock();

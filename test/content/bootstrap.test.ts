@@ -78,6 +78,18 @@ describe('createBootstrap', () => {
     expect(doc.getElementById(CONTAINER_ID)).toBeNull();
   });
 
+  it('holds the overlay fallback back until the whole mount grace has elapsed', () => {
+    const doc = bareDoc();
+    const { tick } = createBootstrap({ doc, getHref: () => CONV_URL });
+
+    // The header may still be rendering: no overlay flash before the grace is spent.
+    ticks(tick, MOUNT_GRACE_TICKS - 1);
+    expect(doc.getElementById(CONTAINER_ID)).toBeNull();
+
+    tick();
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+  });
+
   it('restarts the coach mark teardown grace on an SPA href change', () => {
     const { doc, tick, setHref } = mountedWithCoachMark();
 

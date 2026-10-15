@@ -119,6 +119,20 @@ describe('markdownFilename', () => {
     expect(() => encodeURIComponent(name)).not.toThrow();
   });
 
+  it('keeps a title of exactly 80 code points whole', () => {
+    const name = markdownFilename(conversation({ title: 'a'.repeat(80) }), date);
+    expect(name).toBe(`chatgpt-${'a'.repeat(80)}-20260105.md`);
+    expect(markdownFilename(conversation({ title: 'a'.repeat(81) }), date)).toBe(name);
+  });
+
+  it('fills the UTF-8 byte budget exactly and no further', () => {
+    // 200-byte budget minus `chatgpt` + `20260105` + `md` + `--.` leaves 180 bytes: 60 Hangul.
+    const exact = markdownFilename(conversation({ title: '가'.repeat(60) }), date);
+    expect(exact).toBe(`chatgpt-${'가'.repeat(60)}-20260105.md`);
+    expect(new TextEncoder().encode(exact).length).toBe(200);
+    expect(markdownFilename(conversation({ title: '가'.repeat(61) }), date)).toBe(exact);
+  });
+
   it('uses the conversation provider as the prefix', () => {
     expect(markdownFilename(conversation({ provider: 'gemini' }), date)).toMatch(/^gemini-/);
   });

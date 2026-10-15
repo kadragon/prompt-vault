@@ -28,6 +28,11 @@ describe('geminiAdapter.matches', () => {
     expect(geminiAdapter.matches('https://gemini.google.com/app/1a2b3c/extra')).toBe(false);
   });
 
+  it('does not match a path that merely contains /app/<id> further in', () => {
+    // The path pattern is anchored at the start, so a prefixed segment must not pass.
+    expect(geminiAdapter.matches('https://gemini.google.com/x/app/1a2b')).toBe(false);
+  });
+
   it('does not match a look-alike host', () => {
     // The host check is an exact set membership, not a suffix match.
     expect(geminiAdapter.matches('https://gemini.google.com.attacker.example/app/1a2b')).toBe(false);

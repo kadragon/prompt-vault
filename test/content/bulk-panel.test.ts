@@ -221,6 +221,47 @@ describe('openBulkPanel', () => {
     expect(panel.textContent).toContain('あ ア 😀');
   });
 
+  it('exports as Markdown when the format picker is left untouched', async () => {
+    const doc = freshDoc();
+    const d = deps({ total: 1, succeeded: 1, failed: [], warnings: [] });
+    openBulkPanel(doc, d);
+    const panel = panelOf(doc);
+    expect((panel.querySelector('select') as HTMLSelectElement).value).toBe('md');
+    check(checkboxes(panel)[1]);
+    buttonByText(panel, 'Export 1 selected').click();
+    await flush();
+    expect((d.run.mock.calls[0] as [unknown, ExportFormat])[1]).toBe('md');
+  });
+
+  it('dims the Export button while nothing is selected and restores it once something is', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
+    const panel = panelOf(doc);
+    const exportBtn = (): HTMLButtonElement =>
+      Array.from(panel.querySelectorAll('button')).find((b) => b.textContent?.startsWith('Export'))!;
+    expect(exportBtn().style.opacity).toBe('0.5');
+    expect(exportBtn().style.cursor).toBe('default');
+    check(checkboxes(panel)[1]);
+    expect(exportBtn().style.opacity).toBe('1');
+    expect(exportBtn().style.cursor).toBe('pointer');
+  });
+
+  it('ignores a second Load more click while the first is still loading', async () => {
+    const doc = freshDoc();
+    let resolveLoad!: (list: SidebarConversation[]) => void;
+    const loadMore = vi.fn(() => new Promise<SidebarConversation[]>((res) => (resolveLoad = res)));
+    openBulkPanel(doc, { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }), loadMore });
+    const panel = panelOf(doc);
+    const btn = buttonByText(panel, 'Load more');
+    btn.click();
+    expect(btn.disabled).toBe(true);
+    // A click event can still be dispatched at a disabled control (synthetic / assistive input).
+    btn.dispatchEvent(new (doc.defaultView as unknown as { Event: typeof Event }).Event('click'));
+    expect(loadMore).toHaveBeenCalledTimes(1);
+    resolveLoad(CONVS);
+    await flush();
+  });
+
   it('shows no Load more button when deps.loadMore is absent', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
@@ -481,6 +522,19 @@ describe('openBulkPanel', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     buttonByText(panelOf(doc), 'Cancel').click();
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+  });
+
+  it('closes on a backdrop click but not on a click inside the dialog', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
+    const panel = panelOf(doc);
+    const view = doc.defaultView as unknown as { Event: typeof Event };
+    // Click on a node inside the dialog bubbles to the backdrop but must not dismiss it.
+    panel.querySelector('h2, h1, div')!.dispatchEvent(new view.Event('click', { bubbles: true }));
+    checkboxes(panel)[0].dispatchEvent(new view.Event('click', { bubbles: true }));
+    expect(doc.getElementById(BULK_PANEL_ID)).not.toBeNull();
+    clickBackdrop(panel);
     expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
   });
 

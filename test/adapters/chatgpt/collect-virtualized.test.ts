@@ -211,6 +211,21 @@ describe('collectVirtualizedTurns — windowed message list', () => {
     expect(messages.map((m) => m.id)).toEqual(['a', 'b', 'c']);
   });
 
+  it('re-queries the same window rather than moving on, so a turn that scrolls out is still collected', async () => {
+    // The first turn is the one unmounted mid-read. The next walk step scrolls it out of the
+    // window for good, so only an immediate re-query of the current window can still read it.
+    const turns: Turn[] = [
+      { id: 'a', role: 'user', content: 'first', detachedOnce: true },
+      { id: 'b', role: 'user', content: 'second' },
+      { id: 'c', role: 'user', content: 'third' },
+      { id: 'd', role: 'user', content: 'fourth' },
+      { id: 'e', role: 'user', content: 'fifth' },
+      { id: 'f', role: 'user', content: 'sixth' },
+    ];
+    const messages = await collectVirtualizedTurns(makeWindowedDoc({ turns }), fast);
+    expect(messages.map((m) => m.id)).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+  });
+
   it('fails loud when a recognized turn has no message id', async () => {
     const turns: Turn[] = [
       { id: 'a', role: 'user', content: 'has id' },

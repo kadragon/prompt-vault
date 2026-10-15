@@ -153,6 +153,11 @@ describe('substituteUnsupportedChars', () => {
     expect(substituteUnsupportedChars('※ 참고 ★ ☑')).toBe('* 참고 ● [v]');
   });
 
+  it('keeps a visible stand-in for dash and bullet marks rather than deleting them', () => {
+    // An empty replacement would silently drop the dash or the list bullet the page showed.
+    expect(substituteUnsupportedChars('a\u2012b \u2043 item \u2023 item')).toBe('a-b - item \u25aa item');
+  });
+
   it('leaves text the font already covers untouched', () => {
     const covered = 'LG 김치냉장고 → 약 · 중 · 강 ≈ ±1 ✓';
     expect(substituteUnsupportedChars(covered)).toBe(covered);

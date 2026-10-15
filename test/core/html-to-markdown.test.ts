@@ -517,3 +517,13 @@ describe('serialization fidelity — review-panel regressions', () => {
     expect(md('<p><code>a|b</code></p>')).toBe('`a|b`');
   });
 });
+
+describe('whitespace and attribute edge cases', () => {
+  it('collapses a pretty-printed run of newlines and spaces to a single space', () => {
+    expect(md('<p>a\n     b   c</p>')).toBe('a b c');
+  });
+
+  it('keeps an anchor with no href attribute as its bare label', () => {
+    expect(md('<p><a>t</a></p>')).toBe('t');
+  });
+});

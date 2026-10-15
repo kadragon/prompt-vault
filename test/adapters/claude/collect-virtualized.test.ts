@@ -456,6 +456,22 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     expect(roundsOf(doc)).toBeLessThan(60);
   });
 
+  // Pins the bound itself (STREAM_MARKER_ABSENT_MAX_ROUNDS = 20): the walk starts parked at the
+  // bottom, so every round counts, and the export must fail on the 20th — not the 21st.
+  it('gives up on a missing stream marker after exactly the bounded number of bottom rounds', async () => {
+    const turns = alternating(12).map((t) => ({ ...t, streamMissing: true }));
+    const doc = makeWindowedDoc({ turns });
+    // Each bottom-parked round asks the document once whether the marker exists anywhere.
+    let lookups = 0;
+    const ask = doc.querySelector.bind(doc);
+    doc.querySelector = (sel: string) => {
+      if (sel === selectors.streamMarker) lookups++;
+      return ask(sel);
+    };
+    await expect(collectVirtualizedTurns(doc, fast)).rejects.toThrow(/message-completion marker/);
+    expect(lookups).toBe(20);
+  });
+
   // Also pins the watchdog's lower edge: a marker missing only from the NEWEST row is a wrapper
   // still mounting (~1.2s live — docs/live-dom-verification.md → Claude → 2026-07-29), and every
   // other assistant row still carries it, so the attribute is intact. Asserting the settle-bound
@@ -474,6 +490,32 @@ describe('collectVirtualizedTurns — recycling message list', () => {
     await expect(
       collectVirtualizedTurns(makeWindowedDoc({ turns }), { stepDelayMs: 0, maxSteps: 20 }),
     ).rejects.toThrow(/streaming state/);
+  });
+
+  it('returns nothing, rather than a turn-index error, when the only turn seen has no index', async () => {
+    // With no collected message there is nothing to be partial about; the caller's empty-
+    // conversation error is the accurate one, so the unindexed-turn error must not pre-empt it.
+    const turns: Turn[] = [{ role: 'assistant', content: 'only turn', unindexed: true }];
+    const doc = makeWindowedDoc({ turns });
+    // The fake never lists an unindexed row, which would leave the walk waiting for a settled
+    // newest row forever; expose one so it can finish.
+    const settledRow = {
+      getAttribute: (): string | null => null,
+      querySelector: (sel: string): unknown => {
+        if (sel === selectors.assistantMarkdown) return {};
+        if (sel === selectors.streamMarker) {
+          return {
+            getAttribute: (): string => 'false',
+            querySelector: (nested: string): unknown => (nested === selectors.assistantMarkdown ? {} : null),
+          };
+        }
+        return null;
+      },
+    };
+    const all = doc.querySelectorAll.bind(doc);
+    doc.querySelectorAll = ((sel: string) =>
+      sel === '[data-index]' ? [settledRow] : all(sel)) as typeof doc.querySelectorAll;
+    await expect(collectVirtualizedTurns(doc, fast)).resolves.toEqual([]);
   });
 
   it('fails loud when a turn never yields content (never silently drops it)', async () => {

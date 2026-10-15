@@ -94,6 +94,13 @@ describe('chatgpt — reading a virtualized CodeMirror block', () => {
     expect(list.scrollTop).toBe(3000); // the message walk resumes where it was
   });
 
+  it('still recovers every line from a document with no window to compute padding from', async () => {
+    const { doc } = gappedBlockDoc(source);
+    Object.defineProperty(doc, 'defaultView', { value: null });
+    const convo = await extract(doc, { harvestStepDelayMs: 0 });
+    expect(convo.messages[1].content).toBe('```python\n' + source.join('\n') + '\n```');
+  });
+
   it('keeps the tail when the gap estimate undercounts the lines', async () => {
     const { doc } = gappedBlockDoc(source, { estimateShortBy: 3 });
     const convo = await extract(doc, { harvestStepDelayMs: 0 });

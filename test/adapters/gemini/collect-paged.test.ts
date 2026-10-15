@@ -284,6 +284,22 @@ describe('collectPagedExchanges — lazily paged exchange list', () => {
     await expect(collectPagedExchanges(paged.doc, fast)).rejects.toBeInstanceOf(ExtractionError);
   });
 
+  it('gives up on a container that never moves after a bounded stall, not the absolute step ceiling', async () => {
+    const paged = makePagedDoc({ total: 16, stuck: true });
+    let rounds = 0;
+    const query = paged.doc.querySelectorAll.bind(paged.doc);
+    (paged.doc as unknown as { querySelectorAll: (sel: string) => NodeListOf<Element> }).querySelectorAll = (
+      sel: string,
+    ) => {
+      if (sel === 'div.conversation-container') rounds++;
+      return query(sel);
+    };
+    await expect(collectPagedExchanges(paged.doc, fast)).rejects.toThrow(/Timed out scrolling back to the start/);
+    // Nothing moved and nothing grew, so only the stall cap (40 rounds) can end the walk; the
+    // absolute ceiling is 2000.
+    expect(rounds).toBeLessThan(100);
+  });
+
   it('fails loud when the step cap is hit before the list finishes paging', async () => {
     const paged = makePagedDoc({ total: 34 });
     await expect(collectPagedExchanges(paged.doc, { ...fast, maxSteps: 4 })).rejects.toThrow(

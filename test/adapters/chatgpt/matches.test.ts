@@ -52,6 +52,10 @@ describe('chatgpt matchesProject', () => {
     expect(matchesProject('https://chatgpt.com/c/abc-123')).toBe(false);
   });
 
+  it('rejects a project path nested under another prefix', () => {
+    expect(matchesProject('https://chatgpt.com/x/g/g-p-abc123/project')).toBe(false);
+  });
+
   it('rejects non-project /g/ pages and other paths', () => {
     expect(matchesProject('https://chatgpt.com/g/g-abc/project')).toBe(false); // a GPT, not a project (no g-p-)
     expect(matchesProject('https://chatgpt.com/projects')).toBe(false);

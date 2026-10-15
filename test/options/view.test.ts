@@ -14,6 +14,7 @@ function mount(
   saved: ToolbarSettings[];
   box: (id: string) => HTMLInputElement;
   note: () => string;
+  noteIsError: () => boolean;
   fireChange: (input: HTMLInputElement, checked: boolean) => void;
 } {
   const window = new Window();
@@ -31,7 +32,10 @@ function mount(
     input.checked = checked;
     input.dispatchEvent(new window.Event('change') as unknown as Event);
   };
-  return { doc, saved, box, note: () => doc.getElementById('note')?.textContent ?? '', fireChange };
+  return { doc, saved, box, note: () => doc.getElementById('note')?.textContent ?? '',
+    noteIsError: () => doc.getElementById('note')?.classList.contains('error') ?? false,
+    fireChange,
+  };
 }
 
 // The saved/failed note is set from a promise handler, so flush microtasks before asserting it.
@@ -93,5 +97,33 @@ describe('renderOptions', () => {
     fireChange(box('format-pdf'), false);
     await flush();
     expect(note()).toBe('Could not save. Please try again.');
+  });
+
+  it('styles a failed save as an error and a successful save as plain', async () => {
+    const failing = mount(DEFAULT_SETTINGS, () => Promise.reject(new Error('quota')));
+    failing.fireChange(failing.box('format-pdf'), false);
+    await flush();
+    expect(failing.noteIsError()).toBe(true);
+
+    const ok = mount();
+    ok.fireChange(ok.box('format-pdf'), false);
+    await flush();
+    expect(ok.noteIsError()).toBe(false);
+  });
+
+  it('styles the rejected last-format uncheck as an error', () => {
+    const { box, noteIsError, fireChange } = mount({
+      formats: { md: true, pdf: false, json: false, html: false },
+      bulk: true,
+    });
+    fireChange(box('format-md'), false);
+    expect(noteIsError()).toBe(true);
+  });
+
+  it('renders every control as a real checkbox input', () => {
+    const { box } = mount();
+    for (const id of ['format-md', 'format-pdf', 'format-json', 'format-html', 'bulk']) {
+      expect(box(id).type).toBe('checkbox');
+    }
   });
 });
