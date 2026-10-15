@@ -111,12 +111,11 @@ const RETURN_BACK_RETRY_MS = 3000;
 // history. Three keeps the worst case one step beyond the two-entry shape this exists for.
 const MAX_RETURN_BACK_STEPS = 3;
 // The middle dot Claude renders between an artifact card's localized name and its format token
-// (`문서 · MD`, `코드 · JSX`, measured 2026-08-10). U+00B7 is the one actually measured; U+30FB
-// (the CJK/katakana middle dot) and U+2022 (bullet) are accepted alongside it because only a ko-KR
-// account was ever surveyed and a ja/zh UI plausibly renders a different dot for the same role.
-// Recognizing an extra separator can only normalize a kind that would otherwise pass through
-// verbatim, so the wider set has no downside — see `artifactFormatToken`.
-const ARTIFACT_KIND_SEPARATORS = /[·・•]/;
+// (`문서·MD`, `ドキュメント·MD`, `文档·MD`). U+00B7 in every surveyed locale — ko-KR, ja-JP, zh-Hans
+// and zh-Hant, measured 2026-10-15 — and no U+30FB or U+2022 anywhere. U+30FB is deliberately not
+// accepted: it is the katakana dot Japanese uses inside compound words, so a ja name containing it
+// would split into three parts and lose its normalization — see `artifactFormatToken`.
+const ARTIFACT_KIND_SEPARATORS = /·/;
 
 // Set when the project bulk panel first enumerates its measured home table. A project run
 // opens several members sequentially; after the first click the table may be replaced by the

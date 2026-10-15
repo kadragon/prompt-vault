@@ -225,10 +225,10 @@ describe('claudeAdapter.extract', () => {
     expect(convo.messages[1].content).toBe('[Artifact: Pv probe artifact (문서 ·)]\n\nthe answer');
   });
 
-  // The measured ko-KR dot is U+00B7, but only one locale was ever surveyed, so a ja/zh UI
-  // rendering the CJK middle dot for the same role must normalize identically rather than
-  // silently exporting a localized string.
-  it('normalizes a CJK middle dot the same way as the measured separator', async () => {
+  // ko-KR, ja-JP, zh-Hans and zh-Hant all render U+00B7 (measured 2026-10-15). U+30FB is the
+  // katakana middle dot Japanese uses INSIDE compound words, so treating it as the separator could
+  // cut a localized name in two; it is an unmeasured shape and passes through like any other.
+  it('passes a katakana middle dot through instead of treating it as the separator', async () => {
     const html =
       '<body>' +
       '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
@@ -241,7 +241,7 @@ describe('claudeAdapter.extract', () => {
       '</div>' +
       '</body>';
     const convo = await claudeAdapter.extract(docFrom(html));
-    expect(convo.messages[1].content).toBe('[Artifact: Pv probe artifact (MD)]\n\nthe answer');
+    expect(convo.messages[1].content).toBe('[Artifact: Pv probe artifact (ドキュメント・MD)]\n\nthe answer');
   });
 
   it('fails loud when a measured artifact card has no readable kind', async () => {
