@@ -1743,11 +1743,10 @@ function readUserContent(el: Element): string {
  */
 function artifactMarkers(row: Element): string {
   const cards = Array.from(row.querySelectorAll(selectors.artifactCard));
-  const cells = Array.from(row.querySelectorAll(selectors.artifactCell));
   if (cards.length === 0) {
-    // The cell is the only measured descendant marker that can survive a root-token rename.
-    // Treating it as a card would invent the missing root relationship, so reject the row.
-    if (cells.length > 0) {
+    // The inner markers are the only measured descendants that can survive a root-token rename.
+    // Treating one as a card would invent the missing root relationship, so reject the row.
+    if (row.querySelector(selectors.artifactInner)) {
       throw new ExtractionError(ERR_CLAUDE_ARTIFACT_ROOT_UNRECOGNIZED);
     }
     return '';
@@ -1758,12 +1757,11 @@ function artifactMarkers(row: Element): string {
 
   const markers: string[] = [];
   for (const card of cards) {
-    const cell = card.querySelector(selectors.artifactCell);
-    const titles = cell ? Array.from(cell.querySelectorAll(selectors.artifactTitle)) : [];
-    const kinds = cell ? Array.from(cell.querySelectorAll(selectors.artifactKind)) : [];
+    const titles = Array.from(card.querySelectorAll(selectors.artifactTitle));
+    const kinds = Array.from(card.querySelectorAll(selectors.artifactKind));
     const title = titles.length === 1 ? (titles[0].textContent ?? '').trim() : '';
     const kind = kinds.length === 1 ? (kinds[0].textContent ?? '').trim() : '';
-    if (!cell || titles.length !== 1 || kinds.length !== 1 || !title || !kind) {
+    if (titles.length !== 1 || kinds.length !== 1 || !title || !kind) {
       throw new ExtractionError(ERR_CLAUDE_ARTIFACT_METADATA_UNREADABLE);
     }
     markers.push(`[Artifact: ${title} (${artifactFormatToken(kind)})]`);

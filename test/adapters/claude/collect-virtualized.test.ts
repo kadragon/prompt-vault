@@ -237,16 +237,13 @@ function makeWindowedDoc({
         }));
       }
       if (sel === selectors.artifactCard && t.artifact) {
-        const cell = {
-          querySelectorAll: (nested: string): unknown[] => {
-            if (nested === selectors.artifactTitle) return [{ textContent: t.artifact?.title ?? '' }];
-            if (nested === selectors.artifactKind) return [{ textContent: t.artifact?.kind ?? '' }];
-            return [];
-          },
-        };
         return [
           {
-            querySelector: (nested: string): unknown => (nested === selectors.artifactCell ? cell : null),
+            querySelectorAll: (nested: string): unknown[] => {
+              if (nested === selectors.artifactTitle) return [{ textContent: t.artifact?.title ?? '' }];
+              if (nested === selectors.artifactKind) return [{ textContent: t.artifact?.kind ?? '' }];
+              return [];
+            },
           },
         ];
       }

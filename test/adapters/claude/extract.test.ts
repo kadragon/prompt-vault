@@ -281,6 +281,71 @@ describe('claudeAdapter.extract', () => {
     await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
   });
 
+  // REGRESSION (2026-10-15): Claude redesigned the artifact card. The root token survived, but the
+  // `artifact-block-cell` column and both title/kind class pairs disappeared, so every
+  // conversation holding an artifact failed the export with "metadata unreadable". This is the
+  // live row, captured from the measuring account (`docs/live-dom-verification.md` → Claude,
+  // 2026-10-15) — three cards, one of them a one-part kind (`PY`).
+  it('reads the redesigned artifact cards captured from the live page', async () => {
+    const convo = await claudeAdapter.extract(loadFixture('artifact-cards-2026-10-15.html'));
+    expect(convo.messages).toHaveLength(2);
+    const assistant = convo.messages[1];
+    expect(assistant.role).toBe('assistant');
+    expect(assistant.content).toContain(
+      '[Artifact: Pv probe python (PY)]\n\n[Artifact: Pv probe markdown (MD)]\n\n[Artifact: Pv probe react (JSX)]',
+    );
+  });
+
+  // The redesigned card has no `artifact-block-cell`; its open button's test id is the descendant
+  // that still marks a card whose root token was renamed, so that rename stays a loud failure.
+  it('fails loud on a redesigned card whose root token was renamed', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/file-block"><button data-testid="file-card-open"></button>' +
+      '<div><div class="truncate text-heading">Pv probe artifact</div>' +
+      '<div class="truncate text-footnote text-muted">문서<span>·</span>MD </div></div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
+  it('fails loud when a redesigned card carries two kind nodes', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/artifact-block"><button data-testid="file-card-open"></button>' +
+      '<div><div class="truncate text-heading">Pv probe artifact</div>' +
+      '<div class="truncate text-footnote text-muted">문서<span>·</span>MD </div>' +
+      '<div class="text-footnote">v2</div></div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
+  // `artifactTitle`/`artifactKind` are unions of the 2026-08-10 and 2026-10-15 shapes, so a card
+  // rendering both would match two titles; the exactly-one rule must reject it, not pick one.
+  it('fails loud when one card carries both the old and the redesigned metadata', async () => {
+    const html =
+      '<body>' +
+      '<div data-index="0"><div data-testid="user-message"><p>a question</p></div></div>' +
+      '<div data-index="1"><div role="article" aria-setsize="2">' +
+      '<div class="group/artifact-block"><button data-testid="file-card-open"></button>' +
+      '<div class="artifact-block-cell">' +
+      '<div class="leading-tight text-sm line-clamp-1">Old title</div>' +
+      '<div class="text-xs line-clamp-1">코드 · HTML</div></div>' +
+      '<div><div class="truncate text-heading">New title</div>' +
+      '<div class="truncate text-footnote text-muted">문서<span>·</span>MD </div></div></div>' +
+      '<div class="standard-markdown"><p>the answer</p></div>' +
+      '</div></div>' +
+      '</body>';
+    await expect(claudeAdapter.extract(docFrom(html))).rejects.toBeInstanceOf(ExtractionError);
+  });
+
   it('ignores an artifact-shaped node outside the message list instead of failing the export', async () => {
     // `data-index` is a generic virtualizer attribute, so a malformed card in some other
     // indexed widget (an artifact side panel, a menu) must not abort a conversation that

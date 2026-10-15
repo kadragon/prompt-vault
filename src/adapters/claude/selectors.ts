@@ -212,11 +212,30 @@ export const selectors = {
    * `[Artifact: <title> (MD)]` is the same string on every UI language. Only the exact two-part
    * shape is normalized; any other kind is exported verbatim, which is what shipped before this
    * and so can never be a regression. See `artifactFormatToken` for why it does not fail loud.
+   *
+   * **Redesigned card — verified against the live page (2026-10-15).** The root token survived;
+   * everything inside it changed. On a 3-artifact reply (kinds `PY`, `문서·MD`, `코드·JSX`) the
+   * old cell, title and kind selectors matched **0 of 3** cards, which failed every export of a
+   * conversation holding an artifact. Per card, measured: one `button[data-testid="file-card-open"]`
+   * (3 in the document, 0 outside a card, 0 on a 6-attachment conversation), exactly one
+   * `text-heading` node (the title) and exactly one `text-footnote` node (the kind), siblings in a
+   * two-child text column. The kind now renders its dot in a `<span>` with no spaces around it
+   * (`문서<span>·</span>MD `), and a one-part kind (`PY`) exists. Each selector below is the
+   * redesigned form OR the 2026-08-10 form scoped to its cell, so either shape is read and a card
+   * carrying both still fails the exactly-one rule loudly.
    */
   artifactCard: 'div[class~="group/artifact-block"]',
-  artifactCell: '[class~="artifact-block-cell"]',
-  artifactTitle: '[class~="leading-tight"][class~="text-sm"][class~="line-clamp-1"]',
-  artifactKind: '[class~="text-xs"][class~="line-clamp-1"]',
+  /**
+   * A descendant that marks a card even when the root token is renamed — the 2026-08-10 cell, or
+   * the redesigned card's open button. A test id is a test hook, not a product API, but it is
+   * the only card-unique attribute the redesign carries (the root's other tokens are styling).
+   */
+  artifactInner: '[class~="artifact-block-cell"], [data-testid="file-card-open"]',
+  artifactTitle:
+    '[class~="text-heading"], ' +
+    '[class~="artifact-block-cell"] [class~="leading-tight"][class~="text-sm"][class~="line-clamp-1"]',
+  artifactKind:
+    '[class~="text-footnote"], ' + '[class~="artifact-block-cell"] [class~="text-xs"][class~="line-clamp-1"]',
 
   /**
    * Claude's persistent navigation surfaces, measured 2026-08-09 and re-measured 2026-08-10.

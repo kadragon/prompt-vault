@@ -152,9 +152,10 @@ const TOOLBAR_BUTTON_CLASS =
  *  - The sidebar track (`listConversations` / `openConversation` / `loadMoreConversations`) rests
  *    on the 2026-08-10 measurement — the sidebar pages at 20, append-only with no recycling, and
  *    identity is 1:1 (93 rows ↔ 93 anchors ↔ 93 distinct `/app/<16-hex>` ids, none outside a row).
- *  - The **Notebooks / project track stays unimplemented**, and its justification is unchanged:
- *    Gemini's project analogue is Notebooks (Gems were measured and are not a project home), and
- *    the measuring account had zero notebooks, so its list markup has never been seen.
+ *  - The **Notebooks / project track stays unimplemented**. Gemini's project analogue is Notebooks
+ *    (Gems were measured and are not a project home); their markup was measured 2026-10-15 and
+ *    member rows carry no conversation id, so the track needs click-per-row enumeration — see
+ *    `docs/live-dom-verification.md` → Gemini, 2026-10-15.
  *
  * Absence alone is not enough to hide a feature, though — the content layer has to *read* it.
  * `syncConversationButtons` gates the bulk icon on `listConversations` + `openConversation` being

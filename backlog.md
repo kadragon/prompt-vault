@@ -25,23 +25,19 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 - [ ] [doc] Remove `screenshot-03-claude-conversation.png` from the default (English) locale's screenshots in the Developer Dashboard if the live listing still carries it, then confirm the published English listing — not only the Dashboard preview — shows shots 1, 2, 4 and 5 (source: code-review) — `docs/store-listing.md` → *English upload set* *(blocked by: human-only Developer Dashboard action — whether the live listing currently holds shot 3 is unverified)*
 
+### PR #119 — read Claude's redesigned artifact cards (2026-10-15)
+
+- [ ] [constraint] `artifactInner` treats any `[data-testid="file-card-open"]` without a `group/artifact-block` root as a renamed artifact root and aborts the whole export; a future non-artifact file card carrying that test id would make a readable conversation unexportable. Measured 0 outside artifact cards (one 3-artifact and one 6-attachment conversation); re-check on a code-execution output file and require the title/kind pair before rejecting if one appears (source: code-review + qa-verifier, low confidence) — `src/adapters/claude/selectors.ts:233` (introduced here)
+
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 
 > Non-blocking findings from the independent QA of the sprint that shipped the Claude `/recents`
 > bulk track. None held the PR; each is either a pre-existing gap the sprint made visible or a
 > limit that needs a measurement session to close.
 
-- [ ] *(blocked by: needs a live-DOM session on a project holding knowledge documents and zero conversations — the 2026-08-11 probe project held neither)*
-      [VERIFY] Confirm what a Claude project with documents but no conversations renders. The
-      adapter now decides emptiness from the absence of conversation links in `main` rather than
-      the absence of a table, so it is correct either way — but whether such a project renders a
-      document table at all is still unmeasured, and the answer would let the row contract be
-      tightened.
-- [ ] *(blocked by: needs a ja-JP or zh UI account — the measuring account is ko-KR only)*
-      [VERIFY] Measure the artifact card's kind separator outside ko-KR. `artifactFormatToken`
-      accepts U+00B7, U+30FB and U+2022 and passes any other shape through verbatim, so a different
-      dot cannot break an export — but only U+00B7 is measured, and confirming the others would let
-      the accepted set be narrowed back to what Claude actually renders.
+- [ ] [debt] Narrow `ARTIFACT_KIND_SEPARATORS` to U+00B7. Measured 2026-10-15 on ko-KR, ja-JP,
+      zh-Hans and zh-Hant: every two-part kind uses U+00B7 and none uses U+30FB or U+2022
+      (`docs/live-dom-verification.md` → Claude, 2026-10-15).
 - [ ] *(blocked by: needs an account holding zero conversations — the measuring account holds 26)*
       [FIX] `/recents` on a brand-new account takes the loud branch, so a user with no
       conversations could be shown a markup-drift error instead of an empty state. Unlike the
@@ -58,15 +54,19 @@ The larger hazard that measurement exposed is filed above.)*
 > Left open by the sidebar/project/load-older batch; evidence in `docs/live-dom-verification.md`
 > → 2026-09-29 "app-shell sidebar, project pages …".
 
-- [ ] *(blocked by: needs a ChatGPT project holding more conversations than fit on its home page — the demo project has 8)* [VERIFY] Does a long project home list page or virtualize, and does `revealFromProjectHome` still find a target below the fold after returning home?
 - [ ] *(deferred: no positive "no older turns" marker exists — the 2026-09-29 live session searched and found none; revisit only with new DOM evidence)* [debt] A conversation that never renders the "loading earlier messages" status still waits the full 6 s load-older dwell (the drift-safe variant was chosen on 2026-09-29); only a positive "no older turns" marker would let short conversations skip it — none was found.
 
 ## Next (roadmap — not v1)
 
-- [ ] *(blocked by: Gemini Notebooks list markup is unmeasured — the measuring account has zero notebooks, so the sidebar section renders only its create button)*
-      Gemini adapter: Notebooks track (`matchesProject` + the project bulk members). Narrowed
+- [ ] Gemini adapter: Notebooks track (`matchesProject` + the project bulk members). Narrowed
       2026-08-10: the **Gems half was dropped as not-applicable** — `/gem/<id>` is a Gem-scoped new
-      chat screen (0 `div.conversation-container`, 0 `a[href^="/app/"]`, an `empty-disclaimer`), not
-      a home listing that Gem's conversations, so there is no member list to enumerate. Notebooks
-      (`[data-test-id="notebooks-expandable-section"]`, `/notebooks/create`, `project-sidenav-list`)
-      is Gemini's actual project analogue and is what this item now covers.
+      chat screen, not a home listing. Notebooks are Gemini's project analogue; their markup was
+      measured 2026-10-15 (`docs/live-dom-verification.md` → Gemini, 2026-10-15): home at
+      `/notebook/<uuid>`, members are `project-chat-row` buttons with **no conversation id in the
+      markup**, so member enumeration must click each row and read the resulting `/app/<id>`.
+      Notebook chats are also missing from the global sidebar, which is why this matters — see the
+      `[FIX]` item below.
+- [ ] [FIX] Gemini bulk export silently omits every conversation that lives in a notebook: the
+      global sidebar it walks never lists them (0 of 2 newest notebook chats among 32 rows,
+      2026-10-15). At minimum the bulk panel should say notebook chats are not included; the full
+      fix is the Notebooks track above.
