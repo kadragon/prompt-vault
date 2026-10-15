@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Narrow Claude artifact kind separator to the measured U+00B7 (2026-10-15) → docs/live-dom-verification.md
 - [done] Read Claude's redesigned artifact cards and record the live-DOM session (2026-10-15) → docs/live-dom-verification.md
 - [done] Exclude the Claude screenshot from the English store upload set and sync listing asset docs (2026-10-11) → docs/store-listing.md
 - [done] Fix Gemini sidebar readiness guidance and reject unchanged outgoing conversation renders (2026-10-09)

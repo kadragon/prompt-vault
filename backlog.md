@@ -35,9 +35,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > bulk track. None held the PR; each is either a pre-existing gap the sprint made visible or a
 > limit that needs a measurement session to close.
 
-- [ ] [debt] Narrow `ARTIFACT_KIND_SEPARATORS` to U+00B7. Measured 2026-10-15 on ko-KR, ja-JP,
-      zh-Hans and zh-Hant: every two-part kind uses U+00B7 and none uses U+30FB or U+2022
-      (`docs/live-dom-verification.md` → Claude, 2026-10-15).
 - [ ] *(blocked by: needs an account holding zero conversations — the measuring account holds 26)*
       [FIX] `/recents` on a brand-new account takes the loud branch, so a user with no
       conversations could be shown a markup-drift error instead of an empty state. Unlike the
