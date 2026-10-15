@@ -757,6 +757,11 @@ describe('createRecentsTrigger', () => {
     expect(buttons[0].style.background).toBe('');
   });
 
+  it('is a non-submitting button, safe inside a host <form>', () => {
+    expect(createRecentsTrigger(bareDoc(), 'native').querySelector('button')?.type).toBe('button');
+    expect(createProjectTrigger(bareDoc(), 'native').querySelector('button')?.type).toBe('button');
+  });
+
   it('positions the overlay variant bottom-right so it never covers page chrome', () => {
     const container = createRecentsTrigger(bareDoc(), 'overlay');
     expect(container.style.position).toBe('fixed');
@@ -819,6 +824,18 @@ describe('createButtons', () => {
     expect(buttons[2].getAttribute('title')).toBe('Download conversation as JSON');
     expect(buttons[3].getAttribute('title')).toBe('Download conversation as HTML');
     expect(buttons[4].getAttribute('title')).toBe('Export multiple conversations');
+  });
+
+  it('draws real icon geometry and makes every button a non-submitting button', () => {
+    const buttons = createButtons(bareDoc(), 'native', 'icon-btn').querySelectorAll('button');
+    for (const button of buttons) {
+      // A host page may wrap the header in a <form>; a default-typed button would submit it.
+      expect(button.type).toBe('button');
+      // Each icon shape element must carry its geometry, or the button renders as a blank square.
+      const shapes = button.querySelectorAll('svg > *');
+      expect(shapes.length).toBeGreaterThan(0);
+      for (const shape of shapes) expect(shape.attributes.length).toBeGreaterThan(0);
+    }
   });
 
   it('renders only the enabled format buttons plus the bulk button', () => {
@@ -969,6 +986,19 @@ describe('single export through a toolbar button', () => {
     // the guard would by now have reached both spies whatever `runExport` awaits before extracting.
     expect(extract).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the user when no adapter matches the page, instead of silently doing nothing', async () => {
+    const { doc, alerts, extract, buttons, pdf, save } = mountAndArm();
+    vi.stubGlobal('location', { href: 'https://example.com/', origin: 'https://example.com', pathname: '/' });
+    expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
+
+    pdf.click();
+    await vi.waitFor(() => expect(alerts).toHaveBeenCalledWith(EXPORT_NO_ADAPTER_MESSAGE));
+
+    expect(extract).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    await expectToolbarIdle(buttons);
   });
 
   it('refuses an empty conversation at the export chokepoint, never reaching the saver', async () => {

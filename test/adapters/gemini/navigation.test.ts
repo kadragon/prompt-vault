@@ -58,6 +58,22 @@ describe('geminiAdapter.openConversation', () => {
     expect(doc.querySelector('user-query')?.textContent).toBe('new target');
   });
 
+  it('tells a swapped conversation apart by its exchange ids when the text is identical', async () => {
+    // The fingerprint covers each exchange's id as well as its text, so a target that renders
+    // the same words as the outgoing chat is still recognized as a different conversation.
+    const { doc, state } = installLivePage(
+      `<body><infinite-scroller>${row(TARGET, 'Target')}</infinite-scroller>${exchange('same words', 'c_old')}</body>`,
+      '/app/' + OTHER,
+    );
+    doc.querySelector('a')?.addEventListener('click', () => {
+      setPathname(state, `/app/${TARGET}`);
+      doc.body.innerHTML = exchange('same words', 'c_new');
+    });
+
+    await geminiAdapter.openConversation?.(`https://gemini.google.com/app/${TARGET}`, { pollMs: 0, timeoutMs: 200 });
+    expect(doc.querySelector('.conversation-container')?.getAttribute('id')).toBe('c_new');
+  });
+
   it('returns immediately when the target route is already rendered', async () => {
     const { doc } = installLivePage(
       `<body><infinite-scroller>${row(TARGET, 'Target')}</infinite-scroller>${exchange('already here')}</body>`,

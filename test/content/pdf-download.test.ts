@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { conversation } from '../fixtures/conversation';
+import { JETENDARD_BOLD_VFS_KEY, JETENDARD_VFS_KEY } from '../../src/export/fonts/jetendard';
+import { PDF_FONT } from '../../src/export/pdf';
 
 // pdfmake and the font loader are both stubbed: this file is about the registration
 // guard in pdf-download.ts, not about producing a real PDF. `vi.mock` is hoisted, so the
@@ -50,6 +52,23 @@ describe('downloadPdf font registration', () => {
     expect(stubs.addVirtualFileSystem).toHaveBeenCalledTimes(1);
     expect(stubs.addFonts).toHaveBeenCalledTimes(1);
     expect(stubs.download).toHaveBeenCalledTimes(2);
+  });
+
+  it('registers the family the document asks for, with the bold slots on the Bold face', async () => {
+    stubs.loadJetendardVfs.mockResolvedValue({ [JETENDARD_VFS_KEY]: 'AAA', [JETENDARD_BOLD_VFS_KEY]: 'BBB' });
+    const downloadPdf = await freshDownloadPdf();
+
+    await downloadPdf(CONVERSATION, NOW);
+
+    // pdfmake throws on any family it was not given, so an empty dictionary breaks every export.
+    expect(stubs.addFonts).toHaveBeenCalledWith({
+      [PDF_FONT]: {
+        normal: JETENDARD_VFS_KEY,
+        bold: JETENDARD_BOLD_VFS_KEY,
+        italics: JETENDARD_VFS_KEY,
+        bolditalics: JETENDARD_BOLD_VFS_KEY,
+      },
+    });
   });
 
   it('reads the faces once when two exports start before either finishes', async () => {

@@ -43,6 +43,17 @@ describe('escapeMarkdownText', () => {
       expect(escapeMarkdownText('_emph_')).toBe('\\_emph\\_');
     });
 
+    it('treats ^ as punctuation, so an underscore after it still opens emphasis', () => {
+      // `^` is a Unicode symbol (Sk), not punctuation (P), so only the ASCII range
+      // makes `^_a` read as an opener rather than an intraword underscore.
+      expect(escapeMarkdownText('^_a')).toBe('^\\_a');
+    });
+
+    it('does NOT treat letters or digits as punctuation around an underscore', () => {
+      expect(escapeMarkdownText('FOO_BAR')).toBe('FOO_BAR');
+      expect(escapeMarkdownText('v1_2')).toBe('v1_2');
+    });
+
     it('escapes a strikethrough run', () => {
       expect(escapeMarkdownText('~~strike~~')).toBe('\\~\\~strike\\~\\~');
     });
@@ -101,6 +112,12 @@ describe('escapeMarkdownText', () => {
 
     it('leaves a decimal alone', () => {
       expect(escapeMarkdownText('1.23 is a float', true)).toBe('1.23 is a float');
+    });
+
+    it('escapes an ordered marker with nothing after it', () => {
+      // A bare `1.` is an empty list item; the lookahead accepts end-of-run too.
+      expect(escapeMarkdownText('1.', true)).toBe('1\\.');
+      expect(escapeMarkdownText('2)', true)).toBe('2\\)');
     });
   });
 });

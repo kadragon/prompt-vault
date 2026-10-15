@@ -92,9 +92,13 @@ describe('i18n message-key safety', () => {
     expect(catalogs.get(locale), `missing "${key}" in ${locale}/messages.json`).toHaveProperty(key);
   });
 
-  it.each(localeKeyPairs)('%s key "%s" matches the en placeholder set', (locale, key) => {
-    expect(placeholderKeys(catalogs.get(locale)![key])).toEqual(placeholderKeys(reference[key]));
-  });
+  // `en` is the reference, so comparing it against itself could never fail.
+  it.each(localeKeyPairs.filter(([locale]) => locale !== REFERENCE_LOCALE))(
+    '%s key "%s" matches the en placeholder set',
+    (locale, key) => {
+      expect(placeholderKeys(catalogs.get(locale)![key])).toEqual(placeholderKeys(reference[key]));
+    },
+  );
 
   // A catalog that copies the English message verbatim ships an untranslated string to a
   // user whose listing promised their language. Labels that are the same in every language

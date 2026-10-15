@@ -600,3 +600,62 @@ describe('serializer/renderer fidelity — review-panel regressions', () => {
     expect(allText(render('a `b`` c'))).toBe('a `b`` c');
   });
 });
+
+describe('list, table and atom edge shapes', () => {
+  // Hand-written Markdown below: each shape is one the serializer does not emit today
+  // (a tab indent, a row with no closing pipe) but that a list/table must still read.
+
+  it('keeps a loose item whose continuation follows a blank line in one list', () => {
+    const nodes = render('- a\n\n  second paragraph\n- b');
+    const [list] = nodes as unknown as Array<{ ul: unknown[] }>;
+    expect(nodes).toHaveLength(1);
+    expect(list.ul).toHaveLength(2);
+    expect(allText(list.ul[0])).toBe('asecond paragraph');
+  });
+
+  it('ends a list cleanly when the text trails off in blank lines', () => {
+    const nodes = render('- a\n- b\n\n\n');
+    expect(nodes).toHaveLength(1);
+    expect(allText(nodes)).toBe('ab');
+  });
+
+  it('strips a tab continuation indent from a fenced block inside a list item', () => {
+    const [list] = render('1. step\n\n\t```\n\tcode\n\t```') as Array<{ ol: Array<{ stack: Node[] }> }>;
+    expect(list.ol[0].stack[1]).toEqual({ text: 'code', style: 'code' });
+  });
+
+  it('keeps the last cell of a row that has no closing pipe', () => {
+    const [table] = render('| a | b |\n|---|---|\n| 1 | 2') as Array<{ table: { body: Node[][] } }>;
+    expect(table.table.body[1].map((c) => c.text)).toEqual(['1', '2']);
+  });
+
+  it('leaves an empty backtick run as literal text', () => {
+    // Four backticks pair as an empty span; showing nothing would eat what the page showed.
+    expect(allText(render('a ```` b'))).toBe('a ```` b');
+  });
+
+  it('does not let a stray backtick inside emphasis break the span', () => {
+    expect(runs('**a ` b**')).toEqual([{ text: 'a ` b', bold: true }]);
+  });
+
+  it('treats an asterisk in a link label inside bold text as content', () => {
+    expect(runs('**a [x*y](https://e.com) b**')).toEqual([
+      { text: 'a ', bold: true },
+      { text: 'x*y', bold: true, link: 'https://e.com', style: 'link' },
+      { text: ' b', bold: true },
+    ]);
+  });
+
+  it('treats an asterisk in a link label as content when the link opens the bold span', () => {
+    // With text before the link, a scan that misreads the preceding word as an atom start
+    // happens to land on the link's end anyway; a link at the very start of the body cannot.
+    expect(runs('**[x*y](https://e.com)**')).toEqual([
+      { text: 'x*y', bold: true, link: 'https://e.com', style: 'link' },
+    ]);
+  });
+
+  it('treats an asterisk in an image alt inside bold text as content', () => {
+    // An empty src is an image but not a link, so only the image atom shields the `*`.
+    expect(runs('**a ![x*y]() b**')).toEqual([{ text: 'a x*y b', bold: true }]);
+  });
+});

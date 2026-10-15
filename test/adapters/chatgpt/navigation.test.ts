@@ -128,6 +128,17 @@ describe('chatgptAdapter.openProjectConversation', () => {
   });
 });
 
+describe('chatgptAdapter.openProjectHome', () => {
+  it('is not on the project home until its conversation list has rendered', async () => {
+    // The path already matches but the list is empty, and the page offers no way back.
+    const page = installLivePage(HOME_PATH, '<main><section><ol></ol></section></main>');
+    wireNavigation(page);
+    await expect(
+      chatgptAdapter.openProjectHome?.(`https://chatgpt.com${HOME_PATH}`, { pollMs: 0, timeoutMs: 50 }),
+    ).rejects.toBeInstanceOf(ExtractionError);
+  });
+});
+
 describe('chatgptAdapter.openConversation (app-shell sidebar)', () => {
   it('clicks the Recents row for the target and waits for its messages to swap in', async () => {
     const sidebar =
@@ -137,6 +148,23 @@ describe('chatgptAdapter.openConversation (app-shell sidebar)', () => {
     const page = installLivePage('/c/conv-a', `${sidebar}<main>${unit('conv-a')}</main>`);
     page.doc.querySelector('a')?.addEventListener('click', () => page.go('/c/conv-b', `${sidebar}<main>${unit('conv-b')}</main>`));
     await chatgptAdapter.openConversation?.('https://chatgpt.com/c/conv-b', { pollMs: 0, timeoutMs: 100 });
+    expect(page.doc.querySelector('[data-chatgpt-search-message-ids]')?.getAttribute('data-chatgpt-search-message-ids')).toBe('conv-b');
+  });
+
+  it('does not resolve on the route change alone, only once the new turns have rendered', async () => {
+    const sidebar =
+      '<nav><div data-sidebar-project-container-id="chats"><div role="list">' +
+      '<div role="listitem" data-sidebar-chatgpt-conversation-key="chatgpt:conversation:conv-b">' +
+      '<a href="/c/conv-b" data-interactive-row-link="" aria-label="B">B</a></div></div></div></nav>';
+    const page = installLivePage('/c/conv-a', `${sidebar}<main>${unit('conv-a')}</main>`);
+    // The route flips at once but the turns mount a beat later.
+    page.doc.querySelector('a')?.addEventListener('click', () => {
+      page.go('/c/conv-b', `${sidebar}<main></main>`);
+      setTimeout(() => {
+        page.doc.querySelector('main')!.innerHTML = unit('conv-b');
+      }, 20);
+    });
+    await chatgptAdapter.openConversation?.('https://chatgpt.com/c/conv-b', { pollMs: 5, timeoutMs: 500 });
     expect(page.doc.querySelector('[data-chatgpt-search-message-ids]')?.getAttribute('data-chatgpt-search-message-ids')).toBe('conv-b');
   });
 });

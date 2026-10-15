@@ -197,6 +197,44 @@ describe('Claude navigation openers', () => {
     expect(doc.querySelector('.standard-markdown')?.textContent).toBe('bbb');
   });
 
+  it('does not accept the target route until its turns have rendered', async () => {
+    const { doc, state } = installLivePage(
+      '<body><aside aria-label="Sidebar"><a href="/chat/slow" aria-label="Slow">Slow</a></aside>' +
+        '<div data-index="0"><div class="standard-markdown">old</div></div></body>',
+      '/chat/old',
+    );
+    // The route flips at once, but the new conversation's rows mount a beat later.
+    doc.querySelector('a')?.addEventListener('click', () => {
+      setPathname(state, '/chat/slow');
+      doc.body.innerHTML = '';
+      setTimeout(() => {
+        doc.body.innerHTML = '<div data-index="0"><div class="standard-markdown">slow target</div></div>';
+      }, 20);
+    });
+
+    await claudeAdapter.openConversation?.('https://claude.ai/chat/slow', { pollMs: 5, timeoutMs: 1000 });
+    expect(doc.querySelector('.standard-markdown')?.textContent).toBe('slow target');
+  });
+
+  it('does not accept turns that are rendered before the route has moved to the target', async () => {
+    const { doc, state } = installLivePage(
+      '<body><aside aria-label="Sidebar"><a href="/chat/late" aria-label="Late">Late</a></aside>' +
+        '<div data-index="0"><div class="standard-markdown">old</div></div></body>',
+      '/chat/old',
+    );
+    // The outgoing conversation stays mounted, unchanged, until the router finally swaps.
+    doc.querySelector('a')?.addEventListener('click', () => {
+      setTimeout(() => {
+        setPathname(state, '/chat/late');
+        doc.body.innerHTML = '<div data-index="0"><div class="standard-markdown">late target</div></div>';
+      }, 60);
+    });
+
+    await claudeAdapter.openConversation?.('https://claude.ai/chat/late', { pollMs: 5, timeoutMs: 1000 });
+    expect(state.pathname).toBe('/chat/late');
+    expect(doc.querySelector('.standard-markdown')?.textContent).toBe('late target');
+  });
+
   it('returns to the project home by route, not by the presence of a table', async () => {
     // An assistant markdown table also matches `main table`, so a chat page that renders one
     // must still count as "left the project home" and trigger the return.

@@ -102,6 +102,70 @@ describe('claudeAdapter.listRecentsConversations', () => {
     expect(() => claudeAdapter.listRecentsConversations?.(doc)).toThrow(ExtractionError);
   });
 
+  it('does not scroll a port whose content exactly fits its viewport', async () => {
+    // Equal heights means nothing is hidden, so there is nothing to page; moving the user's
+    // list for it would be a pointless side effect.
+    const window = new Window({ url: RECENTS_URL });
+    window.document.write(RECENTS);
+    const table = window.document.querySelector('table')!;
+    let scrollWrites = 0;
+    Object.defineProperties(table, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 400 },
+      scrollTop: {
+        configurable: true,
+        get: () => 0,
+        set: () => {
+          scrollWrites++;
+        },
+      },
+    });
+
+    const list = await claudeAdapter.loadMoreRecentsConversations?.(window.document as unknown as Document, {
+      stepDelayMs: 0,
+    });
+    expect(list?.map((conversation) => conversation.id)).toEqual(['aaa', 'bbb']);
+    expect(scrollWrites).toBe(0);
+  });
+
+  it('scrolls the ancestor that actually scrolls, not a table that overflows but is clipped', async () => {
+    // Geometry alone is not enough: an element whose content overflows with `overflow-y: hidden`
+    // cannot be scrolled by the user, so the port is the scrolling ancestor above it.
+    const window = new Window({ url: RECENTS_URL });
+    window.document.write(RECENTS);
+    const table = window.document.querySelector('table') as unknown as HTMLElement;
+    const port = table.parentElement as HTMLElement;
+    table.setAttribute('style', 'overflow-y: hidden');
+    port.setAttribute('style', 'overflow-y: auto');
+    const writes = { table: 0, port: 0 };
+    const rig = (el: Element, key: 'table' | 'port'): void => {
+      let top = 0;
+      Object.defineProperties(el, {
+        clientHeight: { configurable: true, value: 100 },
+        scrollHeight: { configurable: true, value: 400 },
+        scrollTop: {
+          configurable: true,
+          get: () => top,
+          set: (value: number) => {
+            writes[key]++;
+            top = Math.min(value, 300);
+          },
+        },
+      });
+    };
+    rig(table, 'table');
+    rig(port, 'port');
+
+    const list = await claudeAdapter.loadMoreRecentsConversations?.(window.document as unknown as Document, {
+      stepDelayMs: 0,
+      stableRounds: 2,
+      maxSteps: 30,
+    });
+    expect(list?.map((conversation) => conversation.id)).toEqual(['aaa', 'bbb']);
+    expect(writes.port).toBeGreaterThan(0);
+    expect(writes.table).toBe(0);
+  });
+
   it.each(['/recents', '/chats'])('fails loud when %s renders no table at all', (path) => {
     // Downstream, `[]` is the bulk panel's "no conversations" state — indistinguishable from a
     // whole history reported as empty (AGENTS.md #4). On the `/recents` ROUTE a missing table is

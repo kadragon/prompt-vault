@@ -179,6 +179,31 @@ describe('geminiAdapter.extract', () => {
     });
   });
 
+  it('reads a fully materialized root of a full page or more in one shot, with no scroll port to walk', async () => {
+    // Only the live document pages; a fixture root holds every exchange already, so a full page
+    // of them must not be mistaken for a possibly-truncated live read.
+    const html = Array.from({ length: 10 }, (_, i) =>
+      exchange(userQuery(`q ${i}`) + modelResponse(`<p>a ${i}</p>`), `ex${i}`),
+    ).join('');
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages).toHaveLength(20);
+    expect(convo.messages[19].content).toBe('a 9');
+  });
+
+  it('describes a prompt holding only a file, without failing the export for lack of text', async () => {
+    // The screen-reader label is all that is left of the text; the attachment is the message.
+    const html = exchange(
+      '<user-query><user-query-file-carousel><user-query-file-preview>' +
+        '<div data-test-id="uploaded-file"><filename-label>notes</filename-label>' +
+        '<extension-label>TXT</extension-label></div>' +
+        '</user-query-file-preview></user-query-file-carousel>' +
+        '<div class="query-text"><span class="cdk-visually-hidden">말씀하신 내용</span></div></user-query>' +
+        modelResponse('<p>reply</p>'),
+    );
+    const convo = await geminiAdapter.extract(docFrom(html));
+    expect(convo.messages[0]).toEqual({ role: 'user', content: '[File: notes.txt]' });
+  });
+
   it('fails loud when a prompt attachment preview has an unknown shape', async () => {
     const html = exchange(
       '<user-query><user-query-file-carousel><user-query-file-preview>' +
