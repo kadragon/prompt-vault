@@ -94,6 +94,19 @@ and re-read its config rather than assuming the flags below.
   nothing reaches a tracked file, but it is worth clearing after a session rather than leaving a
   transcript of the user's conversations on disk.
 
+## Standing test data in the measuring account
+
+Synthesized fixtures kept in the logged-in ko-KR account for reuse — check they still exist
+before relying on them, and create rather than defer when one is missing. Names only; ids are
+deliberately not recorded here.
+
+| Provider | Fixture | Shape (created) |
+|---|---|---|
+| Claude | `PV probe docs-only project` | one `.txt` knowledge document, zero conversations (2026-10-15); pinned on creation |
+| Claude | conversation `Multiple artifacts in one reply` | 3 artifact cards: kinds `PY`, `문서·MD`, `코드·JSX` (pre-existing) |
+| ChatGPT | project `PV probe long project` | 17 one-turn conversations, 7 rows below a 941 px viewport (2026-10-15) |
+| Gemini | notebook `PV probe notebook` | 2 one-turn chats `PV Probe 1 Test` / `PV Probe 2 Confirmation` (2026-10-15) |
+
 ## The loop
 
 **Step 0 — enumerate the whole measurable set BEFORE asking anyone to log in, and state it.** A
