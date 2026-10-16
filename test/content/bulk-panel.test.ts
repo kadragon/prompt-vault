@@ -111,7 +111,15 @@ describe('openBulkPanel', () => {
     const notice = 'Chats inside notebooks are not listed here.';
     const listed = freshDoc();
     openBulkPanel(listed, { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }), notice });
-    expect(panelOf(listed).querySelector('[data-prompt-vault-notice]')?.textContent).toBe(notice);
+    const shown = panelOf(listed).querySelector('[data-prompt-vault-notice]');
+    expect(shown?.textContent).toBe(notice);
+    // Above the list, not after a long scrolling one.
+    const firstRow = checkboxes(panelOf(listed))[1];
+    expect(shown!.compareDocumentPosition(firstRow) & 4 /* DOCUMENT_POSITION_FOLLOWING */).toBeTruthy();
+    // Announced with the dialog, since focus lands on the dialog on open.
+    const dialog = panelOf(listed).querySelector('[role="dialog"]');
+    expect(dialog?.getAttribute('aria-describedby')).toBe(shown?.id);
+    expect(shown?.id).toBeTruthy();
 
     const empty = freshDoc();
     openBulkPanel(empty, { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }, []), notice });
@@ -123,6 +131,21 @@ describe('openBulkPanel', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
     expect(panelOf(doc).querySelector('[data-prompt-vault-notice]')).toBeNull();
+    expect(panelOf(doc).querySelector('[role="dialog"]')?.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('keeps the notice out of the list-error state, where it would read as the cause', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, {
+      listConversations: () => {
+        throw new Error('Gemini selector drift');
+      },
+      run: vi.fn(),
+      notice: 'Chats inside notebooks are not listed here.',
+    });
+    expect(panelOf(doc).querySelector('[role="alert"]')).not.toBeNull();
+    expect(panelOf(doc).querySelector('[data-prompt-vault-notice]')).toBeNull();
+    expect(panelOf(doc).querySelector('[role="dialog"]')?.hasAttribute('aria-describedby')).toBe(false);
   });
 
   it('shows a visible error state when list enumeration fails before rendering rows', () => {

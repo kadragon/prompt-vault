@@ -32,6 +32,8 @@ import {
 
 // Stable id so the panel mounts at most once and tests can locate it.
 export const BULK_PANEL_ID = 'prompt-vault-bulk-panel';
+// The scope notice's id, so the dialog can name it as its accessible description.
+const NOTICE_ID = 'prompt-vault-bulk-panel-notice';
 
 // The formats the picker offers, in display order (labels are self-explanatory and
 // need no i18n string of their own — they are the file extensions).
@@ -72,8 +74,9 @@ export interface BulkPanelDeps {
   ) => Promise<SidebarConversation[]>;
   /**
    * Optional: a line shown under the title naming conversations the source never lists (e.g.
-   * Gemini's sidebar omits notebook chats), in every panel state — an empty or short list must
-   * not read as the whole account.
+   * Gemini's sidebar omits notebook chats), above the list and in the empty state — an empty or
+   * short list must not read as the whole account. Not shown beside a list error, where there is
+   * no list for it to qualify and it would read as the error's cause.
    */
   notice?: string;
 }
@@ -98,7 +101,9 @@ export function openBulkPanel(doc: Document, deps: BulkPanelDeps): void {
   }
   const { backdrop, dialog, close, setRunning } = buildShell(doc);
 
-  dialog.appendChild(makeHeader(doc, deps.notice));
+  const notice = listError === null ? deps.notice : undefined;
+  dialog.appendChild(makeHeader(doc, notice));
+  if (notice) dialog.setAttribute('aria-describedby', NOTICE_ID);
   if (listError !== null) {
     renderListError(doc, backdrop, close, messageOf(listError));
   } else if (conversations.length === 0) {
@@ -191,6 +196,7 @@ function makeHeader(doc: Document, notice?: string): HTMLElement {
   header.appendChild(h);
   if (notice) {
     const p = doc.createElement('p');
+    p.id = NOTICE_ID;
     p.setAttribute('data-prompt-vault-notice', '');
     p.textContent = notice;
     Object.assign(p.style, { margin: '6px 0 0', fontSize: '13px', color: '#555555' });
