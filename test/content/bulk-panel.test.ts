@@ -105,6 +105,26 @@ describe('openBulkPanel', () => {
     expect(checkboxes(panel)).toHaveLength(0);
   });
 
+  it('states the track’s scope notice above the list, and in the empty state', () => {
+    // A provider whose source omits part of the account (Gemini's sidebar never lists notebook
+    // chats) must say so: an empty or short list would otherwise read as the whole history.
+    const notice = 'Chats inside notebooks are not listed here.';
+    const listed = freshDoc();
+    openBulkPanel(listed, { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }), notice });
+    expect(panelOf(listed).querySelector('[data-prompt-vault-notice]')?.textContent).toBe(notice);
+
+    const empty = freshDoc();
+    openBulkPanel(empty, { ...deps({ total: 0, succeeded: 0, failed: [], warnings: [] }, []), notice });
+    expect(panelOf(empty).querySelector('[data-prompt-vault-notice]')?.textContent).toBe(notice);
+    expect(panelOf(empty).textContent).toContain('No conversations were found to export');
+  });
+
+  it('renders no notice element when the track has none', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
+    expect(panelOf(doc).querySelector('[data-prompt-vault-notice]')).toBeNull();
+  });
+
   it('shows a visible error state when list enumeration fails before rendering rows', () => {
     const doc = freshDoc();
     openBulkPanel(doc, {

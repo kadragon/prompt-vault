@@ -1033,3 +1033,50 @@ describe('pdfMissingGlyphsMessage', () => {
     expect(text).not.toContain(many[10]);
   });
 });
+
+// Gemini's history sidebar never lists a chat that lives in a notebook (measured 2026-10-15), so
+// the sidebar track's panel must say so — a short list would otherwise read as the whole account.
+describe('bulk panel scope notice', () => {
+  const GEMINI_CONV_URL = 'https://gemini.google.com/app/0123456789abcdef';
+  const NOTICE = 'Chats saved in Gemini notebooks are not included in this list.';
+
+  function docWithGeminiHeaderAndSidebar(): Document {
+    const window = new Window();
+    window.document.write(
+      '<body><top-bar-actions><div class="top-bar-actions"><div class="right-section"></div></div></top-bar-actions>' +
+        '<infinite-scroller data-test-id="chat-history-container"></infinite-scroller>' +
+        '<infinite-scroller><gem-nav-list-item data-test-id="conversation">' +
+        '<a href="/app/0123456789abcdef" aria-label="Sidebar chat">Sidebar chat</a>' +
+        '</gem-nav-list-item></infinite-scroller></body>',
+    );
+    return window.document as unknown as Document;
+  }
+
+  function bulkButton(doc: Document): HTMLButtonElement | undefined {
+    return Array.from(doc.getElementById(CONTAINER_ID)?.querySelectorAll('button') ?? []).find(
+      (b) => b.getAttribute('aria-label') === 'Export multiple conversations',
+    );
+  }
+
+  it('tells the user that Gemini notebook chats are not in the sidebar list', () => {
+    const doc = docWithGeminiHeaderAndSidebar();
+    syncButtons(doc, GEMINI_CONV_URL);
+    vi.stubGlobal('location', { href: GEMINI_CONV_URL, origin: 'https://gemini.google.com', pathname: '/app/0123456789abcdef' });
+    bulkButton(doc)?.click();
+
+    const panel = doc.getElementById(BULK_PANEL_ID);
+    expect(panel?.textContent).toContain('Sidebar chat');
+    expect(panel?.querySelector('[data-prompt-vault-notice]')?.textContent).toBe(NOTICE);
+  });
+
+  it('shows no notice for a provider whose sidebar covers the whole history track', () => {
+    const doc = docWithClaudeHeader();
+    syncButtons(doc, CLAUDE_CONV_URL);
+    vi.stubGlobal('location', { href: CLAUDE_CONV_URL, origin: 'https://claude.ai', pathname: '/chat/abc-123' });
+    bulkButton(doc)?.click();
+
+    const panel = doc.getElementById(BULK_PANEL_ID);
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelector('[data-prompt-vault-notice]')).toBeNull();
+  });
+});

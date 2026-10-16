@@ -118,12 +118,15 @@ describe('geminiAdapter shape', () => {
   it('implements only the members its live verification covers', () => {
     // The sidebar bulk track is verified (docs/live-dom-verification.md → 2026-08-10: the
     // sidebar pages at 20, append-only, 1:1 anchor identity), so its three members are present.
-    // The Notebooks/project track is NOT — the measuring account had zero notebooks — so its
-    // members stay absent, and the content layer reads that absence to hide the project trigger
-    // (see `pickProjectAdapter` in `src/content/mount.ts`). Asserting the member set whole
-    // catches a member added later without the live verification that must come with it.
+    // The Notebooks/project track is NOT — its members carry no conversation id (2026-10-15) — so
+    // its members stay absent, and the content layer reads that absence to hide the project
+    // trigger (see `pickProjectAdapter` in `src/content/mount.ts`). The same session measured
+    // notebook chats missing from the sidebar, which `bulkHistoryNotice` states. Asserting the
+    // member set whole catches a member added later without the live verification that must
+    // come with it.
     expect(geminiAdapter.provider).toBe('gemini');
     expect(Object.keys(geminiAdapter).sort()).toEqual([
+      'bulkHistoryNotice',
       'extract',
       'listConversations',
       'loadMoreConversations',

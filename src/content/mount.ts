@@ -467,6 +467,8 @@ function openBulkExport(doc: Document): void {
             },
           })
       : undefined,
+    // A sidebar that never lists part of the account (Gemini's notebook chats) says so.
+    notice: adapter.bulkHistoryNotice,
   });
 }
 
@@ -554,6 +556,8 @@ interface BulkTrack {
     onProgress?: (loaded: number) => void,
     onIncomplete?: (cause?: IncompleteCause) => void,
   ) => Promise<SidebarConversation[]>;
+  /** Optional line naming conversations the track's source never lists (see `BulkPanelDeps`). */
+  notice?: string;
 }
 
 /**
@@ -566,6 +570,7 @@ function driveBulkPanel(doc: Document, adapter: ConversationAdapter, track: Bulk
   openBulkPanel(doc, {
     listConversations: track.list,
     loadMore: track.loadMore,
+    notice: track.notice,
     run: async (selected, format, onProgress) => {
       exportInFlight = true;
       const startUrl = location.href;
