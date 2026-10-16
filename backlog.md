@@ -57,9 +57,6 @@ The larger hazard that measurement exposed is filed above.)*
       measured 2026-10-15 (`docs/live-dom-verification.md` → Gemini, 2026-10-15): home at
       `/notebook/<uuid>`, members are `project-chat-row` buttons with **no conversation id in the
       markup**, so member enumeration must click each row and read the resulting `/app/<id>`.
-      Notebook chats are also missing from the global sidebar, which is why this matters — see the
-      `[FIX]` item below.
-- [ ] [FIX] Gemini bulk export silently omits every conversation that lives in a notebook: the
-      global sidebar it walks never lists them (0 of 2 newest notebook chats among 32 rows,
-      2026-10-15). At minimum the bulk panel should say notebook chats are not included; the full
-      fix is the Notebooks track above.
+      Notebook chats are also missing from the global sidebar (0 of 2 newest among 32 rows,
+      2026-10-15), which is why this matters: until this lands, the sidebar bulk panel can only say
+      they are not included (`bulkHistoryNotebooksNotice`).

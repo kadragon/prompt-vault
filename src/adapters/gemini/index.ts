@@ -2,6 +2,7 @@ import type { Conversation, Message } from '../../core/conversation';
 import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import {
+  BULK_HISTORY_NOTEBOOKS_NOTICE,
   ERR_GEMINI_MESSAGE_LIST_MISSING,
   ERR_GEMINI_MESSAGE_LIST_UNSCROLLABLE,
   ERR_GEMINI_NO_MESSAGES,
@@ -171,6 +172,9 @@ export const geminiAdapter: ConversationAdapter = {
   listConversations,
   openConversation,
   loadMoreConversations,
+  // Notebook chats never appear in the global sidebar (measured 2026-10-15), so the sidebar
+  // track's panel must say it cannot reach them until the Notebooks track lands.
+  bulkHistoryNotice: BULK_HISTORY_NOTEBOOKS_NOTICE,
 };
 
 /**

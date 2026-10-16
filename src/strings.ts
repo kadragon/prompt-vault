@@ -117,6 +117,10 @@ export function bulkLoadMoreRateLimitedMessage(loaded: number): string {
 // empty, actionless list).
 export const BULK_EMPTY_MESSAGE = m('bulkEmptyMessage');
 
+// Shown above the Gemini bulk-export list, whose history sidebar never lists notebook chats
+// (the adapter's `bulkHistoryNotice`), so a short list does not read as the whole account.
+export const BULK_HISTORY_NOTEBOOKS_NOTICE = m('bulkHistoryNotebooksNotice');
+
 /** Visible fail-loud message when the provider cannot enumerate the list for the panel. */
 export function bulkListErrorMessage(error: string): string {
   return m('bulkListErrorMessage', [error]);

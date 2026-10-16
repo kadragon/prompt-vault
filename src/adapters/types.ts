@@ -105,6 +105,14 @@ export interface ConversationAdapter {
    */
   loadMoreConversations?(root?: ParentNode, opts?: LoadMoreOptions): Promise<SidebarConversation[]>;
 
+  /**
+   * A localized line the history-track bulk panel shows above its list, naming conversations
+   * the sidebar never lists (Gemini's sidebar omits every chat that lives in a notebook). A
+   * short list would otherwise read as the whole account (AGENTS.md #4). Optional — omit when
+   * the sidebar covers the whole history.
+   */
+  readonly bulkHistoryNotice?: string;
+
   // --- Project bulk-download track (parallel to the history track above) ---
   // A "Project" groups conversations under their own home page. These members power
   // bulk-downloading every conversation in one project; a provider without projects

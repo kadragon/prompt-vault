@@ -32,6 +32,8 @@ import {
 
 // Stable id so the panel mounts at most once and tests can locate it.
 export const BULK_PANEL_ID = 'prompt-vault-bulk-panel';
+// The scope notice's id, so the dialog can name it as its accessible description.
+const NOTICE_ID = 'prompt-vault-bulk-panel-notice';
 
 // The formats the picker offers, in display order (labels are self-explanatory and
 // need no i18n string of their own — they are the file extensions).
@@ -70,6 +72,13 @@ export interface BulkPanelDeps {
     onProgress?: (loaded: number) => void,
     onIncomplete?: (cause?: IncompleteCause) => void,
   ) => Promise<SidebarConversation[]>;
+  /**
+   * Optional: a line shown under the title naming conversations the source never lists (e.g.
+   * Gemini's sidebar omits notebook chats), above the list and in the empty state — an empty or
+   * short list must not read as the whole account. Not shown beside a list error, where there is
+   * no list for it to qualify and it would read as the error's cause.
+   */
+  notice?: string;
 }
 
 /**
@@ -92,6 +101,9 @@ export function openBulkPanel(doc: Document, deps: BulkPanelDeps): void {
   }
   const { backdrop, dialog, close, setRunning } = buildShell(doc);
 
+  const notice = listError === null ? deps.notice : undefined;
+  dialog.appendChild(makeHeader(doc, notice));
+  if (notice) dialog.setAttribute('aria-describedby', NOTICE_ID);
   if (listError !== null) {
     renderListError(doc, backdrop, close, messageOf(listError));
   } else if (conversations.length === 0) {
@@ -175,13 +187,21 @@ function buildShell(doc: Document): {
 }
 
 /** Section helpers keep the two render paths (empty / selection) readable. */
-function makeHeader(doc: Document): HTMLElement {
+function makeHeader(doc: Document, notice?: string): HTMLElement {
   const header = doc.createElement('div');
   Object.assign(header.style, { padding: '16px 20px', borderBottom: '1px solid #e5e5e5' });
   const h = doc.createElement('h2');
   h.textContent = BULK_PANEL_TITLE;
   Object.assign(h.style, { margin: '0', fontSize: '16px', fontWeight: '600' });
   header.appendChild(h);
+  if (notice) {
+    const p = doc.createElement('p');
+    p.id = NOTICE_ID;
+    p.setAttribute('data-prompt-vault-notice', '');
+    p.textContent = notice;
+    Object.assign(p.style, { margin: '6px 0 0', fontSize: '13px', color: '#555555' });
+    header.appendChild(p);
+  }
   return header;
 }
 
@@ -204,7 +224,6 @@ function styledButton(doc: Document, label: string, variant: 'primary' | 'second
 
 function renderEmptyState(doc: Document, backdrop: HTMLElement, close: () => void): void {
   const dialog = backdrop.firstElementChild as HTMLElement;
-  dialog.appendChild(makeHeader(doc));
 
   const body = doc.createElement('div');
   Object.assign(body.style, { padding: '20px' });
@@ -223,7 +242,6 @@ function renderEmptyState(doc: Document, backdrop: HTMLElement, close: () => voi
 
 function renderListError(doc: Document, backdrop: HTMLElement, close: () => void, error: string): void {
   const dialog = backdrop.firstElementChild as HTMLElement;
-  dialog.appendChild(makeHeader(doc));
 
   const body = doc.createElement('div');
   Object.assign(body.style, { padding: '20px' });
@@ -263,7 +281,6 @@ function renderSelection(
   deps: BulkPanelDeps,
 ): void {
   const dialog = backdrop.firstElementChild as HTMLElement;
-  dialog.appendChild(makeHeader(doc));
 
   // Controls row: format picker + select-all.
   const controls = doc.createElement('div');
