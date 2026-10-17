@@ -36,6 +36,10 @@ continuation line is invisible to it and the blocked item is offered as actionab
       conversations could be shown a markup-drift error instead of an empty state. Unlike the
       project track there is no measured shell marker for `/recents` to separate the two.
 
+### PR #128 — Gemini notebook trigger name and notebook follow-ups (2026-10-17)
+
+- [ ] [constraint] No test pins that the ChatGPT and Claude adapters leave `projectTriggerAriaLabel` unset; their project name is held only indirectly by the default-label assertions in `test/content/mount.test.ts` (source: qa-verifier) — src/adapters/types.ts `projectTriggerAriaLabel` (introduced here)
+
 ### PR #61 (Claude navigation/stream failure modes, 2026-08-10)
 
 *(No open items — the sidebar-recycling `[FIX]` was closed 2026-08-10 by measurement rather than by
