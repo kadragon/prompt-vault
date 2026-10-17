@@ -87,6 +87,10 @@
     "message": "Download all recent conversations",
     "description": "Accessible name for the bulk-download trigger on the full history page."
   },
+  "downloadNotebookBulkAriaLabel": {
+    "message": "Download all chats in this notebook",
+    "description": "Accessible name for the project bulk-download trigger on a Gemini notebook, which Gemini calls a notebook rather than a project."
+  },
   "bulkPanelTitle": {
     "message": "Export multiple conversations",
     "description": "Title of the bulk-export selection panel."

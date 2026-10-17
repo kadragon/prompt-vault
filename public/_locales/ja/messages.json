@@ -87,6 +87,10 @@
     "message": "最近の会話をすべてダウンロード",
     "description": "Accessible name for the bulk-download trigger on the full history page."
   },
+  "downloadNotebookBulkAriaLabel": {
+    "message": "このノートブックのすべてのチャットをダウンロード",
+    "description": "Accessible name for the project bulk-download trigger on a Gemini notebook, which Gemini calls a notebook rather than a project."
+  },
   "bulkPanelTitle": {
     "message": "複数の会話をエクスポート",
     "description": "Title of the bulk-export selection panel."

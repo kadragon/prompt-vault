@@ -181,6 +181,13 @@ export interface ConversationAdapter {
    */
   readonly projectToolbarButtonClass?: string;
 
+  /**
+   * A localized accessible name for the project trigger, for a provider that calls its project
+   * analogue something else (Gemini's notebooks) — "this project" would misname the page to a
+   * screen reader. Optional — omit to keep the shared project name.
+   */
+  readonly projectTriggerAriaLabel?: string;
+
   // --- Recents bulk-download track (parallel to the two tracks above) ---
   // Some providers cap their history sidebar at a slice of the account (Claude renders 20)
   // while exposing the WHOLE list on a dedicated page. These members bulk-download from that

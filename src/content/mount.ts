@@ -294,10 +294,9 @@ export function createProjectTrigger(
   doc: Document,
   placement: 'native' | 'overlay',
   buttonClass?: string,
+  ariaLabel: string = DOWNLOAD_PROJECT_BULK_ARIA_LABEL,
 ): HTMLDivElement {
-  return createBulkTrigger(doc, placement, buttonClass, 'project', DOWNLOAD_PROJECT_BULK_ARIA_LABEL, () =>
-    openProjectBulkExport(doc),
-  );
+  return createBulkTrigger(doc, placement, buttonClass, 'project', ariaLabel, () => openProjectBulkExport(doc));
 }
 
 /**
@@ -715,7 +714,8 @@ function syncProjectTrigger(doc: Document, href: string, allowOverlayFallback: b
   syncListTrigger(doc, allowOverlayFallback, {
     resolveMount: () => adapter?.projectToolbarMount?.(doc) ?? null,
     buttonClass: adapter?.projectToolbarButtonClass,
-    create: createProjectTrigger,
+    create: (d, placement, buttonClass) =>
+      createProjectTrigger(d, placement, buttonClass, adapter?.projectTriggerAriaLabel),
     track: 'project',
   });
 }

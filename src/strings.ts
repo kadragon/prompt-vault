@@ -76,6 +76,10 @@ export const DOWNLOAD_PROJECT_BULK_ARIA_LABEL = m('downloadProjectBulkAriaLabel'
 // name differs, because "this project" is wrong for the whole history.
 export const DOWNLOAD_RECENTS_BULK_ARIA_LABEL = m('downloadRecentsBulkAriaLabel');
 
+// The project trigger's accessible name on a Gemini notebook (the adapter's
+// `projectTriggerAriaLabel`), since Gemini calls its project analogue a notebook.
+export const DOWNLOAD_NOTEBOOK_BULK_ARIA_LABEL = m('downloadNotebookBulkAriaLabel');
+
 // Selection-panel chrome.
 export const BULK_PANEL_TITLE = m('bulkPanelTitle');
 export const BULK_PANEL_FORMAT_LABEL = m('bulkPanelFormatLabel');

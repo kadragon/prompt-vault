@@ -120,7 +120,8 @@ describe('geminiAdapter shape', () => {
     // sidebar pages at 20, append-only, 1:1 anchor identity), so its three members are present.
     // The Notebooks/project track is verified too (2026-10-15 and 2026-10-17): id-less rows keyed
     // by position, opened by click, returned to through the notebook's sidebar entry. Notebook
-    // chats are missing from the sidebar, which `bulkHistoryNotice` states. Asserting the member
+    // chats are missing from the sidebar, which `bulkHistoryNotice` states, and the notebook trigger
+    // is named for a notebook (`projectTriggerAriaLabel`, read live 2026-10-17). Asserting the member
     // set whole catches a member added later without the live verification that must come with it.
     expect(geminiAdapter.provider).toBe('gemini');
     expect(Object.keys(geminiAdapter).sort()).toEqual([
@@ -136,6 +137,7 @@ describe('geminiAdapter shape', () => {
       'openProjectHome',
       'projectToolbarButtonClass',
       'projectToolbarMount',
+      'projectTriggerAriaLabel',
       'provider',
       'toolbarAnchor',
       'toolbarButtonClass',
