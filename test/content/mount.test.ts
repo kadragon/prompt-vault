@@ -391,6 +391,24 @@ describe('syncButtons on a Project home page', () => {
     expect(button?.className).toContain('btn-secondary');
   });
 
+  // Gemini calls its project analogue a notebook, so "this project" would misname it.
+  it('names a Gemini notebook as a notebook, natively and in the overlay fallback', () => {
+    const NOTEBOOK_URL = 'https://gemini.google.com/notebook/0123abcd-0123-4567-89ab-0123456789ab';
+    const label = (doc: Document) =>
+      doc.getElementById(CONTAINER_ID)?.querySelector('button')?.getAttribute('aria-label');
+
+    const overlayDoc = bareDoc();
+    syncButtons(overlayDoc, NOTEBOOK_URL, { allowOverlayFallback: true });
+    expect(label(overlayDoc)).toBe('Download all chats in this notebook');
+
+    const window = new Window();
+    window.document.write('<body><project-chat-history></project-chat-history></body>');
+    const nativeDoc = window.document as unknown as Document;
+    syncButtons(nativeDoc, NOTEBOOK_URL);
+    expect(nativeDoc.getElementById(CONTAINER_ID)?.parentElement?.tagName).toBe('PROJECT-CHAT-HISTORY');
+    expect(label(nativeDoc)).toBe('Download all chats in this notebook');
+  });
+
   it('does not mount the per-conversation format toolbar on a project page', () => {
     const doc = docWithProjectSection();
     syncButtons(doc, PROJECT_URL);
@@ -783,6 +801,13 @@ describe('createProjectTrigger', () => {
     // Native trigger wears the provider-supplied ChatGPT button classes (not a self-styled pill).
     expect(buttons[0].className).toBe('btn btn-secondary h-9 px-3');
     expect(buttons[0].style.background).toBe('');
+  });
+
+  it('takes the accessible name a provider gives its own container', () => {
+    const button = createProjectTrigger(bareDoc(), 'native', undefined, 'Download all chats in this notebook')
+      .querySelector('button');
+    expect(button?.getAttribute('aria-label')).toBe('Download all chats in this notebook');
+    expect(button?.getAttribute('title')).toBe('Download all chats in this notebook');
   });
 
   it('positions the overlay variant bottom-right so it never covers page chrome', () => {

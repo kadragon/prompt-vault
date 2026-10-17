@@ -40,8 +40,8 @@ localized metadata that describes a different feature set.
 ```
 Prompt Vault has one purpose: to export the user's own AI chat conversations to local
 Markdown, PDF, JSON, or HTML files. It supports ChatGPT, Claude and Gemini. The user exports the
-open conversation or, on ChatGPT and Claude, selects a set of conversations from the sidebar
-or a project list — and on Claude also from the full history page — through the optional bulk
+open conversation or selects a set of conversations — from the sidebar, a ChatGPT or Claude
+project list, a Gemini notebook, or Claude's full history page — through the optional bulk
 action. The extension reads conversation content only in response to that user action and
 only to create local downloads.
 ```

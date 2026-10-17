@@ -25,8 +25,8 @@ ChatGPT, Claude, Gemini 대화창 위쪽에 내보내기 버튼이 생깁니다.
 • HTML (.html) — 브라우저만 있으면 바로 열리는 한 장짜리 문서
 
 여러 개를 한꺼번에 챙기고 싶다면 일괄 내보내기 창을 열고 원하는 대화만 골라 담으세요. ChatGPT,
-Claude, Gemini 모두 사이드바에서 되고, ChatGPT와 Claude는 프로젝트 대화 목록에서도, Claude는
-전체 기록 페이지(claude.ai/recents)에서도 됩니다.
+Claude, Gemini 모두 사이드바에서 되고 ChatGPT와 Claude는 프로젝트 대화 목록에서도, Gemini는
+노트북 채팅 목록에서도, Claude는 전체 기록 페이지(claude.ai/recents)에서도 됩니다.
 
 이런 점을 신경 썼습니다.
 • 처리는 전부 기기 안에서. 어떤 서버로도 보내는 게 없고 대화는 브라우저 밖으로 나가지 않습니다.
@@ -37,8 +37,8 @@ Claude, Gemini 모두 사이드바에서 되고, ChatGPT와 Claude는 프로젝�
 • 툴바가 번잡하면 팝업에서 필요 없는 형식 아이콘과 일괄 내보내기 아이콘을 꺼 두세요.
 • 브라우저 언어에 맞춰 한국어, 영어, 일본어, 중국어(간체·번체)로 나옵니다.
 
-지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 세 곳 모두에서, 프로젝트 단위
-내보내기는 ChatGPT와 Claude에서 쓸 수 있습니다.
+지원하는 서비스는 ChatGPT, Claude, Gemini입니다. 일괄 내보내기는 세 곳 모두에서 되고 프로젝트
+단위 내보내기는 ChatGPT·Claude 프로젝트와 Gemini 노트북에서 됩니다.
 ```
 
 **Screenshots:** `assets/store/ko/screenshot-0{1..5}-*.png`, all five in numbered order. The

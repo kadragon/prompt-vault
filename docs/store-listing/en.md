@@ -27,8 +27,8 @@ header. One click saves what you're reading, in the format you pick:
 
 Need more than one conversation at a time? Open the bulk-export panel, tick the ones you
 want, and save the whole set in one format and one run. It works from the sidebar on
-ChatGPT, Claude, and Gemini; from a project's conversation list on ChatGPT and Claude; and
-on Claude, from the full history page at claude.ai/recents.
+ChatGPT, Claude, and Gemini; from a project's conversation list on ChatGPT and Claude, or a
+notebook's chat list on Gemini; and on Claude, from the full history page at claude.ai/recents.
 
 Key points:
 • 100% local. The extension talks to no server, and your conversations never leave your
@@ -43,7 +43,7 @@ Key points:
   Chinese, and follows your browser language.
 
 Supported sites: ChatGPT, Claude and Gemini. Bulk export works on all three; project export
-works on ChatGPT and Claude.
+works on ChatGPT and Claude projects and on Gemini notebooks.
 ```
 
 **Screenshots:** four images, in numbered order — `assets/store/screenshot-01-*.png`, `-02-`,

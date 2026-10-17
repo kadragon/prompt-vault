@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Name Gemini notebook triggers, list notebooks in the store copy, and confirm 106-chat lists render whole (2026-10-17) → docs/live-dom-verification.md
 - [done] Export every chat in a Gemini notebook from the notebook page (2026-10-17) → docs/live-dom-verification.md
 - [done] Tell users the Gemini bulk panel does not list notebook chats (2026-10-16)
 - [done] Measure Claude code-execution output cards as artifact-rooted and close the file-card-open concern (2026-10-15) → docs/live-dom-verification.md

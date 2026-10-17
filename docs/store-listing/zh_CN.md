@@ -24,8 +24,8 @@ Prompt Vault 把你和 AI 的对话存成本地文件，不用注册账号，也
 • HTML（.html）：单个文件，用浏览器直接打开
 
 要一次存多个对话，打开批量导出面板，勾选要导的对话，选一种格式一次导完。ChatGPT、Claude、
-Gemini 的侧边栏都能用；ChatGPT 和 Claude 还能在项目的对话列表里用；Claude 另外支持完整
-历史页面（claude.ai/recents）。
+Gemini 的侧边栏都能用；ChatGPT 和 Claude 还能在项目的对话列表里用，Gemini 则是在笔记本的
+对话列表里用；Claude 另外支持完整历史页面（claude.ai/recents）。
 
 另外几点：
 • 全程本地处理。扩展程序不连接任何服务器，对话不出浏览器。
@@ -35,8 +35,8 @@ Gemini 的侧边栏都能用；ChatGPT 和 Claude 还能在项目的对话列表
 • 图标可以自己挑。扩展程序弹窗里能逐个显示或隐藏各导出格式图标和批量导出图标。
 • 界面有中文。英文、简体中文、繁体中文、日文、韩文五种，按浏览器语言自动切换。
 
-支持的站点：ChatGPT、Claude、Gemini。三个站点都能批量导出；项目导出目前只有 ChatGPT 和
-Claude 支持。
+支持的站点：ChatGPT、Claude、Gemini。三个站点都能批量导出；整个项目一次导出则支持 ChatGPT
+和 Claude 的项目，以及 Gemini 的笔记本。
 ```
 
 **Screenshots:** None yet — no capture of the Simplified Chinese UI has been taken, so this

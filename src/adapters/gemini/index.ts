@@ -3,6 +3,7 @@ import { ownerDocument } from '../../core/dom';
 import { ExtractionError } from '../../core/errors';
 import {
   BULK_HISTORY_NOTEBOOKS_NOTICE,
+  DOWNLOAD_NOTEBOOK_BULK_ARIA_LABEL,
   ERR_GEMINI_MESSAGE_LIST_MISSING,
   ERR_GEMINI_MESSAGE_LIST_UNSCROLLABLE,
   ERR_GEMINI_NO_MESSAGES,
@@ -157,7 +158,8 @@ const TOOLBAR_BUTTON_CLASS =
 // variants inherit a `--mat-button-text-label-text-color` of `#fff` inside the notebook view and
 // rendered white-on-white, while the filled variant computed to `rgb(11, 87, 208)` behind white
 // text. `gds-label-l` is Gemini's label typography (taken from the native "Gemini Notebook"
-// top-bar button). Light theme only — the dark theme was not measured.
+// top-bar button). Dark theme (measured 2026-10-17): the same classes recolor to
+// `rgb(6, 46, 111)` on `rgb(168, 199, 250)` over the `rgb(15, 15, 15)` page — legible, no override.
 const PROJECT_TOOLBAR_BUTTON_CLASS =
   'mdc-button mdc-button--unelevated mat-mdc-unelevated-button mat-mdc-button-base mat-unthemed gds-label-l';
 
@@ -198,6 +200,7 @@ export const geminiAdapter: ConversationAdapter = {
   openProjectHome,
   projectToolbarMount,
   projectToolbarButtonClass: PROJECT_TOOLBAR_BUTTON_CLASS,
+  projectTriggerAriaLabel: DOWNLOAD_NOTEBOOK_BULK_ARIA_LABEL,
 };
 
 /**
@@ -714,7 +717,9 @@ function readNotebookRows(root: ParentNode): { row: Element; button: HTMLElement
  * or the empty-notebook marker; `loading` while the placeholder is up or neither has rendered;
  * `missing` when there is no list at all. Measured 2026-10-17: the list fills 0 → 10 → all with
  * the placeholder up throughout, so a non-empty row count is never on its own evidence of a
- * whole list — see `selectors.notebookListLoading`.
+ * whole list — see `selectors.notebookListLoading`. A settled list is the whole notebook: 31, 55
+ * and 106 chats all rendered at once, and scrolling the list's `infinite-scroller` to its bottom
+ * added nothing at 106 (re-measured 2026-10-17), so there is no load-more member.
  */
 function notebookListState(root: ParentNode): 'missing' | 'loading' | 'settled' {
   const history = root.querySelector(selectors.notebookChatHistory);

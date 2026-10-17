@@ -106,7 +106,7 @@ deliberately not recorded here.
 | Claude | conversation `Multiple artifacts in one reply` | 3 artifact cards: kinds `PY`, `문서·MD`, `코드·JSX` (pre-existing) |
 | Claude | conversation `PV probe file creation` | 2 turns, 3 code-execution output cards: `표·CSV`, then `ZIP` + `문서·DOCX` (2026-10-15) |
 | ChatGPT | project `PV probe long project` | 17 one-turn conversations, 7 rows below a 941 px viewport (2026-10-15) |
-| Gemini | notebook `PV probe notebook` | 55 one-turn chats titled `PV Probe <n> …`, n = 1–56 without 32 (2 on 2026-10-15, 53 on 2026-10-17); no two titles equal |
+| Gemini | notebook `PV probe notebook` | 106 one-turn chats titled `PV Probe <n> …`, n = 1–108 without 32 and 58 (2 on 2026-10-15, 104 on 2026-10-17); #78 is titled `Probe 78 …`; no two titles equal |
 | Gemini | notebook `PV probe empty notebook` | zero chats (2026-10-17) |
 
 ## The loop
@@ -1812,6 +1812,35 @@ Scope limits: one account, `ko-KR`, 26 conversations, three projects (0, 1 and 4
 `[unknown — not measured]`). `/project/<id>` remains `[unknown — not measured]`.
 
 ## Gemini
+
+### 2026-10-17 (later) — a 106-chat Notebook still renders whole; the trigger is legible in dark
+
+Playwright MCP session, logged-in ko-KR account, unpacked `dist/` built from this branch and
+reloaded from `chrome://extensions`. `PV probe notebook` was grown from 55 to 106 one-turn chats
+from its own composer (52 sends, 51 chats: #57 routed later than the 30 s wait and #58, typed next, never became a chat of its own).
+Counts exclude conversation text.
+
+- **No paging at 106.** A cold `page.goto`, sampled every 30 ms: container with the skeleton and
+  0 rows at 1.39 s, 10 rows with the skeleton at 1.67 s, then **106** rows with the skeleton gone at
+  1.99 s. The list's `infinite-scroller` was 5136 px tall in a 270 px port (`overflow-y: scroll`);
+  scrolling it and the window to the bottom and waiting 6 s added nothing. The rendered titles were
+  exactly the created set (n = 1–108 without 32 and 58). Each of the 50 returns through the sidebar
+  entry after sends #59–108 also showed every chat (the count rose by exactly one per return). So a
+  settled list is the whole notebook through 106, and no load-more member ships.
+- **Extension panel.** The notebook trigger's panel listed 106 members (107 checkboxes with
+  *전체 선택*), newest first.
+- **Trigger name.** The mounted trigger's `aria-label` read *이 노트북의 모든 채팅 다운로드* (the new
+  `downloadNotebookBulkAriaLabel`), natively placed in `project-chat-history`.
+- **Dark theme.** `page.emulateMedia({ colorScheme: 'dark' })` swapped `body.light-theme` for
+  `dark-theme`; the filled trigger's classes recolored on their own:
+
+| Theme | Text | Button background | Page behind |
+|-------|------|-------------------|-------------|
+| light | `rgb(255,255,255)` | `rgb(11,87,208)` | `rgb(250,249,249)` |
+| dark | `rgb(6,46,111)` | `rgb(168,199,250)` | `rgb(15,15,15)` |
+
+  About 6.4:1 (light) and 7.5:1 (dark) text contrast; an element screenshot in dark showed the
+  label and icon clearly. No dark-theme override is needed.
 
 ### 2026-10-17 — a Notebook list fills behind a placeholder, empties on a marker, and exports end to end
 

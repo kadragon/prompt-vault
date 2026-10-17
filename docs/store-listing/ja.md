@@ -25,8 +25,8 @@ ChatGPT、Claude、Gemini で会話を開くと、ページの上部にエクス
 • HTML (.html) — 1 ファイルで完結し、どのブラウザでも開けるページ
 
 まとめて残したいときは、一括エクスポートのパネルを開き、必要な会話にチェックを入れて形式を
-ひとつ選びます。ChatGPT、Claude、Gemini はいずれもサイドバーから、ChatGPT と Claude は
-プロジェクトの会話一覧からも、Claude は全履歴ページ（claude.ai/recents）からも使えます。
+ひとつ選びます。3 サイトともサイドバーから使えるほか、ChatGPT と Claude ではプロジェクトの会話一覧、
+Gemini ではノートブックのチャット一覧、Claude では全履歴ページ（claude.ai/recents）からも使えます。
 
 こだわった点:
 • 処理はすべて手元で。どのサーバーとも通信せず、会話がブラウザの外に出ることはありません。
@@ -38,7 +38,7 @@ ChatGPT、Claude、Gemini で会話を開くと、ページの上部にエクス
 • 表示言語は英語・日本語・韓国語・中国語（簡体字・繁体字）の 5 つ。ブラウザの言語に従います。
 
 対応サイトは ChatGPT、Claude、Gemini です。一括エクスポートは 3 サイトすべてで、プロジェクト
-単位のエクスポートは ChatGPT と Claude で使えます。
+単位のエクスポートは ChatGPT・Claude のプロジェクトと Gemini のノートブックで使えます。
 ```
 
 **Screenshots:** no Japanese-UI screenshots have been captured; this locale falls back to the

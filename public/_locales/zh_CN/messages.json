@@ -87,6 +87,10 @@
     "message": "下载所有最近的对话",
     "description": "Accessible name for the bulk-download trigger on the full history page."
   },
+  "downloadNotebookBulkAriaLabel": {
+    "message": "下载这个笔记本里的所有对话",
+    "description": "Accessible name for the project bulk-download trigger on a Gemini notebook, which Gemini calls a notebook rather than a project."
+  },
   "bulkPanelTitle": {
     "message": "导出多个对话",
     "description": "Title of the bulk-export selection panel."
