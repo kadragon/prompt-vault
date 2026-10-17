@@ -270,6 +270,13 @@ describe('geminiAdapter.openProjectConversation', () => {
     expect(location.pathname).toBe(`/app/${CHAT_A}`);
   });
 
+  it('accepts a chat literally titled like the app itself', async () => {
+    const { doc, go } = installLivePage(sidebar(NOTEBOOK) + history('Google Gemini'), HOME);
+    wireRows(doc, go, [CHAT_A]);
+    await geminiAdapter.openProjectConversation!(memberUrl(['Google Gemini'], 0), { pollMs: 0, timeoutMs: 200 });
+    expect(location.pathname).toBe(`/app/${CHAT_A}`);
+  });
+
   it('accepts an untitled row, which has no title to compare', async () => {
     const { doc, go } = installLivePage(sidebar(NOTEBOOK) + history(''), HOME);
     wireRows(doc, go, [CHAT_A], ['Anything']);

@@ -808,7 +808,10 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
 async function assertOpenedMember(member: NotebookMember, pollMs: number, timeoutMs: number): Promise<void> {
   if (member.title === FALLBACK_TITLE) return;
   const deadline = Date.now() + timeoutMs;
-  while (deriveTitle(document) !== member.title) {
+  // The raw title, not `deriveTitle`: that maps a chat literally titled "Google Gemini" to the
+  // untitled fallback, and the check would then reject a correct open (raised in review).
+  const expected = `${member.title}${TITLE_SUFFIX}`;
+  while ((document.title ?? '').split(LRM).join('').trim() !== expected) {
     if (Date.now() >= deadline) throw new ExtractionError(ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH);
     await delay(pollMs);
   }
