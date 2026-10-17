@@ -180,6 +180,56 @@ export const selectors = {
   sidebarConversationLink: 'a[href^="/app/"]',
 
   /**
+   * The member list on a Notebook home (`/notebook/<uuid>`), Gemini's project analogue. Verified
+   * live 2026-10-15 and 2026-10-17: `project-chat-history` > `div.project-chat-history-container`
+   * > `infinite-scroller.project-chat-history-scroller` > `h2[data-test-id="past-chats-title"]`
+   * plus one `project-chat-row` per chat, newest first. It sits INSIDE the message list's own
+   * `scrollContainer` (`chat-history-container`), so that scroller is not evidence of a
+   * conversation page. On a cold load the element appeared ~250 ms before its rows (2545 ms vs
+   * 2797 ms), which is why an empty list is never trusted on its own — see
+   * `listProjectConversations`.
+   */
+  notebookChatHistory: 'project-chat-history',
+
+  /**
+   * The loading placeholder inside `notebookChatHistory` while members are still arriving.
+   * Verified live 2026-10-17 at 10 ms sampling on a 31-chat notebook: present with 0 rows, STILL
+   * present once the first 10 rows had rendered, and gone only when all 31 were in. That 10-row
+   * state lasted ~200 ms on every return to the notebook, so a row count alone cannot tell a
+   * partial list from a whole one — this element is the signal that can.
+   */
+  notebookListLoading: 'project-list-skeleton',
+
+  /**
+   * The empty-notebook marker (a localized "notebook chats appear here" line). Verified live
+   * 2026-10-17: rendered ~200 ms after the list container on a notebook with zero chats, and
+   * never once on the 31-chat notebook across three returns sampled every 20 ms — so it is a
+   * positive "empty", not a loading state.
+   */
+  notebookEmptyState: '[data-test-id="notebook-empty-state"]',
+
+  /** One notebook member row. Carries no conversation id anywhere in its markup (2026-10-15). */
+  notebookChatRow: 'project-chat-row',
+
+  /**
+   * The row's navigation control — a `<button>`, not an anchor, so the member's `/app/<16-hex>`
+   * route is only learned by clicking it (verified live 2026-10-15: clicking navigated to that
+   * chat). Each measured row held exactly one.
+   */
+  notebookChatButton: 'button[data-test-id="navigate-to-recent-chat"]',
+
+  /** The member's title inside its row (localized auto-title; read, never matched as a selector). */
+  notebookChatTitle: 'h2[data-test-id="chat-title"]',
+
+  /**
+   * The Notebook's own entry in the global sidebar — the in-app link `openProjectHome` clicks to
+   * return to the notebook without a reload. Verified live 2026-10-15:
+   * `gem-nav-list-item[data-test-id="project-item-button-gem"]` wrapping `a[href^="/notebook/"]`.
+   * Exact-href matching is done by the adapter; this is only the candidate set.
+   */
+  notebookSidebarLink: 'gem-nav-list-item[data-test-id="project-item-button-gem"] a[href^="/notebook/"]',
+
+  /**
    * A fenced code block inside `assistantMarkdown`. Verified against the live page
    * (2026-07-25): `code-block` > … > `div.code-block-decoration` + `pre > code`.
    */

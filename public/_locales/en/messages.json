@@ -151,8 +151,8 @@
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
   },
   "bulkHistoryNotebooksNotice": {
-    "message": "Chats saved in Gemini notebooks are not included in this list.",
-    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook."
+    "message": "Chats saved in Gemini notebooks are not included in this list. To export them, open the notebook and use its “Download all” button.",
+    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook, which are exported from the notebook page's own trigger instead."
   },
   "bulkListErrorMessage": {
     "message": "Could not read the conversation list: $error$",
@@ -371,6 +371,34 @@
   "errGeminiResponseUnreadable": {
     "message": "This conversation contains a response this extension could not read — it may be a kind Gemini renders outside its normal text area, or Gemini’s markup may have changed. Please report this.",
     "description": "Extraction error (Gemini): a response could not be read, possibly a kind rendered outside the normal text area."
+  },
+  "errGeminiNotebookListMissing": {
+    "message": "Could not find the chat list on this Gemini notebook page. Gemini’s markup may have changed — please report this.",
+    "description": "Bulk export error (Gemini): the chat list was not found on a notebook page."
+  },
+  "errGeminiNotebookListLoading": {
+    "message": "The Gemini notebook’s chat list is still loading. Wait until every chat is shown, then try again.",
+    "description": "Bulk export error (Gemini): the notebook chat list was still loading when the bulk panel tried to read it."
+  },
+  "errGeminiNotebookRowMalformed": {
+    "message": "Could not read the Gemini notebook’s chat list: a row did not contain exactly one chat button. Gemini’s markup may have changed — please report this.",
+    "description": "Bulk export error (Gemini): a row of the notebook chat list did not hold exactly one chat button."
+  },
+  "errGeminiNotebookRowMissing": {
+    "message": "Could not open a selected Gemini notebook chat: no row in the notebook shows its title any more, or more than one does. The notebook may have changed after the list was loaded. It was skipped.",
+    "description": "Bulk export error (Gemini): no row of the notebook still shows the selected chat's title, or several ambiguous rows do, so it was skipped."
+  },
+  "errGeminiNotebookOpenMismatch": {
+    "message": "Could not export a selected Gemini notebook chat: the chat that opened has a different title, so it was skipped instead of being saved under the wrong name.",
+    "description": "Bulk export error (Gemini): the chat a notebook row opened did not carry the selected chat's title, so it was skipped rather than exported under the wrong name."
+  },
+  "errGeminiNotebookHomeLinkMissing": {
+    "message": "To export a Gemini notebook, keep the sidebar open: the extension returns to the notebook through its sidebar entry between chats. Open the sidebar and try again.",
+    "description": "Bulk export error (Gemini): the notebook's sidebar entry — the only measured way back to the notebook between chats — is not on the page, usually because the sidebar is collapsed."
+  },
+  "errGeminiNotebookHomeTimedOut": {
+    "message": "Timed out returning to the Gemini notebook. It may be loading slowly. It was skipped.",
+    "description": "Bulk export error (Gemini): returning to the notebook home took too long, so the step was skipped."
   },
   "errClaudeArtifactAndAttachment": {
     "message": "A Claude message carries both an artifact card and a file attachment, which its markup has never done. Its author could not be determined — please report this.",

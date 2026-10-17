@@ -118,7 +118,8 @@ export function bulkLoadMoreRateLimitedMessage(loaded: number): string {
 export const BULK_EMPTY_MESSAGE = m('bulkEmptyMessage');
 
 // Shown above the Gemini bulk-export list, whose history sidebar never lists notebook chats
-// (the adapter's `bulkHistoryNotice`), so a short list does not read as the whole account.
+// (the adapter's `bulkHistoryNotice`), so a short list does not read as the whole account; it
+// points at the notebook page's own trigger, which is where those chats are exported.
 export const BULK_HISTORY_NOTEBOOKS_NOTICE = m('bulkHistoryNotebooksNotice');
 
 /** Visible fail-loud message when the provider cannot enumerate the list for the panel. */
@@ -215,6 +216,13 @@ export const ERR_GEMINI_MESSAGE_LIST_MISSING = m('errGeminiMessageListMissing');
 export const ERR_GEMINI_MESSAGE_LIST_UNSCROLLABLE = m('errGeminiMessageListUnscrollable');
 export const ERR_GEMINI_STILL_GENERATING = m('errGeminiStillGenerating');
 export const ERR_GEMINI_RESPONSE_UNREADABLE = m('errGeminiResponseUnreadable');
+export const ERR_GEMINI_NOTEBOOK_LIST_MISSING = m('errGeminiNotebookListMissing');
+export const ERR_GEMINI_NOTEBOOK_LIST_LOADING = m('errGeminiNotebookListLoading');
+export const ERR_GEMINI_NOTEBOOK_ROW_MALFORMED = m('errGeminiNotebookRowMalformed');
+export const ERR_GEMINI_NOTEBOOK_ROW_MISSING = m('errGeminiNotebookRowMissing');
+export const ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH = m('errGeminiNotebookOpenMismatch');
+export const ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING = m('errGeminiNotebookHomeLinkMissing');
+export const ERR_GEMINI_NOTEBOOK_HOME_TIMED_OUT = m('errGeminiNotebookHomeTimedOut');
 
 /** Gemini unloaded some already-loaded exchanges while they were being read. */
 export function errGeminiExchangesDroppedMessage(loaded: number, expected: number): string {

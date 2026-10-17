@@ -151,8 +151,8 @@
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
   },
   "bulkHistoryNotebooksNotice": {
-    "message": "保存在 Gemini 笔记本中的对话不会列在此列表中。",
-    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook."
+    "message": "保存在 Gemini 笔记本中的对话不会列在此列表中。如需导出，请打开该笔记本并使用其中的“全部下载”按钮。",
+    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook, which are exported from the notebook page's own trigger instead."
   },
   "bulkListErrorMessage": {
     "message": "无法读取对话列表：$error$",
@@ -370,6 +370,34 @@
   "errGeminiResponseUnreadable": {
     "message": "这段对话中有一条回复无法被本扩展程序读取——可能是 Gemini 显示在常规文本区域之外的内容类型，也可能是 Gemini 的页面结构已更改。请反馈此问题。",
     "description": "Extraction error (Gemini): a response could not be read, possibly a kind rendered outside the normal text area."
+  },
+  "errGeminiNotebookListMissing": {
+    "message": "在此 Gemini 笔记本页面上找不到对话列表。Gemini 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Gemini): the chat list was not found on a notebook page."
+  },
+  "errGeminiNotebookListLoading": {
+    "message": "Gemini 笔记本的对话列表仍在加载。请等所有对话都显示出来后再试。",
+    "description": "Bulk export error (Gemini): the notebook chat list was still loading when the bulk panel tried to read it."
+  },
+  "errGeminiNotebookRowMalformed": {
+    "message": "无法读取 Gemini 笔记本的对话列表：有一行包含的对话按钮不是恰好一个。Gemini 的页面结构可能已更改，请反馈此问题。",
+    "description": "Bulk export error (Gemini): a row of the notebook chat list did not hold exactly one chat button."
+  },
+  "errGeminiNotebookRowMissing": {
+    "message": "无法打开所选的 Gemini 笔记本对话：笔记本中已没有显示该标题的行，或有多行显示该标题。加载列表后笔记本可能已发生变化。已跳过该对话。",
+    "description": "Bulk export error (Gemini): no row of the notebook still shows the selected chat's title, or several ambiguous rows do, so it was skipped."
+  },
+  "errGeminiNotebookOpenMismatch": {
+    "message": "无法导出所选的 Gemini 笔记本对话：打开的对话标题不同。为避免以错误的名称保存，已跳过该对话。",
+    "description": "Bulk export error (Gemini): the chat a notebook row opened did not carry the selected chat's title, so it was skipped rather than exported under the wrong name."
+  },
+  "errGeminiNotebookHomeLinkMissing": {
+    "message": "导出 Gemini 笔记本时请保持侧边栏展开：每导出一个对话，扩展都要通过侧边栏中的笔记本条目返回笔记本。请展开侧边栏后重试。",
+    "description": "Bulk export error (Gemini): the notebook's sidebar entry — the only measured way back to the notebook between chats — is not on the page, usually because the sidebar is collapsed."
+  },
+  "errGeminiNotebookHomeTimedOut": {
+    "message": "返回 Gemini 笔记本时超时，可能是加载较慢。已跳过此步骤。",
+    "description": "Bulk export error (Gemini): returning to the notebook home took too long, so the step was skipped."
   },
   "errClaudeArtifactAndAttachment": {
     "message": "一条 Claude 消息同时带有 Artifact 卡片和附件，这是以前从未出现过的结构，因此无法判断发送者。请反馈此问题。",

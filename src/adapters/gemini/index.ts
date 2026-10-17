@@ -6,6 +6,13 @@ import {
   ERR_GEMINI_MESSAGE_LIST_MISSING,
   ERR_GEMINI_MESSAGE_LIST_UNSCROLLABLE,
   ERR_GEMINI_NO_MESSAGES,
+  ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING,
+  ERR_GEMINI_NOTEBOOK_HOME_TIMED_OUT,
+  ERR_GEMINI_NOTEBOOK_LIST_LOADING,
+  ERR_GEMINI_NOTEBOOK_LIST_MISSING,
+  ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH,
+  ERR_GEMINI_NOTEBOOK_ROW_MALFORMED,
+  ERR_GEMINI_NOTEBOOK_ROW_MISSING,
   ERR_GEMINI_OPEN_LINK_MISSING,
   ERR_GEMINI_OPEN_TIMED_OUT,
   ERR_GEMINI_OPEN_URL_MALFORMED,
@@ -29,7 +36,7 @@ import {
   type SidebarConversation,
 } from '../../core/sidebar';
 import type { ConversationAdapter, LoadMoreOptions, OpenConversationOptions } from '../types';
-import { matches } from './matches';
+import { matches, matchesProject, NOTEBOOK_PATH } from './matches';
 import { LRM, selectors, TITLE_SUFFIX } from './selectors';
 
 const PROVIDER = 'gemini';
@@ -145,6 +152,15 @@ const OPEN_RENDER_SETTLE_ROUNDS = 3;
 const TOOLBAR_BUTTON_CLASS =
   'mdc-icon-button mat-mdc-icon-button mat-mdc-button-base mat-unthemed';
 
+// The Notebook-home "Download all" trigger wears Gemini's filled (unelevated) Material button.
+// Measured live 2026-10-17 by applying candidates to the mounted trigger: the TEXT and OUTLINED
+// variants inherit a `--mat-button-text-label-text-color` of `#fff` inside the notebook view and
+// rendered white-on-white, while the filled variant computed to `rgb(11, 87, 208)` behind white
+// text. `gds-label-l` is Gemini's label typography (taken from the native "Gemini Notebook"
+// top-bar button). Light theme only — the dark theme was not measured.
+const PROJECT_TOOLBAR_BUTTON_CLASS =
+  'mdc-button mdc-button--unelevated mat-mdc-unelevated-button mat-mdc-button-base mat-unthemed gds-label-l';
+
 /**
  * Gemini adapter — single-conversation export plus the history-sidebar bulk track. Each member
  * is present only because its DOM was verified live, and an unverified implementation is worse
@@ -153,10 +169,11 @@ const TOOLBAR_BUTTON_CLASS =
  *  - The sidebar track (`listConversations` / `openConversation` / `loadMoreConversations`) rests
  *    on the 2026-08-10 measurement — the sidebar pages at 20, append-only with no recycling, and
  *    identity is 1:1 (93 rows ↔ 93 anchors ↔ 93 distinct `/app/<16-hex>` ids, none outside a row).
- *  - The **Notebooks / project track stays unimplemented**. Gemini's project analogue is Notebooks
- *    (Gems were measured and are not a project home); their markup was measured 2026-10-15 and
- *    member rows carry no conversation id, so the track needs click-per-row enumeration — see
- *    `docs/live-dom-verification.md` → Gemini, 2026-10-15.
+ *  - The **Notebooks / project track** (`matchesProject` / `listProjectConversations` /
+ *    `openProjectConversation` / `openProjectHome`). Gemini's project analogue is Notebooks (Gems
+ *    were measured and are not a project home); member rows carry no conversation id, so members
+ *    are keyed by position and opened by clicking their row — see the section comment below and
+ *    `docs/live-dom-verification.md` → Gemini, 2026-10-15 and 2026-10-17.
  *
  * Absence alone is not enough to hide a feature, though — the content layer has to *read* it.
  * `syncConversationButtons` gates the bulk icon on `listConversations` + `openConversation` being
@@ -173,8 +190,14 @@ export const geminiAdapter: ConversationAdapter = {
   openConversation,
   loadMoreConversations,
   // Notebook chats never appear in the global sidebar (measured 2026-10-15), so the sidebar
-  // track's panel must say it cannot reach them until the Notebooks track lands.
+  // track's panel says so and points at the notebook's own trigger.
   bulkHistoryNotice: BULK_HISTORY_NOTEBOOKS_NOTICE,
+  matchesProject,
+  listProjectConversations,
+  openProjectConversation,
+  openProjectHome,
+  projectToolbarMount,
+  projectToolbarButtonClass: PROJECT_TOOLBAR_BUTTON_CLASS,
 };
 
 /**
@@ -515,7 +538,9 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
 
   const beforeSignature = messageSignature();
   anchor.click();
-  if (await waitForOpenedConversation(target.id, beforeSignature, pollMs, timeoutMs)) return;
+  if (await waitForOpenedConversation((pathname) => pathname === `/app/${target.id}`, beforeSignature, pollMs, timeoutMs)) {
+    return;
+  }
   throw new ExtractionError(ERR_GEMINI_OPEN_TIMED_OUT);
 }
 
@@ -524,9 +549,12 @@ async function openConversation(url: string, opts: OpenConversationOptions = {})
  * alone cannot distinguish a target from a recreated outgoing view. Identical IDs and text
  * therefore time out visibly, including genuinely distinct targets that render identically.
  * A fingerprint change is observed content change, not a provider-wide identity guarantee.
+ *
+ * The route is a predicate rather than an id because a Notebook member's id is unknown until
+ * its row is clicked (see `openProjectConversation`).
  */
 async function waitForOpenedConversation(
-  id: string,
+  isTargetRoute: (pathname: string) => boolean,
   beforeSignature: string,
   pollMs: number,
   timeoutMs: number,
@@ -536,7 +564,7 @@ async function waitForOpenedConversation(
   let stable = 0;
   while (Date.now() < deadline) {
     await delay(pollMs);
-    if (location.pathname !== `/app/${id}` || !hasRenderedMessages()) {
+    if (!isTargetRoute(location.pathname) || !hasRenderedMessages()) {
       previous = null;
       stable = 0;
       continue;
@@ -604,6 +632,263 @@ function hasRenderedMessages(): boolean {
 /** Fingerprint every exchange's ID and complete text; structured encoding avoids delimiter collisions. */
 function messageSignature(): string {
   return JSON.stringify(renderedExchanges().map((exchange) => [exchange.getAttribute('id') ?? '', exchange.textContent ?? '']));
+}
+
+// --- Notebook (project) bulk track -----------------------------------------------------------
+// A Notebook home lists its members as `project-chat-row` BUTTONS that carry no conversation id
+// (measured 2026-10-15: 0 anchors per row, neither id anywhere in the row's markup), so the
+// `/app/<16-hex>` route of a member is only learned by clicking it. The listing therefore keys
+// each member by its POSITION on the notebook home, and carries the title it showed there in the
+// synthetic URL so the open can check it is still clicking the row the user ticked — a chat
+// added to the notebook mid-run shifts every position by one, and opening the wrong member while
+// labelling the file with the ticked title would be a silent mis-export (AGENTS.md #4).
+
+const NOTEBOOK_ROW_PARAM = 'pv-row';
+const NOTEBOOK_TITLE_PARAM = 'pv-title';
+const NOTEBOOK_COUNT_PARAM = 'pv-count';
+const FALLBACK_TITLE = 'Gemini conversation';
+
+/** The notebook UUID of a `/notebook/<uuid>` path, or null for any other route. */
+function notebookIdOf(pathname: string): string | null {
+  return pathname.match(NOTEBOOK_PATH)?.[1] ?? null;
+}
+
+/**
+ * A notebook member's position, the title it was listed under, its notebook, and how many rows the
+ * notebook listed then — the count is what tells an unchanged list from a shifted one.
+ */
+interface NotebookMember {
+  notebookId: string;
+  index: number;
+  title: string;
+  count: number;
+}
+
+/** Decode a synthetic member URL minted by `listProjectConversations`; null when it is not one. */
+function parseNotebookMemberUrl(url: string, origin: string): NotebookMember | null {
+  try {
+    const parsed = new URL(url, origin);
+    const notebookId = notebookIdOf(parsed.pathname);
+    const params = new URLSearchParams(parsed.hash.slice(1));
+    const rawIndex = params.get(NOTEBOOK_ROW_PARAM) ?? '';
+    const rawCount = params.get(NOTEBOOK_COUNT_PARAM) ?? '';
+    const title = params.get(NOTEBOOK_TITLE_PARAM);
+    if (!notebookId || !/^\d+$/.test(rawIndex) || !/^\d+$/.test(rawCount) || title === null) return null;
+    return { notebookId, index: Number(rawIndex), title, count: Number(rawCount) };
+  } catch {
+    return null;
+  }
+}
+
+function notebookMemberUrl(origin: string, member: NotebookMember): string {
+  const params = new URLSearchParams({
+    [NOTEBOOK_ROW_PARAM]: String(member.index),
+    [NOTEBOOK_COUNT_PARAM]: String(member.count),
+    [NOTEBOOK_TITLE_PARAM]: member.title,
+  });
+  return `${origin}/notebook/${member.notebookId}#${params.toString()}`;
+}
+
+/** The member's displayed title. Localized auto-titles are read, never matched as selectors. */
+function notebookRowTitle(row: Element): string {
+  return (row.querySelector(selectors.notebookChatTitle)?.textContent ?? '').trim() || FALLBACK_TITLE;
+}
+
+/**
+ * Read the rendered member rows. A row without exactly one navigation button is a markup change,
+ * not a row to skip: there is no other handle on that member, so dropping it would shorten the
+ * notebook silently.
+ */
+function readNotebookRows(root: ParentNode): { row: Element; button: HTMLElement; title: string }[] {
+  const history = root.querySelector(selectors.notebookChatHistory);
+  if (!history) return [];
+  return Array.from(history.querySelectorAll(selectors.notebookChatRow)).map((row) => {
+    const buttons = row.querySelectorAll<HTMLElement>(selectors.notebookChatButton);
+    if (buttons.length !== 1) throw new ExtractionError(ERR_GEMINI_NOTEBOOK_ROW_MALFORMED);
+    return { row, button: buttons[0], title: notebookRowTitle(row) };
+  });
+}
+
+/**
+ * Where the member list stands: `settled` once its loading placeholder is gone AND it shows rows
+ * or the empty-notebook marker; `loading` while the placeholder is up or neither has rendered;
+ * `missing` when there is no list at all. Measured 2026-10-17: the list fills 0 → 10 → all with
+ * the placeholder up throughout, so a non-empty row count is never on its own evidence of a
+ * whole list — see `selectors.notebookListLoading`.
+ */
+function notebookListState(root: ParentNode): 'missing' | 'loading' | 'settled' {
+  const history = root.querySelector(selectors.notebookChatHistory);
+  if (!history) return 'missing';
+  if (history.querySelector(selectors.notebookListLoading)) return 'loading';
+  if (history.querySelector(selectors.notebookChatRow) || history.querySelector(selectors.notebookEmptyState)) {
+    return 'settled';
+  }
+  return 'loading';
+}
+
+/**
+ * Enumerate a Notebook home's members, newest first as displayed, keyed by notebook + position.
+ * Off a notebook route the answer is `[]` (there is no notebook to key them by). On the route,
+ * only a SETTLED list is read: the panel renders `[]` as "nothing to export" and a short list as
+ * the whole notebook, so a missing or still-filling list fails loud instead (AGENTS.md #4). The
+ * empty notebook is `[]` only on its positive marker.
+ */
+function listProjectConversations(root: ParentNode = document): SidebarConversation[] {
+  const view = ownerDocument(root)?.defaultView;
+  const notebookId = notebookIdOf(view?.location?.pathname ?? '');
+  if (!notebookId) return [];
+  const state = notebookListState(root);
+  if (state === 'missing') throw new ExtractionError(ERR_GEMINI_NOTEBOOK_LIST_MISSING);
+  if (state === 'loading') throw new ExtractionError(ERR_GEMINI_NOTEBOOK_LIST_LOADING);
+  // Every member after the first is reached by returning through this entry (see
+  // `returnToNotebookHome`); without it, refuse up front rather than part-way through the run.
+  const rows = readNotebookRows(root);
+  if (rows.length > 0 && !findNotebookSidebarLink(root, notebookId)) {
+    throw new ExtractionError(ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING);
+  }
+  const origin = documentOrigin(root);
+  return rows.map(({ title }, index) => ({
+    id: `notebook:${notebookId}:${index}`,
+    title,
+    url: notebookMemberUrl(origin, { notebookId, index, title, count: rows.length }),
+  }));
+}
+
+/**
+ * The row to click for `member`. A title only ONE row shows is that row, wherever it moved. A
+ * title several rows share is told apart by position alone, so the position is trusted only while
+ * the notebook still has the row count it was listed with: a chat added above shifts every row,
+ * and the row now at the listed index may be the OTHER same-titled chat — which would export
+ * under the ticked member's name with nothing to flag it. Anything else is ambiguous and returns
+ * null, which the caller reports instead of guessing.
+ */
+function findNotebookRowButton(member: NotebookMember): HTMLElement | null {
+  const rows = readNotebookRows(document);
+  const sameTitle = rows.filter((row) => row.title === member.title);
+  if (sameTitle.length === 1) return sameTitle[0].button;
+  const atIndex = rows[member.index];
+  if (sameTitle.length > 1 && rows.length === member.count && atIndex?.title === member.title) return atIndex.button;
+  return null;
+}
+
+/**
+ * Open a Notebook member: return to its notebook home if the batch has navigated away, click the
+ * member's row, and wait for whichever `/app/<16-hex>` route it opens to render. The id is not
+ * known in advance (see the section comment), so the route check accepts any conversation route
+ * and the changed exchange fingerprint is what proves the click landed.
+ */
+async function openProjectConversation(url: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const member = parseNotebookMemberUrl(url, location.origin);
+  if (!member) {
+    throw new ExtractionError(ERR_GEMINI_OPEN_URL_MALFORMED);
+  }
+
+  await returnToNotebookHome(member.notebookId, pollMs, timeoutMs);
+  const button = await waitForNotebookRow(member, pollMs, timeoutMs);
+  if (!button) {
+    throw new ExtractionError(ERR_GEMINI_NOTEBOOK_ROW_MISSING);
+  }
+
+  const beforeSignature = messageSignature();
+  button.click();
+  if (!(await waitForOpenedConversation((pathname) => CONVERSATION_ID_PATH.test(pathname), beforeSignature, pollMs, timeoutMs))) {
+    throw new ExtractionError(ERR_GEMINI_OPEN_TIMED_OUT);
+  }
+  await assertOpenedMember(member, pollMs, timeoutMs);
+}
+
+/**
+ * Confirm the chat that opened is the member that was clicked, by its title. Unlike the sidebar
+ * track there is no id to pin the route to, so a row click that lands elsewhere would otherwise
+ * be exported under the ticked title. `document.title` carried the clicked row's title on every
+ * measured open (2026-10-17: rows 30, 5 and 0 of 31). It can lag the render, so a mismatch is
+ * polled out before it counts; an untitled row has nothing to compare and is accepted.
+ */
+async function assertOpenedMember(member: NotebookMember, pollMs: number, timeoutMs: number): Promise<void> {
+  if (member.title === FALLBACK_TITLE) return;
+  const deadline = Date.now() + timeoutMs;
+  // The raw title, not `deriveTitle`: that maps a chat literally titled "Google Gemini" to the
+  // untitled fallback, and the check would then reject a correct open (raised in review).
+  const expected = `${member.title}${TITLE_SUFFIX}`;
+  while ((document.title ?? '').split(LRM).join('').trim() !== expected) {
+    if (Date.now() >= deadline) throw new ExtractionError(ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH);
+    await delay(pollMs);
+  }
+}
+
+/** The measured conversation route shape (16-hex id), as `resolveConversationHref` pins it. */
+const CONVERSATION_ID_PATH = /^\/app\/[0-9a-f]{16}\/?$/;
+
+/**
+ * Wait for the notebook home's member list to settle, then pick the member's row. Matching
+ * before it settles is wrong, not just early: on every return the list sat at its newest 10 rows
+ * for ~200 ms (2026-10-17), and a same-titled chat among those 10 would satisfy the unique-title
+ * fallback for a member listed further down. Null when the settled list holds no unambiguous
+ * row for the member. A list that never settles times out loud.
+ */
+async function waitForNotebookRow(member: NotebookMember, pollMs: number, timeoutMs: number): Promise<HTMLElement | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (notebookListState(document) !== 'settled') {
+    if (Date.now() >= deadline) throw new ExtractionError(ERR_GEMINI_NOTEBOOK_HOME_TIMED_OUT);
+    await delay(pollMs);
+  }
+  return findNotebookRowButton(member);
+}
+
+/** The notebook's own sidebar entry, or null when the sidebar does not render it. */
+function findNotebookSidebarLink(root: ParentNode, notebookId: string): HTMLElement | null {
+  return (
+    Array.from(root.querySelectorAll<HTMLElement>(selectors.notebookSidebarLink)).find(
+      (anchor) => notebookIdOf(anchor.getAttribute('href') ?? '') === notebookId,
+    ) ?? null
+  );
+}
+
+/**
+ * Bring the user back to notebook `notebookId`'s home through its own sidebar entry — an in-app
+ * link, so the SPA route changes without a reload that would tear down the content script and
+ * the bulk run (measured 2026-10-17). Resolves at once when already there.
+ *
+ * The entry is the ONLY way back that was found. Measured 2026-10-17 with the sidebar collapsed:
+ * the document held 0 `/notebook/` anchors on both the notebook home and a member chat, and
+ * `history.back()` changed the URL to the notebook without Gemini re-rendering it (the member chat
+ * stayed on screen, no list after 15 s). `listProjectConversations` therefore refuses to list
+ * while the entry is missing, so a run cannot save one member and then fail every other.
+ */
+async function returnToNotebookHome(notebookId: string, pollMs: number, timeoutMs: number): Promise<void> {
+  if (notebookIdOf(location.pathname) === notebookId) return;
+  const link = findNotebookSidebarLink(document, notebookId);
+  if (!link) {
+    throw new ExtractionError(ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING);
+  }
+  link.click();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(pollMs);
+    if (notebookIdOf(location.pathname) === notebookId && document.querySelector(selectors.notebookChatHistory)) return;
+  }
+  throw new ExtractionError(
+    notebookIdOf(location.pathname) === notebookId ? ERR_GEMINI_NOTEBOOK_LIST_MISSING : ERR_GEMINI_NOTEBOOK_HOME_TIMED_OUT,
+  );
+}
+
+/** Return to the notebook home the batch started from (the bulk driver's `returnToStart`). */
+async function openProjectHome(homeUrl: string, opts: OpenConversationOptions = {}): Promise<void> {
+  const { pollMs = OPEN_POLL_MS, timeoutMs = OPEN_TIMEOUT_MS } = opts;
+  const notebookId = notebookIdOf(new URL(homeUrl, location.origin).pathname);
+  if (!notebookId) {
+    throw new ExtractionError(ERR_GEMINI_OPEN_URL_MALFORMED);
+  }
+  await returnToNotebookHome(notebookId, pollMs, timeoutMs);
+}
+
+/**
+ * Mount the project trigger at the top of the member list. Null while the list has not rendered;
+ * the content layer then falls back to its overlay.
+ */
+function projectToolbarMount(root: ParentNode = document): Element | null {
+  return root.querySelector(selectors.notebookChatHistory);
 }
 
 /** Overridable knobs so the walk can be unit-tested without real timers. */

@@ -18,7 +18,8 @@ export function isConversationPage(url: string): boolean {
 
 /**
  * True for a Project *home* page of any registered provider that implements the
- * project track (ChatGPT today; a provider omitting `matchesProject` never matches).
+ * project track (ChatGPT, Claude and Gemini's notebooks; a provider omitting `matchesProject` never
+ * matches).
  * Gates the project bulk-download trigger, parallel to `isConversationPage` for the
  * per-conversation toolbar.
  */

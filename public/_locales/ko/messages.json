@@ -151,8 +151,8 @@
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
   },
   "bulkHistoryNotebooksNotice": {
-    "message": "Gemini 노트북에 저장된 채팅은 이 목록에 포함되지 않습니다.",
-    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook."
+    "message": "Gemini 노트북에 저장된 채팅은 이 목록에 포함되지 않습니다. 노트북을 열고 ‘전체 다운로드’ 버튼으로 내보내세요.",
+    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook, which are exported from the notebook page's own trigger instead."
   },
   "bulkListErrorMessage": {
     "message": "대화 목록을 읽을 수 없습니다: $error$",
@@ -370,6 +370,34 @@
   "errGeminiResponseUnreadable": {
     "message": "이 대화에 확장 프로그램이 읽지 못한 응답이 있습니다. Gemini가 일반 텍스트 영역 밖에 표시하는 유형이거나, Gemini 페이지 구조가 바뀌었을 수 있습니다. 제보해 주세요.",
     "description": "Extraction error (Gemini): a response could not be read, possibly a kind rendered outside the normal text area."
+  },
+  "errGeminiNotebookListMissing": {
+    "message": "이 Gemini 노트북 페이지에서 채팅 목록을 찾지 못했습니다. Gemini 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Gemini): the chat list was not found on a notebook page."
+  },
+  "errGeminiNotebookListLoading": {
+    "message": "Gemini 노트북의 채팅 목록을 아직 불러오는 중입니다. 채팅이 모두 표시된 뒤 다시 시도해 주세요.",
+    "description": "Bulk export error (Gemini): the notebook chat list was still loading when the bulk panel tried to read it."
+  },
+  "errGeminiNotebookRowMalformed": {
+    "message": "Gemini 노트북의 채팅 목록을 읽지 못했습니다. 채팅 버튼이 정확히 하나가 아닌 행이 있습니다. Gemini 페이지 구조가 바뀌었을 수 있으니 제보해 주세요.",
+    "description": "Bulk export error (Gemini): a row of the notebook chat list did not hold exactly one chat button."
+  },
+  "errGeminiNotebookRowMissing": {
+    "message": "선택한 Gemini 노트북 채팅을 열지 못했습니다. 노트북에 그 제목의 행이 더 이상 없거나 여러 개입니다. 목록을 불러온 뒤 노트북이 바뀌었을 수 있습니다. 이 채팅은 건너뛰었습니다.",
+    "description": "Bulk export error (Gemini): no row of the notebook still shows the selected chat's title, or several ambiguous rows do, so it was skipped."
+  },
+  "errGeminiNotebookOpenMismatch": {
+    "message": "선택한 Gemini 노트북 채팅을 내보내지 못했습니다. 열린 채팅의 제목이 달라서, 다른 이름으로 저장되지 않도록 건너뛰었습니다.",
+    "description": "Bulk export error (Gemini): the chat a notebook row opened did not carry the selected chat's title, so it was skipped rather than exported under the wrong name."
+  },
+  "errGeminiNotebookHomeLinkMissing": {
+    "message": "Gemini 노트북을 내보내려면 사이드바를 펼쳐 두세요. 채팅 하나를 내보낼 때마다 사이드바의 노트북 항목을 눌러 노트북으로 돌아옵니다. 사이드바를 연 뒤 다시 시도해 주세요.",
+    "description": "Bulk export error (Gemini): the notebook's sidebar entry — the only measured way back to the notebook between chats — is not on the page, usually because the sidebar is collapsed."
+  },
+  "errGeminiNotebookHomeTimedOut": {
+    "message": "Gemini 노트북으로 돌아가는 동안 시간이 초과되었습니다. 로딩이 느린 것일 수 있습니다. 이 단계는 건너뛰었습니다.",
+    "description": "Bulk export error (Gemini): returning to the notebook home took too long, so the step was skipped."
   },
   "errClaudeArtifactAndAttachment": {
     "message": "Claude 메시지 하나에 아티팩트 카드와 첨부 파일이 함께 들어 있습니다. 지금까지 없던 구조라 작성자를 판별할 수 없습니다. 제보해 주세요.",

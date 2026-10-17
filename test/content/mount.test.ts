@@ -1038,7 +1038,8 @@ describe('pdfMissingGlyphsMessage', () => {
 // the sidebar track's panel must say so — a short list would otherwise read as the whole account.
 describe('bulk panel scope notice', () => {
   const GEMINI_CONV_URL = 'https://gemini.google.com/app/0123456789abcdef';
-  const NOTICE = 'Chats saved in Gemini notebooks are not included in this list.';
+  const NOTICE =
+    'Chats saved in Gemini notebooks are not included in this list. To export them, open the notebook and use its “Download all” button.';
 
   function docWithGeminiHeaderAndSidebar(): Document {
     const window = new Window();
