@@ -387,9 +387,13 @@
     "message": "無法開啟所選的 Gemini 筆記本對話：筆記本中已沒有顯示該標題的列，或有多列顯示該標題。載入清單後筆記本可能已有變動。已略過這則對話。",
     "description": "Bulk export error (Gemini): no row of the notebook still shows the selected chat's title, or several ambiguous rows do, so it was skipped."
   },
+  "errGeminiNotebookOpenMismatch": {
+    "message": "無法匯出所選的 Gemini 筆記本對話：開啟的對話標題不同。為避免以錯誤的名稱儲存，已略過這則對話。",
+    "description": "Bulk export error (Gemini): the chat a notebook row opened did not carry the selected chat's title, so it was skipped rather than exported under the wrong name."
+  },
   "errGeminiNotebookHomeLinkMissing": {
-    "message": "無法返回 Gemini 筆記本：在側邊欄中找不到該筆記本。請展開側邊欄後再試一次。已略過此步驟。",
-    "description": "Bulk export error (Gemini): the notebook's sidebar entry, needed to return to the notebook, was not found, so the step was skipped."
+    "message": "匯出 Gemini 筆記本時請保持側邊欄展開：每匯出一則對話，擴充功能都要透過側邊欄中的筆記本項目返回筆記本。請展開側邊欄後再試一次。",
+    "description": "Bulk export error (Gemini): the notebook's sidebar entry — the only measured way back to the notebook between chats — is not on the page, usually because the sidebar is collapsed."
   },
   "errGeminiNotebookHomeTimedOut": {
     "message": "返回 Gemini 筆記本時逾時，可能是載入較慢。已略過此步驟。",

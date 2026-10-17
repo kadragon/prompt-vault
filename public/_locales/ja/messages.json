@@ -387,9 +387,13 @@
     "message": "選択した Gemini ノートブックのチャットを開けません。そのタイトルの行がノートブックからなくなったか、複数あります。一覧を読み込んだ後にノートブックが変わった可能性があります。このチャットはスキップしました。",
     "description": "Bulk export error (Gemini): no row of the notebook still shows the selected chat's title, or several ambiguous rows do, so it was skipped."
   },
+  "errGeminiNotebookOpenMismatch": {
+    "message": "選択した Gemini ノートブックのチャットを書き出せません。開いたチャットのタイトルが違うため、別の名前で保存しないようスキップしました。",
+    "description": "Bulk export error (Gemini): the chat a notebook row opened did not carry the selected chat's title, so it was skipped rather than exported under the wrong name."
+  },
   "errGeminiNotebookHomeLinkMissing": {
-    "message": "Gemini ノートブックに戻れません。サイドバーにノートブックの項目が見つかりません。サイドバーを開いてからもう一度お試しください。この手順はスキップしました。",
-    "description": "Bulk export error (Gemini): the notebook's sidebar entry, needed to return to the notebook, was not found, so the step was skipped."
+    "message": "Gemini ノートブックを書き出すには、サイドバーを開いたままにしてください。チャットを 1 つ書き出すたびに、サイドバーのノートブック項目からノートブックに戻ります。サイドバーを開いてからもう一度お試しください。",
+    "description": "Bulk export error (Gemini): the notebook's sidebar entry — the only measured way back to the notebook between chats — is not on the page, usually because the sidebar is collapsed."
   },
   "errGeminiNotebookHomeTimedOut": {
     "message": "Gemini ノートブックに戻る途中でタイムアウトしました。読み込みが遅れている可能性があります。この手順はスキップしました。",

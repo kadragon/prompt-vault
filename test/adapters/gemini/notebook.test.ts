@@ -7,6 +7,7 @@ import {
   ERR_GEMINI_NOTEBOOK_HOME_TIMED_OUT,
   ERR_GEMINI_NOTEBOOK_LIST_LOADING,
   ERR_GEMINI_NOTEBOOK_LIST_MISSING,
+  ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH,
   ERR_GEMINI_NOTEBOOK_ROW_MALFORMED,
   ERR_GEMINI_NOTEBOOK_ROW_MISSING,
   ERR_GEMINI_OPEN_TIMED_OUT,
@@ -62,9 +63,10 @@ function exchange(text: string, id: string): string {
   return `<div class="conversation-container" id="${id}"><user-query>${text}</user-query></div>`;
 }
 
-function fixture(html: string, pathname = HOME): Document {
+/** A parsed page at `pathname`; the notebook's sidebar entry is included unless `withSidebar` is false. */
+function fixture(html: string, pathname = HOME, withSidebar = true): Document {
   const window = new Window({ url: `https://gemini.google.com${pathname}` });
-  window.document.write(html);
+  window.document.write((withSidebar ? sidebar(NOTEBOOK) : '') + html);
   return window.document as unknown as Document;
 }
 
@@ -83,11 +85,17 @@ function memberUrl(titles: string[], index: number): string {
   return geminiAdapter.listProjectConversations!(fixture(history(...titles)))[index].url;
 }
 
-/** Wire every member row so clicking row `i` opens `/app/<ids[i]>` rendering `texts[i]`. */
-function wireRows(doc: Document, go: (path: string) => void, ids: string[]): void {
+/**
+ * Wire every member row so clicking row `i` opens `/app/<ids[i]>`, rendering `chat i` under the
+ * row's own title in `document.title` — the shape measured live (2026-10-17). `titles` overrides
+ * the opened chat's title per row, to model a click that lands on a different chat.
+ */
+function wireRows(doc: Document, go: (path: string) => void, ids: string[], titles: (string | undefined)[] = []): void {
   doc.querySelectorAll('button[data-test-id="navigate-to-recent-chat"]').forEach((button, i) => {
+    const rowTitle = button.querySelector('h2')?.textContent ?? '';
     button.addEventListener('click', () => {
       go(`/app/${ids[i]}`);
+      doc.title = `${titles[i] ?? rowTitle} - Google Gemini`;
       doc.body.innerHTML = sidebar(NOTEBOOK) + exchange(`chat ${i}`, `c_${i}`);
     });
   });
@@ -141,6 +149,15 @@ describe('geminiAdapter.listProjectConversations', () => {
         new ExtractionError(ERR_GEMINI_NOTEBOOK_LIST_LOADING),
       );
     }
+  });
+
+  it('refuses to list while the notebook has no sidebar entry to return through', () => {
+    // Otherwise the run saves its first member and then fails every other (measured with the
+    // sidebar collapsed, 2026-10-17).
+    expect(() => geminiAdapter.listProjectConversations!(fixture(history('First', 'Second'), HOME, false))).toThrow(
+      new ExtractionError(ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING),
+    );
+    expect(geminiAdapter.listProjectConversations!(fixture(emptyHistory(), HOME, false))).toEqual([]);
   });
 
   it('returns nothing off a notebook route, where there is no notebook to key members by', () => {
@@ -224,6 +241,42 @@ describe('geminiAdapter.openProjectConversation', () => {
     expect(location.pathname).toBe(HOME);
   });
 
+  it('refuses the same-titled neighbour that a shift moved onto the listed position', async () => {
+    // Reproduced in review: listed [Twin A, Twin B], ticked B (index 1); a new chat lands on top,
+    // so index 1 now holds Twin A — same title, wrong chat.
+    const { doc, go } = installLivePage(sidebar(NOTEBOOK) + history('New', 'Twin', 'Twin'), HOME);
+    wireRows(doc, go, ['aaaaaaaaaaaaaaaa', CHAT_A, CHAT_B]);
+    await expect(
+      geminiAdapter.openProjectConversation!(memberUrl(['Twin', 'Twin'], 1), { pollMs: 0, timeoutMs: 30 }),
+    ).rejects.toThrow(new ExtractionError(ERR_GEMINI_NOTEBOOK_ROW_MISSING));
+    expect(location.pathname).toBe(HOME);
+  });
+
+  it('refuses a chat that opens under a different title than the ticked row', async () => {
+    const { doc, go } = installLivePage(sidebar(NOTEBOOK) + history('First', 'Second'), HOME);
+    wireRows(doc, go, [CHAT_A, CHAT_B], [undefined, 'Somebody else']);
+    await expect(
+      geminiAdapter.openProjectConversation!(memberUrl(['First', 'Second'], 1), { pollMs: 0, timeoutMs: 30 }),
+    ).rejects.toThrow(new ExtractionError(ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH));
+  });
+
+  it('waits out a document title that lags the opened render', async () => {
+    const { doc, go } = installLivePage(sidebar(NOTEBOOK) + history('First'), HOME);
+    wireRows(doc, go, [CHAT_A], ['Google Gemini']);
+    doc.querySelector('button[data-test-id="navigate-to-recent-chat"]')?.addEventListener('click', () => {
+      setTimeout(() => (doc.title = 'First - Google Gemini'), 20);
+    });
+    await geminiAdapter.openProjectConversation!(memberUrl(['First'], 0), { pollMs: 5, timeoutMs: 500 });
+    expect(location.pathname).toBe(`/app/${CHAT_A}`);
+  });
+
+  it('accepts an untitled row, which has no title to compare', async () => {
+    const { doc, go } = installLivePage(sidebar(NOTEBOOK) + history(''), HOME);
+    wireRows(doc, go, [CHAT_A], ['Anything']);
+    await geminiAdapter.openProjectConversation!(memberUrl([''], 0), { pollMs: 0, timeoutMs: 200 });
+    expect(location.pathname).toBe(`/app/${CHAT_A}`);
+  });
+
   it('opens the listed one of two same-titled rows while positions still hold', async () => {
     const { doc, go } = installLivePage(sidebar(NOTEBOOK) + history('Twin', 'Twin'), HOME);
     wireRows(doc, go, [CHAT_A, CHAT_B]);
@@ -232,6 +285,8 @@ describe('geminiAdapter.openProjectConversation', () => {
   });
 
   it('fails loud when the notebook has no sidebar entry to return through', async () => {
+    // Measured 2026-10-17: a collapsed sidebar renders no `/notebook/` anchor, and `history.back()`
+    // changes the URL without Gemini re-rendering the notebook — there is no other way back.
     installLivePage(sidebar(OTHER_NOTEBOOK) + exchange('previous', 'c_prev'), `/app/${CHAT_A}`);
     await expect(
       geminiAdapter.openProjectConversation!(memberUrl(['First'], 0), { pollMs: 0, timeoutMs: 30 }),
@@ -257,7 +312,8 @@ describe('geminiAdapter.openProjectConversation', () => {
     for (const url of [
       `https://gemini.google.com/app/${CHAT_A}`,
       `https://gemini.google.com${HOME}`,
-      `https://gemini.google.com${HOME}#pv-row=x&pv-title=First`,
+      `https://gemini.google.com${HOME}#pv-row=x&pv-count=1&pv-title=First`,
+      `https://gemini.google.com${HOME}#pv-row=0&pv-title=First`,
     ]) {
       await expect(geminiAdapter.openProjectConversation!(url, { pollMs: 0, timeoutMs: 30 })).rejects.toThrow(
         new ExtractionError(ERR_GEMINI_OPEN_URL_MALFORMED),

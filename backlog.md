@@ -36,6 +36,10 @@ continuation line is invisible to it and the blocked item is offered as actionab
       conversations could be shown a markup-drift error instead of an empty state. Unlike the
       project track there is no measured shell marker for `/recents` to separate the two.
 
+### PR #127 — Gemini notebook project track (2026-10-17)
+
+- [ ] [constraint] A settled notebook list (skeleton gone) is treated as the whole notebook; 31 and 55 chats rendered without paging, but past 55 the list's `infinite-scroller` was never measured — grow `PV probe notebook` past ~100 and confirm, or add a load-more member (source: code-review) — src/adapters/gemini/index.ts `listProjectConversations` (introduced here)
+
 ### PR #61 (Claude navigation/stream failure modes, 2026-08-10)
 
 *(No open items — the sidebar-recycling `[FIX]` was closed 2026-08-10 by measurement rather than by

@@ -10,6 +10,7 @@ import {
   ERR_GEMINI_NOTEBOOK_HOME_TIMED_OUT,
   ERR_GEMINI_NOTEBOOK_LIST_LOADING,
   ERR_GEMINI_NOTEBOOK_LIST_MISSING,
+  ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH,
   ERR_GEMINI_NOTEBOOK_ROW_MALFORMED,
   ERR_GEMINI_NOTEBOOK_ROW_MISSING,
   ERR_GEMINI_OPEN_LINK_MISSING,
@@ -644,6 +645,7 @@ function messageSignature(): string {
 
 const NOTEBOOK_ROW_PARAM = 'pv-row';
 const NOTEBOOK_TITLE_PARAM = 'pv-title';
+const NOTEBOOK_COUNT_PARAM = 'pv-count';
 const FALLBACK_TITLE = 'Gemini conversation';
 
 /** The notebook UUID of a `/notebook/<uuid>` path, or null for any other route. */
@@ -651,11 +653,15 @@ function notebookIdOf(pathname: string): string | null {
   return pathname.match(NOTEBOOK_PATH)?.[1] ?? null;
 }
 
-/** A notebook member's position, the title it was listed under, and its notebook. */
+/**
+ * A notebook member's position, the title it was listed under, its notebook, and how many rows the
+ * notebook listed then — the count is what tells an unchanged list from a shifted one.
+ */
 interface NotebookMember {
   notebookId: string;
   index: number;
   title: string;
+  count: number;
 }
 
 /** Decode a synthetic member URL minted by `listProjectConversations`; null when it is not one. */
@@ -665,16 +671,21 @@ function parseNotebookMemberUrl(url: string, origin: string): NotebookMember | n
     const notebookId = notebookIdOf(parsed.pathname);
     const params = new URLSearchParams(parsed.hash.slice(1));
     const rawIndex = params.get(NOTEBOOK_ROW_PARAM) ?? '';
+    const rawCount = params.get(NOTEBOOK_COUNT_PARAM) ?? '';
     const title = params.get(NOTEBOOK_TITLE_PARAM);
-    if (!notebookId || !/^\d+$/.test(rawIndex) || title === null) return null;
-    return { notebookId, index: Number(rawIndex), title };
+    if (!notebookId || !/^\d+$/.test(rawIndex) || !/^\d+$/.test(rawCount) || title === null) return null;
+    return { notebookId, index: Number(rawIndex), title, count: Number(rawCount) };
   } catch {
     return null;
   }
 }
 
 function notebookMemberUrl(origin: string, member: NotebookMember): string {
-  const params = new URLSearchParams({ [NOTEBOOK_ROW_PARAM]: String(member.index), [NOTEBOOK_TITLE_PARAM]: member.title });
+  const params = new URLSearchParams({
+    [NOTEBOOK_ROW_PARAM]: String(member.index),
+    [NOTEBOOK_COUNT_PARAM]: String(member.count),
+    [NOTEBOOK_TITLE_PARAM]: member.title,
+  });
   return `${origin}/notebook/${member.notebookId}#${params.toString()}`;
 }
 
@@ -729,26 +740,35 @@ function listProjectConversations(root: ParentNode = document): SidebarConversat
   const state = notebookListState(root);
   if (state === 'missing') throw new ExtractionError(ERR_GEMINI_NOTEBOOK_LIST_MISSING);
   if (state === 'loading') throw new ExtractionError(ERR_GEMINI_NOTEBOOK_LIST_LOADING);
+  // Every member after the first is reached by returning through this entry (see
+  // `returnToNotebookHome`); without it, refuse up front rather than part-way through the run.
+  const rows = readNotebookRows(root);
+  if (rows.length > 0 && !findNotebookSidebarLink(root, notebookId)) {
+    throw new ExtractionError(ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING);
+  }
   const origin = documentOrigin(root);
-  return readNotebookRows(root).map(({ title }, index) => ({
+  return rows.map(({ title }, index) => ({
     id: `notebook:${notebookId}:${index}`,
     title,
-    url: notebookMemberUrl(origin, { notebookId, index, title }),
+    url: notebookMemberUrl(origin, { notebookId, index, title, count: rows.length }),
   }));
 }
 
 /**
- * The row to click for `member`: the one at its listed position when that row still shows the
- * listed title, otherwise the ONLY row showing that title. Anything else — the title gone, or
- * shared by several rows none of which sits at the listed position — is ambiguous and returns
+ * The row to click for `member`. A title only ONE row shows is that row, wherever it moved. A
+ * title several rows share is told apart by position alone, so the position is trusted only while
+ * the notebook still has the row count it was listed with: a chat added above shifts every row,
+ * and the row now at the listed index may be the OTHER same-titled chat — which would export
+ * under the ticked member's name with nothing to flag it. Anything else is ambiguous and returns
  * null, which the caller reports instead of guessing.
  */
 function findNotebookRowButton(member: NotebookMember): HTMLElement | null {
   const rows = readNotebookRows(document);
-  const atIndex = rows[member.index];
-  if (atIndex && atIndex.title === member.title) return atIndex.button;
   const sameTitle = rows.filter((row) => row.title === member.title);
-  return sameTitle.length === 1 ? sameTitle[0].button : null;
+  if (sameTitle.length === 1) return sameTitle[0].button;
+  const atIndex = rows[member.index];
+  if (sameTitle.length > 1 && rows.length === member.count && atIndex?.title === member.title) return atIndex.button;
+  return null;
 }
 
 /**
@@ -772,10 +792,26 @@ async function openProjectConversation(url: string, opts: OpenConversationOption
 
   const beforeSignature = messageSignature();
   button.click();
-  if (await waitForOpenedConversation((pathname) => CONVERSATION_ID_PATH.test(pathname), beforeSignature, pollMs, timeoutMs)) {
-    return;
+  if (!(await waitForOpenedConversation((pathname) => CONVERSATION_ID_PATH.test(pathname), beforeSignature, pollMs, timeoutMs))) {
+    throw new ExtractionError(ERR_GEMINI_OPEN_TIMED_OUT);
   }
-  throw new ExtractionError(ERR_GEMINI_OPEN_TIMED_OUT);
+  await assertOpenedMember(member, pollMs, timeoutMs);
+}
+
+/**
+ * Confirm the chat that opened is the member that was clicked, by its title. Unlike the sidebar
+ * track there is no id to pin the route to, so a row click that lands elsewhere would otherwise
+ * be exported under the ticked title. `document.title` carried the clicked row's title on every
+ * measured open (2026-10-17: rows 30, 5 and 0 of 31). It can lag the render, so a mismatch is
+ * polled out before it counts; an untitled row has nothing to compare and is accepted.
+ */
+async function assertOpenedMember(member: NotebookMember, pollMs: number, timeoutMs: number): Promise<void> {
+  if (member.title === FALLBACK_TITLE) return;
+  const deadline = Date.now() + timeoutMs;
+  while (deriveTitle(document) !== member.title) {
+    if (Date.now() >= deadline) throw new ExtractionError(ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH);
+    await delay(pollMs);
+  }
 }
 
 /** The measured conversation route shape (16-hex id), as `resolveConversationHref` pins it. */
@@ -797,16 +833,29 @@ async function waitForNotebookRow(member: NotebookMember, pollMs: number, timeou
   return findNotebookRowButton(member);
 }
 
+/** The notebook's own sidebar entry, or null when the sidebar does not render it. */
+function findNotebookSidebarLink(root: ParentNode, notebookId: string): HTMLElement | null {
+  return (
+    Array.from(root.querySelectorAll<HTMLElement>(selectors.notebookSidebarLink)).find(
+      (anchor) => notebookIdOf(anchor.getAttribute('href') ?? '') === notebookId,
+    ) ?? null
+  );
+}
+
 /**
  * Bring the user back to notebook `notebookId`'s home through its own sidebar entry — an in-app
  * link, so the SPA route changes without a reload that would tear down the content script and
- * the bulk run. Resolves at once when already there.
+ * the bulk run (measured 2026-10-17). Resolves at once when already there.
+ *
+ * The entry is the ONLY way back that was found. Measured 2026-10-17 with the sidebar collapsed:
+ * the document held 0 `/notebook/` anchors on both the notebook home and a member chat, and
+ * `history.back()` changed the URL to the notebook without Gemini re-rendering it (the member chat
+ * stayed on screen, no list after 15 s). `listProjectConversations` therefore refuses to list
+ * while the entry is missing, so a run cannot save one member and then fail every other.
  */
 async function returnToNotebookHome(notebookId: string, pollMs: number, timeoutMs: number): Promise<void> {
   if (notebookIdOf(location.pathname) === notebookId) return;
-  const link = Array.from(document.querySelectorAll<HTMLElement>(selectors.notebookSidebarLink)).find(
-    (anchor) => notebookIdOf(anchor.getAttribute('href') ?? '') === notebookId,
-  );
+  const link = findNotebookSidebarLink(document, notebookId);
   if (!link) {
     throw new ExtractionError(ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING);
   }

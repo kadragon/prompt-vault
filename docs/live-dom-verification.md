@@ -1853,6 +1853,16 @@ was created with zero chats. Counts exclude conversation text.
   On a conversation page the sidebar panel showed the new `bulkHistoryNotebooksNotice` above 33
   rows; clicked before the sidebar had hydrated on a cold load it showed `errGeminiSidebarMissing`
   instead, which is the existing loud path, not a change.
+- **Collapsed sidebar — the one way back disappears (review follow-up, same session).** With
+  the sidebar collapsed (a preference that survived a reload) the document held **0**
+  `a[href^="/notebook/"]` on both the notebook home and a member chat; no other link to the
+  notebook was found. `history.back()` from a member chat changed the URL to the notebook but
+  Gemini did **not** re-render it: the member chat stayed on screen, with no `project-chat-history`
+  after 15 s. A run with that fallback saved its first member and failed the second. So the
+  listing now refuses up front while the entry is missing (`errGeminiNotebookHomeLinkMissing`,
+  "keep the sidebar open"), observed live; with the sidebar re-opened (its original state) the
+  panel listed 55 and a 2-member export saved 2 of 2, each opened chat's `document.title` matching
+  its row.
 
 ### 2026-10-15 — a Notebook home lists its chats as id-less buttons, and they leave the global sidebar
 

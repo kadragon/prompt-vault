@@ -123,10 +123,17 @@ export interface ConversationAdapter {
 
   /**
    * Enumerate the conversations shown on a Project home page into the lightweight
-   * `SidebarConversation` model, in display order (keyed by the stable conversation
-   * id). Pure DOM read — no messages are scraped (that is `extract`'s job, after
-   * `openProjectConversation` navigates). Returns `[]` when the list is absent.
-   * Defaults to the live `document`; tests pass a parsed fixture root.
+   * `SidebarConversation` model, in display order. Pure DOM read — no messages are scraped
+   * (that is `extract`'s job, after `openProjectConversation` navigates). Defaults to the live
+   * `document`; tests pass a parsed fixture root.
+   *
+   * Entries are keyed by the stable conversation id where the home page exposes one (ChatGPT,
+   * Claude). Where it does not (Gemini's notebook rows are id-less buttons), `id` and `url` are
+   * SYNTHETIC and positional: valid only for this listing, to be passed back to
+   * `openProjectConversation` as-is — never persisted across a re-list or compared with an
+   * `/app/<id>` route. An absent list may be reported either way, as for `listConversations`:
+   * `[]` where absence is distinguishable from an empty project, a throw where it is not —
+   * **callers must handle a throw**.
    */
   listProjectConversations?(root?: ParentNode): SidebarConversation[];
 
@@ -134,7 +141,8 @@ export interface ConversationAdapter {
    * Like `openConversation`, but for a project conversation: the anchor may live in
    * the project home page's list or in the persistent project sidebar expando shown
    * once a conversation is open, so it is located by conversation id across whichever
-   * is currently in the DOM. Fail-loud on miss/timeout (AGENTS.md #4).
+   * is currently in the DOM — or, for a synthetic positional entry, by the position and
+   * title it was listed under. Fail-loud on miss/timeout/ambiguity (AGENTS.md #4).
    */
   openProjectConversation?(url: string, opts?: OpenConversationOptions): Promise<void>;
 

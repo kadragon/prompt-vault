@@ -220,6 +220,7 @@ export const ERR_GEMINI_NOTEBOOK_LIST_MISSING = m('errGeminiNotebookListMissing'
 export const ERR_GEMINI_NOTEBOOK_LIST_LOADING = m('errGeminiNotebookListLoading');
 export const ERR_GEMINI_NOTEBOOK_ROW_MALFORMED = m('errGeminiNotebookRowMalformed');
 export const ERR_GEMINI_NOTEBOOK_ROW_MISSING = m('errGeminiNotebookRowMissing');
+export const ERR_GEMINI_NOTEBOOK_OPEN_MISMATCH = m('errGeminiNotebookOpenMismatch');
 export const ERR_GEMINI_NOTEBOOK_HOME_LINK_MISSING = m('errGeminiNotebookHomeLinkMissing');
 export const ERR_GEMINI_NOTEBOOK_HOME_TIMED_OUT = m('errGeminiNotebookHomeTimedOut');
 

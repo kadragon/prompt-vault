@@ -388,9 +388,13 @@
     "message": "Could not open a selected Gemini notebook chat: no row in the notebook shows its title any more, or more than one does. The notebook may have changed after the list was loaded. It was skipped.",
     "description": "Bulk export error (Gemini): no row of the notebook still shows the selected chat's title, or several ambiguous rows do, so it was skipped."
   },
+  "errGeminiNotebookOpenMismatch": {
+    "message": "Could not export a selected Gemini notebook chat: the chat that opened has a different title, so it was skipped instead of being saved under the wrong name.",
+    "description": "Bulk export error (Gemini): the chat a notebook row opened did not carry the selected chat's title, so it was skipped rather than exported under the wrong name."
+  },
   "errGeminiNotebookHomeLinkMissing": {
-    "message": "Could not return to the Gemini notebook: its entry was not found in the sidebar. Expand the sidebar and try again. It was skipped.",
-    "description": "Bulk export error (Gemini): the notebook's sidebar entry, needed to return to the notebook, was not found, so the step was skipped."
+    "message": "To export a Gemini notebook, keep the sidebar open: the extension returns to the notebook through its sidebar entry between chats. Open the sidebar and try again.",
+    "description": "Bulk export error (Gemini): the notebook's sidebar entry — the only measured way back to the notebook between chats — is not on the page, usually because the sidebar is collapsed."
   },
   "errGeminiNotebookHomeTimedOut": {
     "message": "Timed out returning to the Gemini notebook. It may be loading slowly. It was skipped.",
