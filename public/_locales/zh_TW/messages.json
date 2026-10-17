@@ -151,8 +151,8 @@
     "description": "Shown when no conversations are available to export (empty history sidebar or empty project)."
   },
   "bulkHistoryNotebooksNotice": {
-    "message": "儲存在 Gemini 筆記本中的對話不會列在此清單中。",
-    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook."
+    "message": "儲存在 Gemini 筆記本中的對話不會列在此清單中。如需匯出，請開啟該筆記本並使用其中的「全部下載」按鈕。",
+    "description": "Shown above the Gemini bulk-export list: the history sidebar it enumerates never lists chats that live in a notebook, which are exported from the notebook page's own trigger instead."
   },
   "bulkListErrorMessage": {
     "message": "無法讀取對話清單：$error$",
@@ -370,6 +370,30 @@
   "errGeminiResponseUnreadable": {
     "message": "這段對話中有一則回覆無法被本擴充功能讀取——可能是 Gemini 顯示在一般文字區域之外的內容類型，也可能是 Gemini 的頁面結構已變更。請回報此問題。",
     "description": "Extraction error (Gemini): a response could not be read, possibly a kind rendered outside the normal text area."
+  },
+  "errGeminiNotebookListMissing": {
+    "message": "在此 Gemini 筆記本頁面上找不到對話清單。Gemini 的頁面結構可能已變更，請回報此問題。",
+    "description": "Bulk export error (Gemini): the chat list was not found on a notebook page."
+  },
+  "errGeminiNotebookListLoading": {
+    "message": "Gemini 筆記本的對話清單仍在載入。請等所有對話都顯示後再試一次。",
+    "description": "Bulk export error (Gemini): the notebook chat list was still loading when the bulk panel tried to read it."
+  },
+  "errGeminiNotebookRowMalformed": {
+    "message": "無法讀取 Gemini 筆記本的對話清單：有一列包含的對話按鈕不是恰好一個。Gemini 的頁面結構可能已變更，請回報此問題。",
+    "description": "Bulk export error (Gemini): a row of the notebook chat list did not hold exactly one chat button."
+  },
+  "errGeminiNotebookRowMissing": {
+    "message": "無法開啟所選的 Gemini 筆記本對話：筆記本中已沒有顯示該標題的列，或有多列顯示該標題。載入清單後筆記本可能已有變動。已略過這則對話。",
+    "description": "Bulk export error (Gemini): no row of the notebook still shows the selected chat's title, or several ambiguous rows do, so it was skipped."
+  },
+  "errGeminiNotebookHomeLinkMissing": {
+    "message": "無法返回 Gemini 筆記本：在側邊欄中找不到該筆記本。請展開側邊欄後再試一次。已略過此步驟。",
+    "description": "Bulk export error (Gemini): the notebook's sidebar entry, needed to return to the notebook, was not found, so the step was skipped."
+  },
+  "errGeminiNotebookHomeTimedOut": {
+    "message": "返回 Gemini 筆記本時逾時，可能是載入較慢。已略過此步驟。",
+    "description": "Bulk export error (Gemini): returning to the notebook home took too long, so the step was skipped."
   },
   "errClaudeArtifactAndAttachment": {
     "message": "一則 Claude 訊息同時帶有 Artifact 卡片和附件，這是以前從未出現過的結構，因此無法判斷傳送者。請回報此問題。",

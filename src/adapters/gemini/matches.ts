@@ -29,3 +29,20 @@ export function matches(url: string): boolean {
   }
   return SUPPORTED_HOSTS.has(parsed.hostname) && CONVERSATION_PATH.test(parsed.pathname);
 }
+
+// A Notebook home — Gemini's project analogue — lives at /notebook/<uuid> (singular, a 36-char
+// UUID), optionally trailing-slashed. Pinned to the UUID shape because `/notebooks/create` is a
+// sibling route that must not mount the project trigger. Verified against the live page
+// (2026-10-15, 2026-10-17).
+export const NOTEBOOK_PATH = /^\/notebook\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/;
+
+/** True only for a Gemini Notebook home page. Invalid URLs return false rather than throwing. */
+export function matchesProject(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return SUPPORTED_HOSTS.has(parsed.hostname) && NOTEBOOK_PATH.test(parsed.pathname);
+}

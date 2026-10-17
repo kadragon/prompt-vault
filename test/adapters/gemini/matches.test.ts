@@ -68,3 +68,29 @@ describe('adapter registry', () => {
     expect(pickAdapter('https://claude.ai/chat/abc')?.provider).toBe('claude');
   });
 });
+
+describe('geminiAdapter.matchesProject', () => {
+  const NOTEBOOK = '090a4448-ad58-41ca-97c0-cdb5c264878f';
+
+  it('matches a Notebook home, with or without a trailing slash', () => {
+    // Live shape (2026-10-15): /notebook/<36-char uuid>.
+    expect(geminiAdapter.matchesProject?.(`https://gemini.google.com/notebook/${NOTEBOOK}`)).toBe(true);
+    expect(geminiAdapter.matchesProject?.(`https://gemini.google.com/notebook/${NOTEBOOK}/`)).toBe(true);
+  });
+
+  it('does not match the notebook-creation route or a non-uuid notebook path', () => {
+    expect(geminiAdapter.matchesProject?.('https://gemini.google.com/notebooks/create')).toBe(false);
+    expect(geminiAdapter.matchesProject?.('https://gemini.google.com/notebook/create')).toBe(false);
+    expect(geminiAdapter.matchesProject?.(`https://gemini.google.com/notebook/${NOTEBOOK}/extra`)).toBe(false);
+  });
+
+  it('does not match a conversation page, a Gem, or a look-alike host', () => {
+    expect(geminiAdapter.matchesProject?.('https://gemini.google.com/app/a1b2c3d4e5f60001')).toBe(false);
+    expect(geminiAdapter.matchesProject?.('https://gemini.google.com/gem/1a2b3c')).toBe(false);
+    expect(geminiAdapter.matchesProject?.(`https://gemini.google.com.attacker.example/notebook/${NOTEBOOK}`)).toBe(false);
+  });
+
+  it('never claims a Notebook home as a conversation page', () => {
+    expect(geminiAdapter.matches(`https://gemini.google.com/notebook/${NOTEBOOK}`)).toBe(false);
+  });
+});

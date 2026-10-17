@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Export every chat in a Gemini notebook from the notebook page (2026-10-17) → docs/live-dom-verification.md
 - [done] Tell users the Gemini bulk panel does not list notebook chats (2026-10-16)
 - [done] Measure Claude code-execution output cards as artifact-rooted and close the file-card-open concern (2026-10-15) → docs/live-dom-verification.md
 - [done] Narrow Claude artifact kind separator to the measured U+00B7 (2026-10-15) → docs/live-dom-verification.md

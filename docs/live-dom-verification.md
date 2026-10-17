@@ -106,7 +106,8 @@ deliberately not recorded here.
 | Claude | conversation `Multiple artifacts in one reply` | 3 artifact cards: kinds `PY`, `문서·MD`, `코드·JSX` (pre-existing) |
 | Claude | conversation `PV probe file creation` | 2 turns, 3 code-execution output cards: `표·CSV`, then `ZIP` + `문서·DOCX` (2026-10-15) |
 | ChatGPT | project `PV probe long project` | 17 one-turn conversations, 7 rows below a 941 px viewport (2026-10-15) |
-| Gemini | notebook `PV probe notebook` | 2 one-turn chats `PV Probe 1 Test` / `PV Probe 2 Confirmation` (2026-10-15) |
+| Gemini | notebook `PV probe notebook` | 55 one-turn chats titled `PV Probe <n> …`, n = 1–56 without 32 (2 on 2026-10-15, 53 on 2026-10-17); no two titles equal |
+| Gemini | notebook `PV probe empty notebook` | zero chats (2026-10-17) |
 
 ## The loop
 
@@ -1811,6 +1812,47 @@ Scope limits: one account, `ko-KR`, 26 conversations, three projects (0, 1 and 4
 `[unknown — not measured]`). `/project/<id>` remains `[unknown — not measured]`.
 
 ## Gemini
+
+### 2026-10-17 — a Notebook list fills behind a placeholder, empties on a marker, and exports end to end
+
+Builds the Notebooks project track on the 2026-10-15 entry below. Playwright MCP session, logged-in
+ko-KR account, viewport 941 px. `PV probe notebook` was grown from 2 to 55 one-turn chats from its
+own composer (56 sends; #32 never routed, #10 routed late but exists), and `PV probe empty notebook`
+was created with zero chats. Counts exclude conversation text.
+
+- **The list fills in two steps behind a placeholder.** Sampled at 10–50 ms on every arrival
+  (cold load, and returns through the sidebar entry): `project-chat-history` first, holding
+  `project-list-skeleton[data-test-id="skeleton"]` and 0 rows; then the newest **10** rows with the
+  skeleton STILL present; then every row with the skeleton gone. Measured at 31 chats (10 → 31,
+  ~200 ms in the 10-row state, five arrivals) and at 55 (10 → 55, ~260 ms). No scrolling was
+  needed for either: 55 rows rendered with the list's own `infinite-scroller` at 2688 × 326 px and
+  scrolling it to the bottom added nothing. The rendered numbers matched the created set exactly
+  (1–56 without 32). Behaviour past 55 is `[unknown — not measured]`, so no load-more member ships.
+- **Empty is a positive marker.** The zero-chat notebook rendered
+  `[data-test-id="notebook-empty-state"]` ~200 ms after the container, every time (three
+  arrivals); the 55-chat notebook never rendered it in any sample. Hence
+  `listProjectConversations`: skeleton up, or neither rows nor the marker → fail loud as still
+  loading; rows and no skeleton → the list; marker → `[]`.
+- **Arrival timing varies widely.** A cold `page.goto` put the container in at ~2.5 s with 2 chats
+  but at **18.5–20 s** with 31; a return through the sidebar entry took 0.2–2.0 s. The extension's
+  overlay trigger appeared at 2.6 s on a cold load and moved into the list (`native`, parent
+  `project-chat-history`) at 16.6 s, before the rows arrived.
+- **Opening and returning.** Clicking row *i*'s `button[data-test-id="navigate-to-recent-chat"]`
+  opened the chat titled as row *i* (indices 30, 5, 0 of 31; `document.title` matched). Clicking the
+  notebook's sidebar entry `a[href="/notebook/<uuid>"]` changed the route within ~50 ms with a
+  `window` marker surviving, i.e. no reload. Row order was identical before and after each open.
+- **Trigger chrome.** Gemini's text and outlined Material button classes inherit
+  `--mat-button-text-label-text-color: #fff` inside the notebook view and rendered white on white;
+  the filled `mat-mdc-unelevated-button` computed to `rgb(11, 87, 208)` behind white text and sits
+  right-aligned above *이전 채팅*. The dark theme was not measured.
+- **Built extension, end to end (1.14.6, unpacked `dist/`, reloaded from `chrome://extensions`).**
+  The notebook panel listed 55 members under their titles. Exporting rows 0, 27 and 54 as Markdown
+  visited three distinct `/app/<id>` routes, returning to the notebook between each, and ended on
+  the notebook home with *3개 중 3개 저장했습니다*. The three files' headings and first prompts were
+  `PV Probe 56`, `28` and `1` — the ticked rows. The empty notebook's panel showed the empty state.
+  On a conversation page the sidebar panel showed the new `bulkHistoryNotebooksNotice` above 33
+  rows; clicked before the sidebar had hydrated on a cold load it showed `errGeminiSidebarMissing`
+  instead, which is the existing loud path, not a change.
 
 ### 2026-10-15 — a Notebook home lists its chats as id-less buttons, and they leave the global sidebar
 
