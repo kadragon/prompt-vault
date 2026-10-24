@@ -23,7 +23,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ### PR #118 — exclude the Claude screenshot from the English store upload set (2026-10-11)
 
-- [ ] [doc] Remove `screenshot-03-claude-conversation.png` from the default (English) locale's screenshots in the Developer Dashboard if the live listing still carries it, then confirm the published English listing — not only the Dashboard preview — shows shots 1, 2, 4 and 5 (source: code-review) — `docs/store-listing.md` → *English upload set* *(blocked by: human-only Developer Dashboard action — whether the live listing currently holds shot 3 is unverified)*
+- [ ] [doc] Remove `screenshot-03-claude-conversation.png` from the default (English) locale's screenshots in the Developer Dashboard if the live listing still carries it, then confirm the published English listing — not only the Dashboard preview — shows shots 1, 2, 4 and 5 (source: code-review) — `docs/store-listing.md` → *English upload set* *(blocked by: human-only Developer Dashboard action — the public English listing still showed shot 3 ("Same buttons on Claude") as one of five screenshots on 2026-10-24)*
 
 ### QA pass on the `/recents` bulk track + empty-project fix (2026-08-11)
 
