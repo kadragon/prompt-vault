@@ -75,3 +75,31 @@ describe('chatgptAdapter.toolbarAnchor', () => {
     expect(chatgptAdapter.toolbarAnchor?.(doc.querySelector('.gap-toolbar-action')!) ?? null).toBeNull();
   });
 });
+
+describe('chatgptAdapter shape', () => {
+  it('implements the measured conversation, sidebar, and project members', () => {
+    // The whole member set catches a member added without the live verification that must
+    // come with it, and pins that the project trigger keeps the shared "this project" name
+    // (no `projectTriggerAriaLabel`) — ChatGPT calls its projects projects.
+    expect(chatgptAdapter.provider).toBe('chatgpt');
+    expect(Object.keys(chatgptAdapter).sort()).toEqual([
+      'extract',
+      'listConversations',
+      'listProjectConversations',
+      'loadMoreConversations',
+      'loadMoreProjectConversations',
+      'matches',
+      'matchesProject',
+      'openConversation',
+      'openProjectConversation',
+      'openProjectHome',
+      'projectToolbarButtonClass',
+      'projectToolbarMount',
+      'provider',
+      'suppressOverlay',
+      'toolbarAnchor',
+      'toolbarButtonClass',
+      'toolbarMount',
+    ]);
+  });
+});
