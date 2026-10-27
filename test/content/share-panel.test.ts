@@ -224,6 +224,8 @@ describe('openSharePanel', () => {
     addTerm(doc, 'Acme');
     // `Acme` masks the assistant's "Acme" and, case-insensitively, the now-unmasked email's domain.
     expect(count()).toBe('Masked in this copy: 3');
+    buttonByText(panelOf(doc), '×').click(); // remove the term again
+    expect(count()).toBe('Masked in this copy: 1');
   });
 
   it('keeps Tab inside the dialog: past the last control it wraps to the first, and back', () => {

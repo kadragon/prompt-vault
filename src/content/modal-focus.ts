@@ -27,7 +27,10 @@ export function trapTab(dialog: HTMLElement, event: KeyboardEvent): void {
     dialog.focus();
     return;
   }
-  const outside = !active || !dialog.contains(active);
+  // Focus left on a control that has since been disabled (a bulk run disables Export under
+  // the cursor), or on anything else the list skips, gets the same pull-back as focus
+  // outside the dialog: the browser's own Tab from there could leave the modal.
+  const outside = !active || (active !== dialog && !items.includes(active as HTMLElement));
   if (event.shiftKey && (outside || active === first || active === dialog)) {
     event.preventDefault();
     last.focus();
