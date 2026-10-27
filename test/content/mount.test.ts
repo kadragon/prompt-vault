@@ -159,6 +159,27 @@ function docWithClaudeAppShell(): Document {
 const TRACK_ATTR = 'data-prompt-vault-track';
 
 describe('syncButtons', () => {
+  it('turns pointer events back on for the toolbar inside a header that switches them off', () => {
+    // ChatGPT's app-shell header is `pointer-events: none` (measured live 2026-10-27); the
+    // property inherits, so without an override every injected button lets clicks fall through.
+    const doc = docWithHeader();
+    doc.querySelector('header')!.style.pointerEvents = 'none';
+    syncButtons(doc, CONV_URL);
+
+    // happy-dom does not compute `pointer-events`, so resolve its inheritance by hand: the
+    // nearest element (self first) with an inline value decides.
+    const effectivePointerEvents = (el: Element | null): string => {
+      for (; el; el = el.parentElement) {
+        const value = (el as HTMLElement).style.pointerEvents;
+        if (value) return value;
+      }
+      return 'auto';
+    };
+    const buttons = Array.from(doc.getElementById(CONTAINER_ID)?.querySelectorAll('button') ?? []);
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) expect(effectivePointerEvents(button)).toBe('auto');
+  });
+
   it('injects the buttons inside the header bar on a conversation page', () => {
     const doc = docWithHeader();
     syncButtons(doc, CONV_URL);
