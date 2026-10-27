@@ -4,7 +4,8 @@ import type { IncompleteCause, SidebarConversation } from '../core/sidebar';
 import { ExtractionError } from '../core/errors';
 import { bulkExport, type BulkTarget } from './bulk-export';
 import { openBulkPanel } from './bulk-panel';
-import { saveConversation, type ExportFormat } from './save-conversation';
+import { openSharePanel } from './share-panel';
+import { downloadTextFile, saveConversation, type ExportFormat } from './save-conversation';
 import {
   BULK_UNSUPPORTED_MESSAGE,
   DOWNLOAD_BULK_ARIA_LABEL,
@@ -20,6 +21,8 @@ import {
   DOWNLOAD_PROJECT_BULK_ARIA_LABEL,
   DOWNLOAD_PROJECT_BULK_LABEL,
   DOWNLOAD_RECENTS_BULK_ARIA_LABEL,
+  DOWNLOAD_SHARE_ARIA_LABEL,
+  DOWNLOAD_SHARE_LABEL,
   EXPORT_FAILED_MESSAGE,
   pdfMissingGlyphsMessage,
   EXPORT_NO_ADAPTER_MESSAGE,
@@ -36,7 +39,9 @@ let cachedSettings: ToolbarSettings = DEFAULT_SETTINGS;
 
 /** Value-equality on the toolbar settings, so a no-op update can skip a needless re-mount. */
 function settingsEqual(a: ToolbarSettings, b: ToolbarSettings): boolean {
-  return a.bulk === b.bulk && FORMAT_KEYS.every((key) => a.formats[key] === b.formats[key]);
+  return (
+    a.bulk === b.bulk && a.share === b.share && FORMAT_KEYS.every((key) => a.formats[key] === b.formats[key])
+  );
 }
 
 /**
@@ -179,7 +184,19 @@ function bulkIcon(doc: Document): SVGElement {
   ]);
 }
 
-/** Shared shape for every toolbar button (per-format download and the bulk action). */
+// Copy for sharing: a struck-through eye ("hidden"), for the masking the copy does. Not the
+// common "share out" tray-and-arrow: hosts draw exactly that on their own Share buttons, and an
+// outbound arrow would suggest data leaving the browser, which this feature never does.
+function shareIcon(doc: Document): SVGElement {
+  return makeIcon(doc, [
+    { tag: 'path', attrs: { d: 'M9.88 9.88a3 3 0 1 0 4.24 4.24' } },
+    { tag: 'path', attrs: { d: 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68' } },
+    { tag: 'path', attrs: { d: 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61' } },
+    { tag: 'path', attrs: { d: 'M2 2l20 20' } },
+  ]);
+}
+
+/** Shared shape for every toolbar button (per-format download, share and bulk actions). */
 interface ButtonSpec {
   label: string;
   ariaLabel: string;
@@ -265,6 +282,18 @@ export function createButtons(
   for (const spec of FORMATS.filter((spec) => cachedSettings.formats[spec.format])) {
     const buttonSpec: ButtonSpec = { ...spec, onClick: () => void runExport(container, spec.format) };
     container.appendChild(createButton(doc, placement, buttonSpec, buttonClass));
+  }
+  // The copy-for-sharing action follows the per-format buttons: it reviews a separate,
+  // masked Markdown copy in a modal rather than downloading the backup, so it carries its
+  // own handler and never touches the format buttons' output.
+  if (cachedSettings.share) {
+    const shareSpec: ButtonSpec = {
+      label: DOWNLOAD_SHARE_LABEL,
+      ariaLabel: DOWNLOAD_SHARE_ARIA_LABEL,
+      icon: shareIcon,
+      onClick: () => void openShareExport(doc, container),
+    };
+    container.appendChild(createButton(doc, placement, shareSpec, buttonClass));
   }
   // The bulk action sits after the per-format buttons: it opens a selection panel
   // instead of downloading the current conversation, so it carries its own handler.
@@ -422,6 +451,39 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
   } catch (error) {
     // ExtractionError carries a user-actionable message; anything else is
     // unexpected and gets the generic fallback.
+    alert(error instanceof ExtractionError ? error.message : EXPORT_FAILED_MESSAGE);
+  } finally {
+    exportInFlight = false;
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+/**
+ * Extract the current conversation and open the copy-for-sharing review modal on it. Same
+ * fail-loud path as `runExport` (AGENTS.md #4) — no adapter, an extraction error or an empty
+ * conversation each surface an alert and no modal opens — and the same in-flight guard, so
+ * the extraction cannot race a download. The guard covers the extraction only: once open,
+ * the modal's backdrop covers the toolbar until it closes.
+ */
+async function openShareExport(doc: Document, container: HTMLDivElement): Promise<void> {
+  if (exportInFlight) return;
+  exportInFlight = true;
+  const buttons = container.querySelectorAll('button');
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    const adapter = pickAdapter(location.href);
+    if (!adapter) {
+      alert(EXPORT_NO_ADAPTER_MESSAGE);
+      return;
+    }
+    const conversation = await adapter.extract();
+    assertConversationNonEmpty(conversation);
+    openSharePanel(doc, {
+      conversation,
+      download: (filename, text) => downloadTextFile(doc, filename, text, 'text/markdown'),
+      now: new Date(),
+    });
+  } catch (error) {
     alert(error instanceof ExtractionError ? error.message : EXPORT_FAILED_MESSAGE);
   } finally {
     exportInFlight = false;

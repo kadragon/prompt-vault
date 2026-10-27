@@ -8,12 +8,23 @@ A `*(blocked by: ...)*` / `*(deferred: ...)*` marker MUST sit on the item's own 
 and in `tasks.md`). The picker tokenizes checkboxes line by line, so a marker pushed onto a
 continuation line is invisible to it and the blocked item is offered as actionable work.
 
-## 2 — share copy review modal
+## Copy for sharing — follow-ups (2026-10-27)
 
-- [ ] [FEAT] Add the Share-safe Markdown toolbar button, review modal `src/content/share-panel.ts`, options `share` toggle (default on) and its strings in all five locales
-  Source: docs/design/share-copy-export.md → Implementation Decisions (UI, Toolbar, Settings, Privacy, Strings), Testing Decisions
-  Done when: happy-dom tests cover checked-by-default candidates, unchecking and adding a term refreshing the preview, Save downloading the share filename with the previewed text, Cancel/Escape/backdrop unbinding listeners, no `chrome.storage` write; settings tests cover the `share` default and `sanitize` repair; toolbar omits the button when off; i18n and privacy gates stay green → `npm run lint && npm run typecheck && npm test`, plus a visual check of the modal on the loaded extension per `docs/live-dom-verification.md`
-  Approach: modal per the `bulk-panel.ts` recipe; open through `runExport`'s extract + non-empty + fail-loud path under the shared in-flight guard; no "anonymized" wording anywhere
+> Non-blocking findings from the product evaluation and QA of the share-copy modal. Design:
+> `docs/design/share-copy-export.md`.
+
+- [ ] [FIX] Match Latin-script manual terms on word boundaries so `Lee` no longer turns `sleeps` into `s[REDACTED]ps`; keep substring matching for CJK/Hangul terms, which have no spaces between words
+  Done when: core tests show `Lee` masks `Lee`/`lee.` but not `sleeps`, `김철수` still masks inside `김철수님`, and the overlap/escape/union tests stay green → `npm run lint && npm run typecheck && npm test`
+- [ ] [FEAT] Detect North-American `(415) 555-0123` / `415-555-0123` and Chinese mobile `138 0013 8000` phone numbers (separators required, bare digit runs still never match)
+  Done when: core tests cover each format plus date/id/version false-positive guards, and the existing phone cases are unchanged → `npm run lint && npm run typecheck && npm test`
+- [ ] [UX] Group identical detected values into one checklist row (with a count) and add a select-all toggle, so keeping one repeated sample address is one click
+  Done when: happy-dom tests show three `a@b.com` occurrences render as one row "×3" whose uncheck keeps all three, and select-all toggles every row → `npm run lint && npm run typecheck && npm test`
+- [ ] [UX] Show how many values the preview masks (e.g. "12 masked") above the preview, refreshed with it, so a 200-turn review has a summary to check against
+  Done when: happy-dom tests show the count tracks unchecking and adding/removing terms; new string in all five locales → `npm run lint && npm run typecheck && npm test`
+- [ ] [a11y] Trap Tab inside the share and bulk modals and return focus to the toolbar button that opened them on close
+  Done when: happy-dom tests show Tab/Shift+Tab cycle within each dialog and focus lands back on the opener after Cancel/Escape/backdrop/Save → `npm run lint && npm run typecheck && npm test`
+- [ ] [VERIFY] Measure on the live pages whether Claude's project/recents trigger and Gemini's notebook trigger receive real clicks (`elementFromPoint` at each button), as done for ChatGPT on 2026-10-27 in `docs/live-dom-verification.md`
+  Done when: both are recorded in `docs/live-dom-verification.md` as clickable, or a fix like PR #136 lands for the one that is not
 
 ## Tooling & static analysis
 

@@ -55,8 +55,19 @@ describe('sanitize', () => {
     expect(sanitize({ bulk: false }).bulk).toBe(false);
   });
 
+  it('shows the share icon by default and respects a disabled share toggle', () => {
+    expect(DEFAULT_SETTINGS.share).toBe(true);
+    expect(sanitize({ formats: { md: true }, bulk: false }).share).toBe(true);
+    expect(sanitize({ share: false }).share).toBe(false);
+  });
+
+  it('repairs a non-boolean share value to the default', () => {
+    expect(sanitize({ share: 'off' }).share).toBe(true);
+    expect(sanitize({ share: 0 }).share).toBe(true);
+  });
+
   it('falls back to all formats on when every format would be disabled (fail-safe)', () => {
-    const result = sanitize({ formats: { md: false, pdf: false, json: false, html: false }, bulk: false });
+    const result = sanitize({ formats: { md: false, pdf: false, json: false, html: false }, bulk: false, share: true });
     expect(result.formats).toEqual(DEFAULT_SETTINGS.formats);
     // The bulk toggle is independent of the format fail-safe.
     expect(result.bulk).toBe(false);
@@ -78,14 +89,14 @@ describe('loadSettings / saveSettings', () => {
 
   it('round-trips a saved value', async () => {
     installStorageMock();
-    const settings: ToolbarSettings = { formats: { md: true, pdf: false, json: false, html: false }, bulk: false };
+    const settings: ToolbarSettings = { formats: { md: true, pdf: false, json: false, html: false }, bulk: false, share: true };
     await saveSettings(settings);
     expect(await loadSettings()).toEqual(settings);
   });
 
   it('sanitizes on save so an all-off format set never persists', async () => {
     installStorageMock();
-    await saveSettings({ formats: { md: false, pdf: false, json: false, html: false }, bulk: true });
+    await saveSettings({ formats: { md: false, pdf: false, json: false, html: false }, bulk: true, share: true });
     expect((await loadSettings()).formats).toEqual(DEFAULT_SETTINGS.formats);
   });
 });
@@ -96,7 +107,7 @@ describe('storage key stability', () => {
     const written: Record<string, unknown>[] = [];
     const requested: unknown[] = [];
     let listener: ChangeListener | undefined;
-    const stored = { formats: { md: false, pdf: true, json: true, html: true }, bulk: false };
+    const stored = { formats: { md: false, pdf: true, json: true, html: true }, bulk: false, share: true };
     const g = globalThis as unknown as { chrome: Record<string, unknown> };
     g.chrome = {
       ...g.chrome,
@@ -137,9 +148,9 @@ describe('subscribeSettings', () => {
     const received: ToolbarSettings[] = [];
     const unsubscribe = subscribeSettings((s) => received.push(s));
 
-    await saveSettings({ formats: { md: true, pdf: true, json: false, html: false }, bulk: false });
+    await saveSettings({ formats: { md: true, pdf: true, json: false, html: false }, bulk: false, share: true });
     expect(received).toHaveLength(1);
-    expect(received[0]).toEqual({ formats: { md: true, pdf: true, json: false, html: false }, bulk: false });
+    expect(received[0]).toEqual({ formats: { md: true, pdf: true, json: false, html: false }, bulk: false, share: true });
 
     unsubscribe();
     await saveSettings(DEFAULT_SETTINGS);

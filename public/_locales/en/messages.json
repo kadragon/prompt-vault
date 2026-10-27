@@ -597,5 +597,74 @@
   "errClaudeArtifactMetadataUnreadable": {
     "message": "Claude rendered an artifact card whose title or kind could not be read. The markup may have changed — please report this.",
     "description": "Extraction error (Claude): an artifact card's title or kind could not be read."
+  },
+  "downloadShareLabel": {
+    "message": "Copy for sharing",
+    "description": "Short label for the copy-for-sharing button on the overlay fallback (native buttons are icon-only)."
+  },
+  "downloadShareAriaLabel": {
+    "message": "Make a Markdown copy for sharing",
+    "description": "Accessible name and tooltip of the toolbar button that opens the copy-for-sharing review modal."
+  },
+  "sharePanelTitle": {
+    "message": "Markdown copy for sharing",
+    "description": "Heading of the copy-for-sharing review modal."
+  },
+  "sharePanelWarning": {
+    "message": "Emails and phone numbers are found automatically, but detection can miss things. Read the preview before you share the file.",
+    "description": "Warning at the top of the copy-for-sharing modal: detection is incomplete, so the user must read the preview. Must never claim the copy is anonymized or complete."
+  },
+  "sharePanelDetectedLabel": {
+    "message": "Masked in the copy — uncheck anything that should stay",
+    "description": "Heading above the checklist of detected emails/phone numbers that will be masked in the copy."
+  },
+  "sharePanelNoCandidates": {
+    "message": "No emails or phone numbers were found. Add names or other details to mask below.",
+    "description": "Shown in the copy-for-sharing modal when no email or phone number was detected."
+  },
+  "shareKindEmail": {
+    "message": "Email",
+    "description": "Kind label next to a detected email address in the copy-for-sharing checklist."
+  },
+  "shareKindPhone": {
+    "message": "Phone",
+    "description": "Kind label next to a detected phone number in the copy-for-sharing checklist."
+  },
+  "sharePanelTermLabel": {
+    "message": "Also mask (names, companies, …)",
+    "description": "Label of the text field where the user adds their own words to mask (names, company names)."
+  },
+  "sharePanelAddTerm": {
+    "message": "Add",
+    "description": "Button that adds the typed word to the list of words to mask."
+  },
+  "sharePanelRemoveTerm": {
+    "message": "Remove $term$",
+    "description": "Accessible name of the button that removes one added word from the mask list.",
+    "placeholders": {
+      "term": {
+        "content": "$1"
+      }
+    }
+  },
+  "sharePanelPreviewLabel": {
+    "message": "Preview",
+    "description": "Label above the read-only preview of the Markdown copy for sharing."
+  },
+  "sharePanelSave": {
+    "message": "Save copy",
+    "description": "Button that saves the previewed copy for sharing as a Markdown file."
+  },
+  "sharePanelCancel": {
+    "message": "Cancel",
+    "description": "Button that closes the copy-for-sharing modal without saving."
+  },
+  "shareNeutralTitle": {
+    "message": "Shared conversation",
+    "description": "Fixed title written into every copy for sharing in place of the original conversation title."
+  },
+  "optionsShareLabel": {
+    "message": "Show the copy-for-sharing icon",
+    "description": "Label for the copy-for-sharing icon toggle on the options page."
   }
 }
