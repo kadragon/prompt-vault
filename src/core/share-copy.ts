@@ -43,9 +43,14 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 //     `john_@x.io` arrives as `john\_@x.io` — the local part takes those backslash
 //     escapes, or `john` would be left unmasked in front of the token;
 //   - code keeps its text raw, so `x*y@x.io` arrives as-is — the local part takes a
-//     raw run of `* ~ | '` too, but only between local-part characters, so the delimiters
-//     around `**a@x.io**` or `~~a@x.io~~` stay outside the match and the emphasis
-//     still renders.
+//     raw run of `* ~ | ' \`` too, but only between local-part characters, so the
+//     delimiters around `**a@x.io**`, `~~a@x.io~~` or inline code stay outside the
+//     match and still render. Any other backslash before a local-part character
+//     (`a\qb@x.io`, raw text) is taken too; one before `[` is not, so the escaped
+//     brackets of `\[a@x.io\]` stay balanced.
+// Local-part characters include Latin-1 and Latin Extended letters (`Renée@x.io`), but
+// not Hangul or CJK: those touch the address without a space (`메일은a@x.io`), and
+// swallowing them would mask the surrounding sentence.
 // The leading lookahead only lets a match start where an `@` follows within 128
 // non-space characters (an RFC local part is at most 64; escapes can double it). Without
 // it a long `@`-less run — a base64 blob, minified code, `a*a*a*…` — was rescanned from
@@ -53,9 +58,10 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 // review modal recomputes on every change. A left-boundary lookbehind was tried first
 // and dropped: it missed the second of two touching addresses (`a@x.com.b@y.com`) and
 // left runs broken by `* ' \` quadratic.
-const LOCAL_ATOM = String.raw`(?:[A-Za-z0-9._%+-]|\\[_*~|\`])+`;
+const LOCAL_CHARS = String.raw`A-Za-z0-9._%+\-\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u024F`;
+const LOCAL_ATOM = String.raw`(?:[${LOCAL_CHARS}]|\\[${LOCAL_CHARS}_*~|'\`])+`;
 const EMAIL = new RegExp(
-  String.raw`(?=[^\s@]{1,128}@)${LOCAL_ATOM}(?:[*~|']+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
+  String.raw`(?=[^\s@]{1,128}@)${LOCAL_ATOM}(?:[*~|'\`]+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
   'g',
 );
 
@@ -67,8 +73,22 @@ const EMAIL = new RegExp(
 //   - `+`-country-code international: `+82 10-1234-5678`, `+1 415 555 2671`, `+442071838750`
 //   - Korean mobile/landline: `010-1234-5678`, `02.123.4567`, `010 1234 5678`,
 //     `010-12345678`, and a parenthesized area code `(02) 123-4567`
-const PHONE =
-  /(?<![\d+]|\d\.)(?:\+\d{1,3}[-. ]?\d{1,4}(?:[-. ]?\d{3,4}){1,3}|0[1-9]\d?[-. ]\d{3,4}[-. ]?\d{4}|\(0[1-9]\d?\) ?\d{3,4}[-. ]\d{4})(?!\d)/g;
+//   - North-American `(415) 555-0123`, `415-555-0123`: the area code starts 2–9, as
+//     NANP area codes do, which keeps `123-456-7890`-shaped ids out
+//   - Chinese mobile `138 0013 8000`, `138-0013-8000`: 3-4-4 after a `1[3-9]` prefix
+const PHONE = new RegExp(
+  String.raw`(?<![\d+]|\d\.)(?:` +
+    [
+      String.raw`\+\d{1,3}[-. ]?\d{1,4}(?:[-. ]?\d{3,4}){1,3}`,
+      String.raw`0[1-9]\d?[-. ]\d{3,4}[-. ]?\d{4}`,
+      String.raw`\(0[1-9]\d?\) ?\d{3,4}[-. ]\d{4}`,
+      String.raw`\([2-9]\d{2}\) ?\d{3}[-. ]\d{4}`,
+      String.raw`[2-9]\d{2}[-. ]\d{3}[-. ]\d{4}`,
+      String.raw`1[3-9]\d[- ]\d{4}[- ]\d{4}`,
+    ].join('|') +
+    String.raw`)(?!\d)`,
+  'g',
+);
 
 const DETECTORS: ReadonlyArray<[ShareCandidateKind, RegExp]> = [
   ['email', EMAIL],

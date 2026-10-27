@@ -57,6 +57,12 @@ describe('findShareCandidates', () => {
     ['010-12345678'],
     ['(02) 123-4567'],
     ['(031)123-4567'],
+    ['(415) 555-0123'],
+    ['415-555-0123'],
+    ['415.555.0123'],
+    ['415 555 0123'],
+    ['138 0013 8000'],
+    ['138-0013-8000'],
   ])('detects the phone number %s', (phone) => {
     const found = findShareCandidates(single(`call ${phone} today`));
     expect(found).toEqual([
@@ -71,6 +77,12 @@ describe('findShareCandidates', () => {
     ['an order id', 'order 123456789012'],
     ['an amount', '1,234,567 KRW'],
     ['a version', 'v1.13.5'],
+    ['an IPv4 address', '192.168.100.200'],
+    ['an ISBN', 'ISBN 978-0-12-345678-9'],
+    ['an SSN-shaped id', '123-45-6789'],
+    ['a 3-3-4 run starting with 1', '123-456-7890'],
+    ['a bare Chinese mobile run', '13800138000'],
+    ['a 3-3-4 run inside a longer number', '9415-555-01234'],
     ['fraction digits after a decimal point', 'p=0.05 12345678'],
     ['a 00-prefixed id', 'id 00-1234567'],
   ])('leaves %s alone', (_label, content) => {
@@ -141,6 +153,24 @@ describe('findShareCandidates', () => {
   ])('finds both of two touching addresses in %s', (content, expected) => {
     expect(texts(content)).toEqual(expected);
     expect(share(content)).not.toMatch(/@/);
+  });
+
+  it.each([
+    ['aéb@x.io'],
+    ['é@x.io'],
+    ['Renée.Dubois@x.io'],
+    ['a`b@x.io'],
+    ['a\\qb@x.io'],
+  ])('takes the whole local part of %s', (address) => {
+    expect(share(`mail ${address} now`)).toBe('mail [EMAIL] now');
+  });
+
+  it.each([
+    ['`a@b.com`', '`[EMAIL]`'],
+    ['\\[a@b.com\\]', '\\[[EMAIL]\\]'],
+    ['메일은a@b.com입니다', '메일은[EMAIL]입니다'],
+  ])('keeps the delimiters and Hangul around %s outside the match', (content, expected) => {
+    expect(share(content)).toBe(expected);
   });
 
   it('scans code blocks too', () => {
