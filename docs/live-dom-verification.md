@@ -423,8 +423,12 @@ conversation (`PV probe long project`). Counts and computed styles only.
   `elementFromPoint` land on **6 / 6** buttons. `createButtons` now sets it on the native
   container, pinned by a mount test that resolves the inherited value by hand (happy-dom does
   not compute `pointer-events`).
-- When the header started doing this is `[unknown — not measured]`: no earlier entry records a
-  real pointer click on a toolbar button, only DOM placement and programmatic exports.
+- **The project-home trigger is not affected.** On the same project's home it mounted first as the
+  overlay (on `body`), then upgraded to native inside the list `section`; in both states every
+  ancestor computed `pointer-events: auto` and `elementFromPoint` hit the button. Claude's and
+  Gemini's list triggers were not measured in this session `[unknown — not measured]`.
+- When the header started doing this is `[unknown — not measured]`: no earlier ChatGPT entry
+  records a real pointer click on a toolbar button, only DOM placement and programmatic exports.
 
 ### 2026-10-15 — a 17-conversation project home renders every row; the reveal path finds a below-fold target
 
