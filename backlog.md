@@ -8,6 +8,13 @@ A `*(blocked by: ...)*` / `*(deferred: ...)*` marker MUST sit on the item's own 
 and in `tasks.md`). The picker tokenizes checkboxes line by line, so a marker pushed onto a
 continuation line is invisible to it and the blocked item is offered as actionable work.
 
+## 2 — share copy review modal
+
+- [ ] [FEAT] Add the Share-safe Markdown toolbar button, review modal `src/content/share-panel.ts`, options `share` toggle (default on) and its strings in all five locales
+  Source: docs/design/share-copy-export.md → Implementation Decisions (UI, Toolbar, Settings, Privacy, Strings), Testing Decisions
+  Done when: happy-dom tests cover checked-by-default candidates, unchecking and adding a term refreshing the preview, Save downloading the share filename with the previewed text, Cancel/Escape/backdrop unbinding listeners, no `chrome.storage` write; settings tests cover the `share` default and `sanitize` repair; toolbar omits the button when off; i18n and privacy gates stay green → `npm run lint && npm run typecheck && npm test`, plus a visual check of the modal on the loaded extension per `docs/live-dom-verification.md`
+  Approach: modal per the `bulk-panel.ts` recipe; open through `runExport`'s extract + non-empty + fail-loud path under the shared in-flight guard; no "anonymized" wording anywhere
+
 ## Tooling & static analysis
 
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the
@@ -16,10 +23,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 - [ ] [HARNESS] Add `addons-linter` (web-ext lint) as a CI step — validates the MV3 manifest and flags extension-unsafe patterns (`eval`, remote scripts, over-broad permissions). *(deferred: addons-linter is Firefox/AMO-oriented — on our Chrome-only MV3 manifest it only emits Firefox false-positives (`ADDON_ID_REQUIRED` gecko id, `gecko/data_collection_permissions`). No real Chrome value now; static analysis is covered by CodeQL + type-checked eslint + the privacy gate. Revisit if Firefox support is ever added.)*
 
 ## Review Backlog
-
-### PR #114 — queue cleanup harness follow-up (2026-10-05)
-
-- [ ] [harness] Make `task_nodes.py prune-backlog` remove a selected multiline item's indented continuation block; this run removed only its three checkbox lines and left orphan prose. Add a regression preserving neighboring blocked items. *(blocked by: fix belongs to the external dev plugin repository, outside this sprint and repository scope)*
 
 ### PR #118 — exclude the Claude screenshot from the English store upload set (2026-10-11)
 

@@ -34,6 +34,16 @@ export function buildExportFilename(conversation: Conversation, now: Date, ext: 
   return `${provider}-${slug}-${date}.${ext}`;
 }
 
+/**
+ * Build the share-copy filename `{provider}-shared-{yyyymmdd}.md`
+ * (docs/design/share-copy-export.md). Deliberately skips the title slug: the
+ * share copy's title is a localized neutral string, and the original title is
+ * exactly what the share copy must not carry.
+ */
+export function buildShareFilename(conversation: Conversation, now: Date): string {
+  return `${conversation.provider}-shared-${yyyymmdd(now)}.md`;
+}
+
 // Sanitize a conversation title into a filesystem-safe slug. Collapses every
 // unsafe/whitespace run into a single dash, trims dashes, truncates to the
 // readability cap AND the byte budget (whichever bites first) on whole-code-point
