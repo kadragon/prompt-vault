@@ -37,12 +37,20 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 };
 
 // The common `local@domain.tld` shape. Domain labels are dot-separated so a
-// sentence-ending period is never swallowed into the match. The local part also
-// takes the backslash escapes escapeMarkdownText (src/core/markdown-escape.ts)
-// puts in front of `_ * ~ | \``: content is adapter Markdown, so `john_@x.io`
-// arrives as `john\_@x.io`, and stopping at the backslash would leave `john`
-// unmasked in front of the token.
-const EMAIL = /(?:[A-Za-z0-9._%+-]|\\[_*~|`])+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+// sentence-ending period is never swallowed into the match. The local part has to
+// read two spellings of the same address, because content is adapter Markdown:
+//   - prose is escaped by escapeMarkdownText (src/core/markdown-escape.ts), so
+//     `john_@x.io` arrives as `john\_@x.io` — the local part takes those backslash
+//     escapes, or `john` would be left unmasked in front of the token;
+//   - code keeps its text raw, so `x*y@x.io` arrives as-is — the local part takes a
+//     raw run of `* ~ | '` too, but only between local-part characters, so the delimiters
+//     around `**a@x.io**` or `~~a@x.io~~` stay outside the match and the emphasis
+//     still renders.
+const LOCAL_ATOM = String.raw`(?:[A-Za-z0-9._%+-]|\\[_*~|\`])+`;
+const EMAIL = new RegExp(
+  String.raw`${LOCAL_ATOM}(?:[*~|']+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
+  'g',
+);
 
 // One alternation so an international number is never reported twice (once whole,
 // once as its domestic tail). A separator or a leading `+` is always required: bare

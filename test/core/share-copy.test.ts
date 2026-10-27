@@ -101,6 +101,26 @@ describe('findShareCandidates', () => {
     );
   });
 
+  it.each([
+    ['x*y@corp.com'],
+    ['kim~lee@corp.com'],
+    ['a|b@corp.com'],
+    ["o'brien@corp.com"],
+    ['a**b@corp.com'],
+    ['x||y@corp.com'],
+  ])('takes the whole raw local part of %s inside a code block, where nothing is escaped', (raw) => {
+    expect(share(`\`\`\`\nTO=${raw}\n\`\`\``)).toBe('```\nTO=[EMAIL]\n```');
+  });
+
+  it.each([
+    ['**a@b.com**', '**[EMAIL]**'],
+    ['~~a@b.com~~', '~~[EMAIL]~~'],
+    ["'a@b.com'", "'[EMAIL]'"],
+    ['|a@b.com|', '|[EMAIL]|'],
+  ])('leaves the delimiters around %s outside the match', (content, expected) => {
+    expect(share(content)).toBe(expected);
+  });
+
   it('scans code blocks too', () => {
     expect(texts('```\nADMIN=ops@corp.test\n```')).toEqual(['ops@corp.test']);
   });
