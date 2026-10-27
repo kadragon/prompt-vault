@@ -23,6 +23,8 @@ continuation line is invisible to it and the blocked item is offered as actionab
   Done when: happy-dom tests show the count tracks unchecking and adding/removing terms; new string in all five locales → `npm run lint && npm run typecheck && npm test`
 - [ ] [a11y] Trap Tab inside the share and bulk modals and return focus to the toolbar button that opened them on close
   Done when: happy-dom tests show Tab/Shift+Tab cycle within each dialog and focus lands back on the opener after Cancel/Escape/backdrop/Save → `npm run lint && npm run typecheck && npm test`
+- [ ] [FIX] Mask the whole local part of emails that hold non-ASCII letters (`aéb@x.io` leaves `aé`, `é@x.io` is missed), a raw backtick (`` a`b@x.io `` leaves `` a` ``) or a non-Markdown backslash (`a\qb@x.io` leaves `a\`) — QA-measured leaks, all raw text or code
+  Done when: core tests show each input fully replaced by `[EMAIL]`, the inline-code `` `a@b.com` `` delimiters still survive, and the touching-address and linear-time tests stay green → `npm run lint && npm run typecheck && npm test`
 - [ ] [VERIFY] Measure on the live pages whether Claude's project/recents trigger and Gemini's notebook trigger receive real clicks (`elementFromPoint` at each button), as done for ChatGPT on 2026-10-27 in `docs/live-dom-verification.md`
   Done when: both are recorded in `docs/live-dom-verification.md` as clickable, or a fix like PR #136 lands for the one that is not
 
