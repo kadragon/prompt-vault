@@ -406,6 +406,30 @@ alphanumeric does decode), so a correction that simply stopped decoding would ha
 
 ## ChatGPT
 
+### 2026-10-27 — the app-shell header is `pointer-events: none`; every injected toolbar button was unclickable
+
+Playwright MCP session, ko-KR account, unpacked build reloaded from `dist/`, on a project
+conversation (`PV probe long project`). Counts and computed styles only.
+
+- **Measured.** The toolbar mounted natively (`data-prompt-vault-placement="native"`) inside
+  `header` (`position: fixed; z-index: 30; pointer-events: none`) →
+  `[data-testid="app-shell-header-context-menu-surface"]` (`none`) → a wrapper `div` (`none`).
+  `pointer-events` inherits, so all **6** of our buttons computed `none`, and
+  `elementFromPoint` at each button's centre hit the transcript scroller (`role="region"`,
+  `aria-label="대화"`), not the button. Playwright's own click on one refused for the same
+  reason ("subtree intercepts pointer events"). ChatGPT's native Share button in the same header
+  hit itself: its wrappers set `pointer-events: auto` again.
+- **Fix, measured before shipping.** Setting `pointer-events: auto` on our container made
+  `elementFromPoint` land on **6 / 6** buttons. `createButtons` now sets it on the native
+  container, pinned by a mount test that resolves the inherited value by hand (happy-dom does
+  not compute `pointer-events`).
+- **The project-home trigger is not affected.** On the same project's home it mounted first as the
+  overlay (on `body`), then upgraded to native inside the list `section`; in both states every
+  ancestor computed `pointer-events: auto` and `elementFromPoint` hit the button. Claude's and
+  Gemini's list triggers were not measured in this session `[unknown — not measured]`.
+- When the header started doing this is `[unknown — not measured]`: no earlier ChatGPT entry
+  records a real pointer click on a toolbar button, only DOM placement and programmatic exports.
+
 ### 2026-10-15 — a 17-conversation project home renders every row; the reveal path finds a below-fold target
 
 Clears the long-project prerequisite of 2026-10-05 below. Playwright MCP session, ko-KR account,

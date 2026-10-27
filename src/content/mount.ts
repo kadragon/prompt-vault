@@ -245,6 +245,10 @@ export function createButtons(
     // `gap-0.5` keeps the two icon buttons from abutting so their hover highlights
     // don't touch — matching the spacing of ChatGPT's own header controls.
     container.className = 'flex items-center gap-0.5';
+    // ChatGPT's app-shell header is `pointer-events: none` and turns events back on only on its
+    // own control wrappers; the property inherits, so without this every injected button would
+    // let clicks fall through to the transcript behind it (measured live 2026-10-27).
+    container.style.pointerEvents = 'auto';
   } else {
     Object.assign(container.style, {
       position: 'fixed',
