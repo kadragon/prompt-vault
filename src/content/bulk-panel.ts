@@ -205,6 +205,25 @@ function makeHeader(doc: Document, notice?: string): HTMLElement {
   return header;
 }
 
+// A checkbox that renders on any host. ChatGPT's CSS gives bare checkboxes `appearance: none`
+// and a 0×0 box (measured live 2026-10-27), which left every row of this panel with no visible
+// control, so the native rendering and size are restored inline.
+function checkbox(doc: Document): HTMLInputElement {
+  const box = doc.createElement('input');
+  box.type = 'checkbox';
+  Object.assign(box.style, {
+    appearance: 'auto',
+    display: 'inline-block',
+    flex: '0 0 auto',
+    width: '16px',
+    height: '16px',
+    margin: '0',
+    accentColor: '#10a37f',
+    cursor: 'pointer',
+  });
+  return box;
+}
+
 function styledButton(doc: Document, label: string, variant: 'primary' | 'secondary'): HTMLButtonElement {
   const button = doc.createElement('button');
   button.type = 'button';
@@ -297,7 +316,9 @@ function renderSelection(
   Object.assign(formatWrap.style, { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' });
   formatWrap.append(`${BULK_PANEL_FORMAT_LABEL}: `);
   const formatSelect = doc.createElement('select');
-  Object.assign(formatSelect.style, { fontFamily: 'inherit', fontSize: '14px', padding: '4px 6px' });
+  // `appearance: auto` for the same reason as `checkbox()`: the host's reset strips the native
+  // dropdown arrow, leaving a select that reads as plain text.
+  Object.assign(formatSelect.style, { appearance: 'auto', fontFamily: 'inherit', fontSize: '14px', padding: '4px 6px' });
   for (const opt of FORMAT_OPTIONS) {
     const option = doc.createElement('option');
     option.value = opt.value;
@@ -308,8 +329,7 @@ function renderSelection(
 
   const selectAllWrap = doc.createElement('label');
   Object.assign(selectAllWrap.style, { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' });
-  const selectAll = doc.createElement('input');
-  selectAll.type = 'checkbox';
+  const selectAll = checkbox(doc);
   selectAllWrap.append(selectAll, BULK_PANEL_SELECT_ALL);
 
   controls.append(formatWrap, selectAllWrap);
@@ -343,8 +363,7 @@ function renderSelection(
       fontSize: '14px',
       cursor: 'pointer',
     });
-    const box = doc.createElement('input');
-    box.type = 'checkbox';
+    const box = checkbox(doc);
     box.value = conversation.id;
     const title = doc.createElement('span');
     title.textContent = conversation.title;

@@ -79,6 +79,19 @@ function clickBackdrop(backdrop: HTMLElement): void {
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe('openBulkPanel', () => {
+  it('gives every checkbox and the format select their native rendering, so host CSS cannot hide them', () => {
+    const doc = freshDoc();
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
+    const boxes = checkboxes(panelOf(doc));
+    expect(boxes.length).toBe(CONVS.length + 1); // rows + select-all
+    for (const box of boxes) {
+      expect(box.style.appearance).toBe('auto');
+      expect(box.style.width).toBe('16px');
+      expect(box.style.height).toBe('16px');
+    }
+    expect(panelOf(doc).querySelector('select')!.style.appearance).toBe('auto');
+  });
+
   it('lists every conversation as a checkbox row with its title', () => {
     const doc = freshDoc();
     openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
@@ -334,6 +347,8 @@ describe('openBulkPanel', () => {
     const boxes = checkboxes(panel);
     expect(boxes[1].checked).toBe(true); // Alpha
     expect(boxes.slice(4).every((b) => !b.checked)).toBe(true); // Delta, Epsilon
+    // Appended rows get the same host-proof rendering as the first batch.
+    expect(boxes.slice(4).every((b) => b.style.appearance === 'auto')).toBe(true);
     // Export count still reflects the single prior selection.
     expect(buttonByText(panel, 'Export 1 selected')).toBeTruthy();
   });

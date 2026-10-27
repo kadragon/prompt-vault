@@ -3,6 +3,7 @@
 ## Unreleased
 
 - [done] Make the ChatGPT toolbar clickable again under the app-shell header's `pointer-events: none` (2026-10-27) → docs/live-dom-verification.md
+- [done] Show the bulk panel's checkboxes and format dropdown on ChatGPT, whose CSS reset hid them (2026-10-27) → docs/live-dom-verification.md
 - [done] Pin the ChatGPT adapter member set so its project trigger keeps the shared project name (2026-10-24)
 - [done] Name Gemini notebook triggers, list notebooks in the store copy, and confirm 106-chat lists render whole (2026-10-17) → docs/live-dom-verification.md
 - [done] Export every chat in a Gemini notebook from the notebook page (2026-10-17) → docs/live-dom-verification.md
