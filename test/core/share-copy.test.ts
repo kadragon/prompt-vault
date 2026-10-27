@@ -121,14 +121,26 @@ describe('findShareCandidates', () => {
     expect(share(content)).toBe(expected);
   });
 
-  it('scans a long unbroken token in linear time', () => {
-    // A base64/minified blob is one long run of local-part characters with no `@`. An
-    // unanchored local part retried at every offset made this quadratic: 40k chars took ~2.7 s
-    // per call, and the modal recomputes on every checkbox or term change.
-    const blob = 'A'.repeat(200_000);
+  it.each([
+    ['plain local-part characters', 'A'.repeat(200_000)],
+    ['an intraword-delimiter run', 'a*'.repeat(100_000)],
+    ['an escape run', 'a\\_'.repeat(66_000)],
+    ["an apostrophe run", "a'".repeat(100_000)],
+  ])('scans a long @-less run of %s in linear time', (_label, blob) => {
+    // An unbounded local part retried at every offset made these quadratic: 40k chars took
+    // ~2.6 s per call (200k: ~44 s), and the modal recomputes on every checkbox or term change.
     const started = performance.now();
     expect(texts(`${blob} then a@b.com`)).toEqual(['a@b.com']);
     expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it.each([
+    ['a@x.com.b@y.com', ['a@x.com', '.b@y.com']],
+    ['a@x.com-b@y.com', ['a@x.com', '-b@y.com']],
+    ['a@x.com,b@y.com', ['a@x.com', 'b@y.com']],
+  ])('finds both of two touching addresses in %s', (content, expected) => {
+    expect(texts(content)).toEqual(expected);
+    expect(share(content)).not.toMatch(/@/);
   });
 
   it('scans code blocks too', () => {

@@ -46,14 +46,16 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 //     raw run of `* ~ | '` too, but only between local-part characters, so the delimiters
 //     around `**a@x.io**` or `~~a@x.io~~` stay outside the match and the emphasis
 //     still renders.
-// The leading lookbehind lets a match start only where a run of local-part characters
-// begins. Without it a long `@`-less run (a base64 blob, minified code) was rescanned
-// from every offset — quadratic, seconds per call on a 40k-char token. It costs nothing
-// in matches: the local part is greedy, so a later start inside the same run can only
-// reach the same `@` with less of the address.
+// The leading lookahead only lets a match start where an `@` follows within 128
+// non-space characters (an RFC local part is at most 64; escapes can double it). Without
+// it a long `@`-less run — a base64 blob, minified code, `a*a*a*…` — was rescanned from
+// every offset to its end: quadratic, seconds per call on a 40k-char token, and the
+// review modal recomputes on every change. A left-boundary lookbehind was tried first
+// and dropped: it missed the second of two touching addresses (`a@x.com.b@y.com`) and
+// left runs broken by `* ' \` quadratic.
 const LOCAL_ATOM = String.raw`(?:[A-Za-z0-9._%+-]|\\[_*~|\`])+`;
 const EMAIL = new RegExp(
-  String.raw`(?<![A-Za-z0-9._%+-])${LOCAL_ATOM}(?:[*~|']+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
+  String.raw`(?=[^\s@]{1,128}@)${LOCAL_ATOM}(?:[*~|']+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
   'g',
 );
 
