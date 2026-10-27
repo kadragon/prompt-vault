@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { Window } from 'happy-dom';
 import { conversation } from '../fixtures/conversation';
 import { createShareCopy, createShareCopyWithCount, findShareCandidates } from '../../src/core/share-copy';
 import type { Conversation } from '../../src/core/conversation';
 import { toMarkdown } from '../../src/export/markdown';
 import { escapeMarkdownText } from '../../src/core/markdown-escape';
+import { htmlToMarkdown } from '../../src/core/html-to-markdown';
 
 const NEUTRAL = 'Shared conversation';
 
@@ -274,6 +276,46 @@ describe('createShareCopy', () => {
     ["Acme's deal", ['Acme'], "[REDACTED]'s deal"],
   ])('matches a Latin-script term only as a whole word in %s', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
+  });
+
+  it.each([
+    ['<p>Hi <em>John</em> Smith</p>', 'Hi *[REDACTED]'],
+    ['<p>Hi <strong>John</strong> <em>Smith</em> here</p>', 'Hi **[REDACTED]* here'],
+    ['<p>Hi <strong><em>John</em></strong> Smith</p>', 'Hi ***[REDACTED]'],
+    ['<p>Hi John <strong>Smith</strong></p>', 'Hi [REDACTED]**'],
+    ['<p>Hi <em>김</em> 철수</p>', 'Hi *[REDACTED]'],
+  ])('matches a multi-word term across the emphasis the serializer emits in %s', (html, expected) => {
+    // Content is serializer output: run the real converter rather than hand-writing `*`.
+    const container = new Window().document.createElement('div');
+    container.innerHTML = html;
+    const content = htmlToMarkdown(container as unknown as Element);
+    expect(share(content, { manualTerms: ['John Smith', '김 철수'] })).toBe(expected);
+  });
+
+  it('matches a multi-word term across a line break or a run of spaces', () => {
+    expect(share('John\nSmith and John   Smith', { manualTerms: ['John  Smith'] })).toBe(
+      '[REDACTED] and [REDACTED]',
+    );
+  });
+
+  it.each([
+    [' John', 'Hi John and **Hi** John\n\nJohn', 'Hi[REDACTED] and **Hi**[REDACTED]\n\nJohn'],
+    ['John ', 'John is; **John** x\n\nJohn x', '[REDACTED]is; **John** x\n\n[REDACTED]x'],
+  ])('keeps whitespace at the ends of term %j literal', (term, content, expected) => {
+    expect(share(content, { manualTerms: [term] })).toBe(expected);
+  });
+
+  it('stays linear on a long whitespace run for a term with leading whitespace', () => {
+    const content = `${' '.repeat(200_000)}x`;
+    const started = performance.now();
+    expect(share(content, { manualTerms: [' Smith'] })).toBe(content);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it('does not let the word gap match emphasis without whitespace or across other text', () => {
+    expect(share('John**Smith** and John x Smith', { manualTerms: ['John Smith'] })).toBe(
+      'John**Smith** and John x Smith',
+    );
   });
 
   it('still matches a Hangul or CJK term inside a longer run, where words are not space-separated', () => {
