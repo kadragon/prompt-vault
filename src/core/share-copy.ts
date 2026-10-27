@@ -163,13 +163,25 @@ function refKey(ref: ShareCandidateRef): string {
   return `${ref.messageIndex}:${ref.start}:${ref.end}`;
 }
 
-// One case-insensitive literal pattern per distinct non-blank term. Kept separate,
-// not joined into one alternation: an alternation only reports non-overlapping
-// matches, so a term overlapping an earlier match (`Smith & Co` after `John Smith`)
-// would never become a span and its tail would survive.
+// One case-insensitive literal pattern per distinct non-blank term spelling. Kept
+// separate, not joined into one alternation: an alternation only reports
+// non-overlapping matches, so a term overlapping an earlier match (`Smith & Co` after
+// `John Smith`) would never become a span and its tail would survive.
 function manualTermPatterns(terms: readonly string[]): RegExp[] {
-  const usable = [...new Set(terms.filter((t) => t.trim() !== ''))];
-  return usable.map((term) => new RegExp(termSource(term), 'gi'));
+  const usable = new Set(terms.filter((t) => t.trim() !== '').flatMap(termSpellings));
+  return [...usable].map((spelling) => new RegExp(termSource(spelling), 'giu'));
+}
+
+// The spellings of one term to search for. The text is never normalized — offsets must
+// keep pointing into the original — so the term is expanded instead:
+//   - NFC and NFD, for text that carries `é` as one code point or as `e` + U+0301;
+//   - full upper-casing, which the `iu` flags' simple case folding cannot do:
+//     `straße` → `STRASSE` (`ẞ` already folds to `ß` under `u`);
+//   - Turkish casing, whose dotted/dotless i never fold to ASCII `i`/`I`:
+//     `istanbul` → `İSTANBUL`, `ışık` → `IŞIK`.
+function termSpellings(term: string): string[] {
+  const cased = [term, term.toUpperCase(), term.toLocaleUpperCase('tr'), term.toLocaleLowerCase('tr')];
+  return [...new Set(cased.flatMap((t) => [t.normalize('NFC'), t.normalize('NFD')]))];
 }
 
 // A term is typed as plain text, but content is adapter Markdown in which

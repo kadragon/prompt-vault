@@ -282,6 +282,16 @@ describe('createShareCopy', () => {
     expect(share('xKim철수님 Kim철수님', { manualTerms: ['Kim철수'] })).toBe('xKim철수님 [REDACTED]님');
   });
 
+  it.each([
+    ['İstanbul office', ['istanbul'], '[REDACTED] office'],
+    ['STRASSE and STRAẞE and Straße', ['straße'], '[REDACTED] and [REDACTED] and [REDACTED]'],
+    ['IŞIK geldi', ['ışık'], '[REDACTED] geldi'],
+    ['Rene\u0301e and Renée', ['Renée'], '[REDACTED] and [REDACTED]'],
+    ['Renée and Rene\u0301e', ['Rene\u0301e'], '[REDACTED] and [REDACTED]'],
+  ])('matches a term across Unicode case and normalization forms in %s', (content, manualTerms, expected) => {
+    expect(share(content, { manualTerms })).toBe(expected);
+  });
+
   it('does not let a term match inside an inserted token', () => {
     expect(share('see a@b.com', { manualTerms: ['MAIL', 'redacted'] })).toBe('see [EMAIL]');
   });

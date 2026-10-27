@@ -8,14 +8,6 @@ A `*(blocked by: ...)*` / `*(deferred: ...)*` marker MUST sit on the item's own 
 and in `tasks.md`). The picker tokenizes checkboxes line by line, so a marker pushed onto a
 continuation line is invisible to it and the blocked item is offered as actionable work.
 
-## Copy for sharing — follow-ups (2026-10-27)
-
-> Non-blocking findings from the product evaluation and QA of the share-copy modal. Design:
-> `docs/design/share-copy-export.md`.
-
-- [ ] [FIX] Match mask terms across Unicode case and normalization forms: `istanbul` misses `İstanbul`, `straße` misses `STRASSE`, and `Renée` misses a decomposed `Rene\u0301e` (QA-measured leaks of terms the user typed)
-  Done when: core tests cover each pair, offsets still point into the original text (NFC can change length), and existing term tests stay green → `npm run lint && npm run typecheck && npm test`
-
 ## Tooling & static analysis
 
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the
