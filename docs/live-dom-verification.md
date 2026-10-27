@@ -430,6 +430,19 @@ conversation (`PV probe long project`). Counts and computed styles only.
 - When the header started doing this is `[unknown — not measured]`: no earlier ChatGPT entry
   records a real pointer click on a toolbar button, only DOM placement and programmatic exports.
 
+### 2026-10-27 — host CSS hides bare checkboxes; the bulk panel showed no checkbox at all
+
+Same session and conversation as the share-copy review (Playwright MCP, ko-KR). Computed styles
+and sizes only.
+
+- **Measured.** Every `input[type=checkbox]` in the bulk panel — **20** (19 rows + select-all) —
+  computed `appearance: none`, `border-width: 0`, transparent background and a **0 × 0** box: the
+  panel listed titles with no visible control, and the format `<select>` lost its dropdown arrow.
+  The page's own CSS reset is the source; our inline styles set neither property.
+- **Fix, measured.** Inline `appearance: auto` plus an explicit 16 px box (and `appearance: auto`
+  on the select) rendered all **20** checkboxes at **16 × 16**; checking one row moved the export
+  button to "선택한 1개 내보내기". Pinned by a bulk-panel test on the inline styles.
+
 ### 2026-10-15 — a 17-conversation project home renders every row; the reveal path finds a below-fold target
 
 Clears the long-project prerequisite of 2026-10-05 below. Playwright MCP session, ko-KR account,
