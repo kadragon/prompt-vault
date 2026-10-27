@@ -198,11 +198,20 @@ function termSpellings(term: string): string[] {
 // scripts attach particles without a space (`김철수님`, `田中さん`). The end edge looks
 // past trailing combining marks, so the NFD spelling `Jose\u0301` is bounded like `José`
 // and leaves a decomposed `Joséphine` alone.
+// A whitespace run between two words of the term matches any whitespace run in the
+// content, with emphasis delimiters allowed on either side: `<em>John</em> Smith` arrives
+// as `*John* Smith`, and a line break or double space between the words is still the same
+// name. Whitespace at the term's ends stays literal: a leading gap would have no fixed
+// character to anchor on and rescan a long space run from every position in it.
 function termSource(term: string): string {
   const chars = [...term];
+  const first = chars.findIndex((char) => !WHITESPACE.test(char));
+  const last = chars.length - 1 - [...chars].reverse().findIndex((char) => !WHITESPACE.test(char));
   let source = LATIN_WORD_CHAR.test(chars[0] ?? '') ? `(?<!${LATIN_WORD_CLASS})` : '';
-  for (const char of chars) {
-    if (TURKISH_I.has(char)) source += '[iIıİ]';
+  for (const [i, char] of chars.entries()) {
+    if (i > first && i < last && WHITESPACE.test(char)) {
+      if (!WHITESPACE.test(chars[i - 1])) source += TERM_WORD_GAP;
+    } else if (TURKISH_I.has(char)) source += '[iIıİ]';
     else source += ASCII_PUNCTUATION.test(char) ? `\\\\?${escapeRegExp(char)}` : escapeRegExp(char);
   }
   const lastBase = [...chars].reverse().find((char) => !COMBINING_MARK.test(char)) ?? '';
@@ -214,6 +223,10 @@ const COMBINING_MARKS = '[\\u0300-\\u036F]';
 const COMBINING_MARK = new RegExp(`^${COMBINING_MARKS}$`);
 
 const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
+const WHITESPACE = /^\s$/;
+// Up to three `*` each side: the adapter emits `*em*`, `**strong**`, and both nested. The
+// bounded counts keep a failed match linear in the whitespace run.
+const TERM_WORD_GAP = '\\*{0,3}\\s+\\*{0,3}';
 // The four i letters match one another per character: whole-term casing alone cannot reach a
 // mixed form like `Işık` from `ışık` or `IŞIK`, and a Turkish name is often written that way.
 const TURKISH_I = new Set(['i', 'I', 'ı', 'İ']);
