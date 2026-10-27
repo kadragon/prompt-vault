@@ -213,8 +213,9 @@ describe('createShareCopy', () => {
 
   it.each([
     ['John Smith & Co', ['John Smith', 'Smith & Co'], '[REDACTED]'],
-    ['Acme Corp', ['Acme Co', 'Corp'], '[REDACTED]'],
-    ['banana', ['ana'], 'b[REDACTED]'],
+    // Hangul terms match as substrings (no spaces between words), so they exercise overlap.
+    ['삼성전자', ['삼성전', '성전자'], '[REDACTED]'],
+    ['아아아', ['아아'], '[REDACTED]'],
   ])('masks every overlapping manual-term match in %s', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
   });
@@ -226,6 +227,21 @@ describe('createShareCopy', () => {
     expect(
       share(content, { manualTerms: ['[Falcon]', 'Acme_', '~Acme', 'a|b', 'C:\\dir'] }),
     ).toBe('Project [REDACTED] and [REDACTED] and [REDACTED] and [REDACTED] and [REDACTED]');
+  });
+
+  it.each([
+    ['Lee sleeps; lee. LEE!', ['Lee'], '[REDACTED] sleeps; [REDACTED]. [REDACTED]!'],
+    ['Acme2 and Acme', ['Acme'], 'Acme2 and [REDACTED]'],
+    ['Renée and Renéeville', ['Renée'], '[REDACTED] and Renéeville'],
+    ["Acme's deal", ['Acme'], "[REDACTED]'s deal"],
+  ])('matches a Latin-script term only as a whole word in %s', (content, manualTerms, expected) => {
+    expect(share(content, { manualTerms })).toBe(expected);
+  });
+
+  it('still matches a Hangul or CJK term inside a longer run, where words are not space-separated', () => {
+    expect(share('김철수님과 田中さん', { manualTerms: ['김철수', '田中'] })).toBe('[REDACTED]님과 [REDACTED]さん');
+    // Mixed: the Latin edge is bounded, the Hangul edge is not.
+    expect(share('xKim철수님 Kim철수님', { manualTerms: ['Kim철수'] })).toBe('xKim철수님 [REDACTED]님');
   });
 
   it('does not let a term match inside an inserted token', () => {

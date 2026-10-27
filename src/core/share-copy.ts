@@ -138,17 +138,24 @@ function manualTermPatterns(terms: readonly string[]): RegExp[] {
 // escapeMarkdownText may have put a backslash before any ASCII punctuation
 // (`[Falcon]` arrives as `\[Falcon\]`, `Acme_` as `Acme\_`). Each punctuation
 // character therefore also matches with that optional backslash in front.
+// A term edge that is a Latin letter or digit only matches at a word boundary, so
+// `Lee` masks `Lee.` but not `sleeps`. Hangul and CJK edges stay unbounded: those
+// scripts attach particles without a space (`김철수님`, `田中さん`).
 function termSource(term: string): string {
-  let source = '';
-  for (const char of term) {
+  const chars = [...term];
+  let source = LATIN_WORD_CHAR.test(chars[0] ?? '') ? `(?<!${LATIN_WORD_CLASS})` : '';
+  for (const char of chars) {
     source += ASCII_PUNCTUATION.test(char) ? `\\\\?${escapeRegExp(char)}` : escapeRegExp(char);
   }
-  return source;
+  return LATIN_WORD_CHAR.test(chars.at(-1) ?? '') ? `${source}(?!${LATIN_WORD_CLASS})` : source;
 }
 
 const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
+// ASCII letters and digits plus Latin-1 Supplement and Latin Extended-A/B letters.
+const LATIN_WORD_CLASS = '[A-Za-z0-9\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F]';
+const LATIN_WORD_CHAR = new RegExp(`^${LATIN_WORD_CLASS}$`);
 
-// Every occurrence of one term, overlapping ones included (`ana` twice in `banana`):
+// Every occurrence of one term, overlapping ones included (`아아` twice in `아아아`):
 // the scan restarts one code unit past each match start instead of past its end.
 function termSpans(content: string, pattern: RegExp): Span[] {
   const spans: Span[] = [];

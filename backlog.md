@@ -13,8 +13,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > Non-blocking findings from the product evaluation and QA of the share-copy modal. Design:
 > `docs/design/share-copy-export.md`.
 
-- [ ] [FIX] Match Latin-script manual terms on word boundaries so `Lee` no longer turns `sleeps` into `s[REDACTED]ps`; keep substring matching for CJK/Hangul terms, which have no spaces between words
-  Done when: core tests show `Lee` masks `Lee`/`lee.` but not `sleeps`, `김철수` still masks inside `김철수님`, and the overlap/escape/union tests stay green → `npm run lint && npm run typecheck && npm test`
 - [ ] [FEAT] Detect North-American `(415) 555-0123` / `415-555-0123` and Chinese mobile `138 0013 8000` phone numbers (separators required, bare digit runs still never match)
   Done when: core tests cover each format plus date/id/version false-positive guards, and the existing phone cases are unchanged → `npm run lint && npm run typecheck && npm test`
 - [ ] [UX] Group identical detected values into one checklist row (with a count) and add a select-all toggle, so keeping one repeated sample address is one click
