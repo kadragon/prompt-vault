@@ -99,6 +99,16 @@ export const SHARE_PANEL_PREVIEW_LABEL = m('sharePanelPreviewLabel');
 export const SHARE_PANEL_SAVE = m('sharePanelSave');
 export const SHARE_PANEL_CANCEL = m('sharePanelCancel');
 
+/** Summary beside the preview label: how many values the copy masks, e.g. "Masked: 12". */
+export function sharePanelMaskedCount(count: number): string {
+  return m('sharePanelMaskedCount', [String(count)]);
+}
+
+/** Occurrence count on a checklist row that groups identical detected values, e.g. "×3". */
+export function sharePanelOccurrences(count: number): string {
+  return m('sharePanelOccurrences', [String(count)]);
+}
+
 /** Accessible name of the button that removes one added mask term, e.g. "Remove Acme". */
 export function sharePanelRemoveTermLabel(term: string): string {
   return m('sharePanelRemoveTerm', [term]);

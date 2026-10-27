@@ -90,6 +90,26 @@ describe('openBulkPanel', () => {
       expect(box.style.height).toBe('16px');
     }
     expect(panelOf(doc).querySelector('select')!.style.appearance).toBe('auto');
+
+  it('keeps Tab inside the dialog and returns focus to the opener on close', () => {
+    const doc = freshDoc();
+    const opener = doc.createElement('button');
+    doc.body.appendChild(opener);
+    opener.focus();
+    openBulkPanel(doc, deps({ total: 0, succeeded: 0, failed: [], warnings: [] }));
+    const dialog = panelOf(doc).querySelector<HTMLElement>('[role="dialog"]')!;
+    const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input, select'));
+    const view = doc.defaultView as unknown as { KeyboardEvent: typeof KeyboardEvent };
+
+    controls.at(-1)!.focus();
+    doc.dispatchEvent(new view.KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    expect(doc.activeElement).toBe(controls[0]);
+    doc.dispatchEvent(new view.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+    expect(doc.activeElement).toBe(controls.at(-1));
+
+    pressEscape(doc);
+    expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
+    expect(doc.activeElement).toBe(opener);
   });
 
   it('lists every conversation as a checkbox row with its title', () => {

@@ -120,19 +120,34 @@ export function findShareCandidates(conversation: Conversation): ShareCandidate[
  * message ids. The input is never mutated.
  */
 export function createShareCopy(conversation: Conversation, options: ShareCopyOptions): Conversation {
+  return createShareCopyWithCount(conversation, options).copy;
+}
+
+/**
+ * `createShareCopy`, plus how many tokens it inserted — one per masked span after
+ * overlaps merge — so the review UI can summarize the copy without re-parsing it
+ * (the original text may itself contain a literal `[EMAIL]`).
+ */
+export function createShareCopyWithCount(
+  conversation: Conversation,
+  options: ShareCopyOptions,
+): { copy: Conversation; masked: number } {
   const excluded = new Set(options.excluded.map(refKey));
   const termPatterns = manualTermPatterns(options.manualTerms);
   const kept = findShareCandidates(conversation).filter((c) => !excluded.has(refKey(c)));
 
+  let masked = 0;
   const messages: Message[] = conversation.messages.map((message, messageIndex) => {
     const spans: Span[] = kept
       .filter((c) => c.messageIndex === messageIndex)
       .map((c) => ({ start: c.start, end: c.end, token: TOKEN[c.kind] }));
     for (const pattern of termPatterns) spans.push(...termSpans(message.content, pattern));
-    return { role: message.role, content: replaceSpans(message.content, spans) };
+    const replaced = replaceSpans(message.content, spans);
+    masked += replaced.count;
+    return { role: message.role, content: replaced.text };
   });
 
-  return { title: options.neutralTitle, provider: conversation.provider, url: '', messages };
+  return { copy: { title: options.neutralTitle, provider: conversation.provider, url: '', messages }, masked };
 }
 
 interface Span {
@@ -196,7 +211,7 @@ function escapeRegExp(text: string): string {
 // `[EMAIL]` and nest tokens. Overlapping spans collapse into one token — the
 // earliest start wins, then the longer span — covering the union of the overlap,
 // so a later span is never left with an unmasked tail.
-function replaceSpans(content: string, spans: Span[]): string {
+function replaceSpans(content: string, spans: Span[]): { text: string; count: number } {
   const merged: Span[] = [];
   for (const span of [...spans].sort((a, b) => a.start - b.start || b.end - a.end)) {
     const last = merged.at(-1);
@@ -209,5 +224,5 @@ function replaceSpans(content: string, spans: Span[]): string {
     out += content.slice(cursor, span.start) + span.token;
     cursor = span.end;
   }
-  return out + content.slice(cursor);
+  return { text: out + content.slice(cursor), count: merged.length };
 }

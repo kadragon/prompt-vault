@@ -108,6 +108,8 @@ describe('i18n message-key safety', () => {
     'downloadPdfLabel',
     'downloadJsonLabel',
     'downloadHtmlLabel',
+    // "×3": a multiplication sign and a number, read the same in every shipped locale.
+    'sharePanelOccurrences',
   ]);
 
   it.each(locales.filter((locale) => locale !== REFERENCE_LOCALE))(

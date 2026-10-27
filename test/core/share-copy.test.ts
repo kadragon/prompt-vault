@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { conversation } from '../fixtures/conversation';
-import { createShareCopy, findShareCandidates } from '../../src/core/share-copy';
+import { createShareCopy, createShareCopyWithCount, findShareCandidates } from '../../src/core/share-copy';
 import type { Conversation } from '../../src/core/conversation';
 import { toMarkdown } from '../../src/export/markdown';
 import { escapeMarkdownText } from '../../src/core/markdown-escape';
@@ -287,6 +287,23 @@ describe('createShareCopy', () => {
     expect(share('Jane Doe jane@x.io ok', { manualTerms: ['Doe jane'] })).toBe(
       'Jane [REDACTED] ok',
     );
+  });
+
+  it('counts one masked value per inserted token, after overlaps merge, ignoring literal tokens in the text', () => {
+    const input = conversation({
+      messages: [
+        { role: 'user', content: 'jane@acme.test and [EMAIL] literally' },
+        { role: 'assistant', content: 'call 010-1234-5678 or Acme' },
+      ],
+    });
+    const { copy, masked } = createShareCopyWithCount(input, {
+      excluded: [],
+      manualTerms: ['acme', 'Acme'],
+      neutralTitle: NEUTRAL,
+    });
+    // jane@acme.test (term overlap merged into it) + phone + Acme = 3; the literal [EMAIL] is not counted.
+    expect(masked).toBe(3);
+    expect(copy).toEqual(createShareCopy(input, { excluded: [], manualTerms: ['acme', 'Acme'], neutralTitle: NEUTRAL }));
   });
 
   it('builds a fresh copy with a neutral title, no url, no timestamp and no message ids', () => {
