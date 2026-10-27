@@ -200,12 +200,16 @@ function termSource(term: string): string {
   const chars = [...term];
   let source = LATIN_WORD_CHAR.test(chars[0] ?? '') ? `(?<!${LATIN_WORD_CLASS})` : '';
   for (const char of chars) {
-    source += ASCII_PUNCTUATION.test(char) ? `\\\\?${escapeRegExp(char)}` : escapeRegExp(char);
+    if (TURKISH_I.has(char)) source += '[iIıİ]';
+    else source += ASCII_PUNCTUATION.test(char) ? `\\\\?${escapeRegExp(char)}` : escapeRegExp(char);
   }
   return LATIN_WORD_CHAR.test(chars.at(-1) ?? '') ? `${source}(?!${LATIN_WORD_CLASS})` : source;
 }
 
 const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
+// The four i letters match one another per character: whole-term casing alone cannot reach a
+// mixed form like `Işık` from `ışık` or `IŞIK`, and a Turkish name is often written that way.
+const TURKISH_I = new Set(['i', 'I', 'ı', 'İ']);
 // ASCII letters and digits plus Latin-1 Supplement and Latin Extended-A/B letters.
 const LATIN_WORD_CLASS = '[A-Za-z0-9\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F]';
 const LATIN_WORD_CHAR = new RegExp(`^${LATIN_WORD_CLASS}$`);

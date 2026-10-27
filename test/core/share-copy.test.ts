@@ -290,6 +290,8 @@ describe('createShareCopy', () => {
     ['Renée and Rene\u0301e', ['Rene\u0301e'], '[REDACTED] and [REDACTED]'],
     ['KİM, kİm and kım', ['KIM'], '[REDACTED], [REDACTED] and [REDACTED]'],
     ['KİM and kım', ['kim'], '[REDACTED] and [REDACTED]'],
+    ['Işık Kaya and IŞIK', ['ışık'], '[REDACTED] Kaya and [REDACTED]'],
+    ['Işık Kaya', ['IŞIK'], '[REDACTED] Kaya'],
   ])('matches a term across Unicode case and normalization forms in %s', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
   });
