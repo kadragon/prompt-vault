@@ -17,6 +17,13 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### v1.15.0 pre-release checks (2026-10-27)
+
+- [ ] [FIX] A cold-loaded Gemini conversation exports as `Gemini conversation`: `document.title` stayed `Google Gemini` for ≥ ~40 s, so `deriveTitle` fell back; sidebar-reached ones carried the real title (source: live-DOM) — `docs/live-dom-verification.md` → Gemini 2026-10-27 *(one conversation, two cold loads — measure more widely before fixing)*
+- [ ] [doc] Store listing toolbar-toggle sentence omits the copy-for-sharing icon in all five locales; `docs/store-listing.md` storage-permission rationale likewise; optionally add a copy-for-sharing bullet (claims: email/phone auto-masked in a separate Markdown copy, previewed before save, processed only in the browser — no "anonymize") (source: product-evaluator) — `docs/store-listing/{en,ko,ja,zh_CN,zh_TW}.md`
+- [ ] [FIX] Share copy leaves an unpaired emphasis delimiter when a masked term spans emphasis (`*John* Smith said *hi*` → `*[REDACTED] said *hi*` misplaces the italics); cosmetic, no leak (source: qa-verifier) — `src/core/share-copy.ts` `replaceSpans`
+- [ ] [doc] Locale polish: ko `sharePanelMaskedCount` repeats 곳 ("가린 곳: $count$곳"), ja repeats 数/箇所 (source: product-evaluator) — `public/_locales/{ko,ja}/messages.json`
+
 ### PR #118 — exclude the Claude screenshot from the English store upload set (2026-10-11)
 
 - [ ] [doc] Remove `screenshot-03-claude-conversation.png` from the default (English) locale's screenshots in the Developer Dashboard if the live listing still carries it, then confirm the published English listing — not only the Dashboard preview — shows shots 1, 2, 4 and 5 (source: code-review) — `docs/store-listing.md` → *English upload set* *(blocked by: human-only Developer Dashboard action — the public English listing still showed shot 3 ("Same buttons on Claude") as one of five screenshots on 2026-10-24)*

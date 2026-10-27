@@ -24,7 +24,7 @@ above should re-check the ones adapter code depends on:
 
 | Number | Where it is relied on | What drift does |
 |--------|----------------------|-----------------|
-| Gemini's initial page size (**10**, held at 11 / 16 / 17 / 31 exchanges) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
+| Gemini's initial page size (**10**, held at 11 / 15 / 16 / 17 / 31 exchanges, last 2026-10-27) | `INITIAL_PAGE_SIZE`, the unwalkable-path threshold in `src/adapters/gemini/index.ts` | One-directional. A LARGER page size only over-triggers the guard (a complete page fails loud — safe). A SMALLER one under-triggers it: a conversation above the real page size but below 10 would be exported partially, silently, with nothing left to detect it. Gemini declares no total, so no code can catch this — only re-measurement. |
 | ChatGPT `#history` raw page size (**28 rows**, zero variance across 72 full pages / 2 cold runs, 2026-07-28 — **pre-app-shell**; on the app-shell Recents list the rendered increment is **10 rows** (51 of 52 batches, the final one 11) against 20-row fetches that run far ahead of rendering, 2026-10-03) | `pageParityGate` in `src/adapters/chatgpt/index.ts`, counted via `sidebarConversationRow`; now secondary to the loading row (`sidebarLoadingStatus`) | The gate derives the size from the largest settled batch it observes rather than hardcoding 28, so a changed page size self-corrects. What drift breaks is the *shape*: the gate assumes a batch finishes growing before the next round, and classifies it then. If pages ever interleave, or hydration stretches a batch across a quiet round, a full page would read as short and the walk would settle early — silently. Re-measure the per-batch increment and its arrival pattern, not just the total. |
 | ChatGPT message-list load-older latency (**first growth ≤ 4533 ms, later gaps ≤ 1602 ms**, 3 runs, 2026-09-29) | `LOAD_OLDER_DEFAULTS` dwell (24 × 250 ms = 6 s) in `src/adapters/chatgpt/index.ts`, pinned by `test/adapters/chatgpt/auto-scroll.test.ts` | The list declares no turn total, so the dwell is the only end-of-list signal. A backend slower than the dwell ends the load early and the export silently lacks the OLDEST turns — nothing downstream can detect it. Re-measure the gap to the first growth after a pin, not just the gaps between later batches: per run the first gap was 4533 / 1181 / 1320 ms and the longest later one 1602 / 1185 / 1387 ms — the 4533 outlier is what sizes the dwell. |
 | ChatGPT `#history` page latency (**1509–7516 ms** confirmed, re-measured 2026-07-28; a 1502 ms minimum was seen but is unconfirmed as an inter-batch gap — was 1418–2830 ms on 2026-07-24) | `SIDEBAR_SCROLL_DEFAULTS` dwell, and the sizing of Gemini's `END_SETTLE_ROUNDS` | A slower backend than the dwell truncates silently on both providers. **No longer hypothetical** — measured 2026-07-25 at 725 of 852 conversations, silently, on the first Load more run (recorded below). The 2026-07-28 re-measurement found gaps above the shipped 5 s dwell in **both** runs (5 of 74 batches), so exceeding the dwell is not exotic — that is a count, not a claim about the tail's shape. |
@@ -1862,6 +1862,53 @@ Scope limits: one account, `ko-KR`, 26 conversations, three projects (0, 1 and 4
 `[unknown — not measured]`). `/project/<id>` remains `[unknown — not measured]`.
 
 ## Gemini
+
+### 2026-10-27 — v1.15.0 pre-release: notebook selectors hold at 106, a 106-member export saves 106, the page size is still 10
+
+Release-gate session for the notebook adapter diff since v1.14.6 (#127/#128). Playwright MCP,
+logged-in ko-KR account (no login step); the unpacked extension was already installed at 1.14.6
+when the session opened, and was reloaded from `chrome://extensions` after `npm run build` to
+**1.15.0**, load path `~/Dev/prompt-vault/dist`, clean tree at `05bf9fb`. The session ran past
+local midnight. Counts, ids and booleans only.
+
+- **Every notebook selector still matches.** Cold `page.goto` of `PV probe notebook`, sampled
+  every 30 ms: `project-chat-history` + `project-list-skeleton` with 0 rows at 1965 ms, trigger
+  `native`/`project` at 2029 ms, 10 rows with the skeleton still present at 2226 ms, **106** rows
+  with the skeleton gone at 2535 ms. Settled: `notebookChatRow`, `notebookChatButton` and
+  `notebookChatTitle` 106 each (one of each per row), 0 anchors in any row, `notebookEmptyState`
+  0, `notebookSidebarLink` 2 (one per probe notebook, 1 to this one). Title numbers were exactly
+  the created set (n = 1–108 without 32 and 58), newest first. `PV probe empty notebook`, entered
+  through its sidebar link: skeleton at 1004 ms, then `notebook-empty-state` 1 with 0 rows and no
+  skeleton at 1200 ms; its panel showed 0 checkboxes and 0 alerts.
+- **The shipped export runs end to end at full size.** Trigger native inside
+  `project-chat-history`, `aria-label` *이 노트북의 모든 채팅 다운로드*, `elementFromPoint` hit
+  itself. Panel: 107 checkboxes (106 + *전체 선택*); select-all, JSON, *선택한 106개 내보내기*.
+  ~8.5 min later (~4.9 s per member) it ended on the notebook home with
+  *106개 중 106개 저장했습니다.*, no failure line, 0 alerts. On disk: 106 files; numbers = the
+  created set; each 2 messages `user`>`assistant`, none empty; 106 distinct `/app/<16-hex>` URLs;
+  each file's title and first prompt carry its own number (106 / 106).
+- **Conversation toolbar, with the copy-for-sharing button.** `/app/<id>` reached from the
+  sidebar: toolbar `native`, track `conversation`, **6** buttons, **6 / 6** hit themselves; the
+  share button (index 4, `aria-label` *공유용 Markdown 사본 만들기*) opened
+  `#prompt-vault-share-panel` ~3.1 s after the click (extraction runs first): `role="dialog"`,
+  `aria-modal="true"`, focus inside, warning + term input + preview present, 3 buttons, 0 alerts.
+  Escape closed it and returned focus to the share button. Nothing was copied or shared.
+- **Initial page size re-measured: 10.** The first 31 sidebar rows held ≤ 8 exchanges each;
+  after paging the sidebar to 125 rows, row 41 was the first ≥ 10. Cold load: 0 → **10** at
+  944 ms, steady for 4 s; pinning `chat-history-container` to the top gave 15 at 798 ms, then 8 s
+  of no growth (15 unique non-empty exchange ids). The shipped JSON button on the same cold page
+  saved 30 messages (15 user / 15 assistant, alternating, none empty) in 24.8 s. Holds now at
+  11 / 15 / 16 / 17 / 31 exchanges.
+- **Cold-loaded conversations export as `Gemini conversation`.** On that cold load
+  `document.title` stayed a bare `Google Gemini` for ≥ ~40 s, so the export's title (and filename)
+  fell back to `Gemini conversation`; conversations reached through the sidebar carried their
+  real title. `deriveTitle` is unchanged since v1.14.6, so this is not from the release diff. One
+  conversation, two cold loads `[unknown — not measured more widely]`.
+- **Rate limit.** Right after the 106-member export, 19 consecutive cold `page.goto` loads of
+  sidebar conversations (~2 min) landed on `google.com/sorry` (HTTP 429, CAPTCHA). Still blocked
+  4 min later, clear ~40 min later; not solved. 25 later in-app sidebar clicks paced 1.5–2.5 s
+  apart were not blocked. Prefer paced in-app navigation over cold-load loops.
+- Unmeasurable: the `/recents` zero-conversation item (the account holds conversations).
 
 ### 2026-10-27 — every toolbar and list trigger receives real clicks
 
