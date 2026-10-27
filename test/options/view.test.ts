@@ -43,7 +43,7 @@ const flush = (): Promise<void> => Promise.resolve().then(() => undefined);
 
 describe('renderOptions', () => {
   it('renders a checkbox per format plus the bulk toggle, reflecting the current settings', () => {
-    const { box } = mount({ formats: { md: true, pdf: false, json: true, html: false }, bulk: false });
+    const { box } = mount({ formats: { md: true, pdf: false, json: true, html: false }, bulk: false, share: true });
     expect(box('format-md').checked).toBe(true);
     expect(box('format-pdf').checked).toBe(false);
     expect(box('format-json').checked).toBe(true);
@@ -55,10 +55,20 @@ describe('renderOptions', () => {
     const { box, saved, fireChange } = mount();
     fireChange(box('format-pdf'), false);
     expect(saved).toHaveLength(1);
-    expect(saved[0]).toEqual({ formats: { md: true, pdf: false, json: true, html: true }, bulk: true });
+    expect(saved[0]).toEqual({ formats: { md: true, pdf: false, json: true, html: true }, bulk: true, share: true });
     // A later change must not retroactively mutate the earlier snapshot.
     fireChange(box('format-json'), false);
     expect(saved[0].formats.json).toBe(true);
+  });
+
+  it('renders the share toggle from the settings and persists it independently of the format rule', () => {
+    const off = mount({ ...DEFAULT_SETTINGS, share: false });
+    expect(off.box('share').checked).toBe(false);
+
+    const { box, saved, fireChange } = mount();
+    expect(box('share').checked).toBe(true);
+    fireChange(box('share'), false);
+    expect(saved).toEqual([{ ...DEFAULT_SETTINGS, share: false }]);
   });
 
   it('toggles the bulk icon independently of the format rule', () => {
@@ -115,6 +125,7 @@ describe('renderOptions', () => {
     const { box, noteIsError, fireChange } = mount({
       formats: { md: true, pdf: false, json: false, html: false },
       bulk: true,
+      share: true,
     });
     fireChange(box('format-md'), false);
     expect(noteIsError()).toBe(true);
@@ -122,7 +133,7 @@ describe('renderOptions', () => {
 
   it('renders every control as a real checkbox input', () => {
     const { box } = mount();
-    for (const id of ['format-md', 'format-pdf', 'format-json', 'format-html', 'bulk']) {
+    for (const id of ['format-md', 'format-pdf', 'format-json', 'format-html', 'bulk', 'share']) {
       expect(box(id).type).toBe('checkbox');
     }
   });

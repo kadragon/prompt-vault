@@ -35,7 +35,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('options entry point', () => {
   it('renders the stored settings into #app', async () => {
-    const stored = { formats: { md: false, pdf: true, json: true, html: true }, bulk: false };
+    const stored = { formats: { md: false, pdf: true, json: true, html: true }, bulk: false, share: true };
     const { doc } = bootPage('<body><main id="app"></main></body>', stored);
     await runEntry();
 

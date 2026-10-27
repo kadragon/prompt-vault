@@ -80,6 +80,34 @@ export const DOWNLOAD_RECENTS_BULK_ARIA_LABEL = m('downloadRecentsBulkAriaLabel'
 // `projectTriggerAriaLabel`), since Gemini calls its project analogue a notebook.
 export const DOWNLOAD_NOTEBOOK_BULK_ARIA_LABEL = m('downloadNotebookBulkAriaLabel');
 
+// The copy-for-sharing toolbar button (docs/design/share-copy-export.md): overlay label
+// and accessible name/tooltip, like the per-format buttons above.
+export const DOWNLOAD_SHARE_LABEL = m('downloadShareLabel');
+export const DOWNLOAD_SHARE_ARIA_LABEL = m('downloadShareAriaLabel');
+
+// Copy-for-sharing review modal. None of these may say "anonymized" or imply the masking
+// is complete — detection misses things, and the warning tells the user to read the preview.
+export const SHARE_PANEL_TITLE = m('sharePanelTitle');
+export const SHARE_PANEL_WARNING = m('sharePanelWarning');
+export const SHARE_PANEL_DETECTED_LABEL = m('sharePanelDetectedLabel');
+export const SHARE_PANEL_NO_CANDIDATES = m('sharePanelNoCandidates');
+export const SHARE_KIND_EMAIL = m('shareKindEmail');
+export const SHARE_KIND_PHONE = m('shareKindPhone');
+export const SHARE_PANEL_TERM_LABEL = m('sharePanelTermLabel');
+export const SHARE_PANEL_ADD_TERM = m('sharePanelAddTerm');
+export const SHARE_PANEL_PREVIEW_LABEL = m('sharePanelPreviewLabel');
+export const SHARE_PANEL_SAVE = m('sharePanelSave');
+export const SHARE_PANEL_CANCEL = m('sharePanelCancel');
+
+/** Accessible name of the button that removes one added mask term, e.g. "Remove Acme". */
+export function sharePanelRemoveTermLabel(term: string): string {
+  return m('sharePanelRemoveTerm', [term]);
+}
+
+// The fixed title every copy for sharing carries in place of the original title. Localized
+// here because the core (src/core/share-copy.ts) cannot call chrome.i18n.
+export const SHARE_NEUTRAL_TITLE = m('shareNeutralTitle');
+
 // Selection-panel chrome.
 export const BULK_PANEL_TITLE = m('bulkPanelTitle');
 export const BULK_PANEL_FORMAT_LABEL = m('bulkPanelFormatLabel');
@@ -171,6 +199,7 @@ export const OPTIONS_HEADING = m('optionsHeading');
 // Section labels for the format checklist and the bulk-icon toggle.
 export const OPTIONS_FORMATS_LABEL = m('optionsFormatsLabel');
 export const OPTIONS_BULK_LABEL = m('optionsBulkLabel');
+export const OPTIONS_SHARE_LABEL = m('optionsShareLabel');
 
 // Transient confirmation shown after a change is saved.
 export const OPTIONS_SAVED_NOTE = m('optionsSavedNote');

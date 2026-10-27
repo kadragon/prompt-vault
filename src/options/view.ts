@@ -17,6 +17,7 @@ import {
   OPTIONS_MIN_FORMAT_NOTE,
   OPTIONS_SAVE_FAILED_NOTE,
   OPTIONS_SAVED_NOTE,
+  OPTIONS_SHARE_LABEL,
   OPTIONS_TITLE,
 } from '../strings';
 
@@ -74,7 +75,7 @@ export function renderOptions(
   note.id = 'note';
 
   // Working copy mutated by the handlers; a snapshot of it is persisted on every change.
-  const current: ToolbarSettings = { formats: { ...settings.formats }, bulk: settings.bulk };
+  const current: ToolbarSettings = { formats: { ...settings.formats }, bulk: settings.bulk, share: settings.share };
 
   const showNote = (text: string, isError: boolean): void => {
     note.textContent = text;
@@ -84,7 +85,7 @@ export function renderOptions(
   const persist = (): void => {
     // Report success only after the write actually resolves; surface a fail-loud note if it
     // rejects (e.g. sync write-quota exceeded) rather than a misleading "Saved.".
-    void save({ formats: { ...current.formats }, bulk: current.bulk }).then(
+    void save({ formats: { ...current.formats }, bulk: current.bulk, share: current.share }).then(
       () => showNote(OPTIONS_SAVED_NOTE, false),
       () => showNote(OPTIONS_SAVE_FAILED_NOTE, true),
     );
@@ -114,5 +115,13 @@ export function renderOptions(
   });
   const bulkRow = labeledRow(doc, bulkBox, OPTIONS_BULK_LABEL);
 
-  app.append(heading, fieldset, bulkRow, note);
+  // Share-safe Markdown toggle (also independent of the min-one format rule).
+  const shareBox = checkbox(doc, 'share', current.share);
+  shareBox.addEventListener('change', () => {
+    current.share = shareBox.checked;
+    persist();
+  });
+  const shareRow = labeledRow(doc, shareBox, OPTIONS_SHARE_LABEL);
+
+  app.append(heading, fieldset, bulkRow, shareRow, note);
 }

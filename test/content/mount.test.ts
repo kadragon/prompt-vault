@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import type { Conversation } from '../../src/core/conversation';
+import { ExtractionError } from '../../src/core/errors';
 import { conversation as makeConversation } from '../fixtures/conversation';
 import {
   CONTAINER_ID,
@@ -12,22 +13,25 @@ import {
   syncButtons,
 } from '../../src/content/mount';
 import { BULK_PANEL_ID } from '../../src/content/bulk-panel';
+import { SHARE_PANEL_ID } from '../../src/content/share-panel';
 import { DEFAULT_SETTINGS } from '../../src/settings/store';
 import {
   BULK_UNSUPPORTED_MESSAGE,
   DOWNLOAD_PDF_ARIA_LABEL,
+  DOWNLOAD_SHARE_ARIA_LABEL,
   EXPORT_EMPTY_MESSAGE,
   EXPORT_NO_ADAPTER_MESSAGE,
   pdfMissingGlyphsMessage,
 } from '../../src/strings';
 import { chatgptAdapter } from '../../src/adapters/chatgpt';
 import { claudeAdapter } from '../../src/adapters/claude';
-import { saveConversation } from '../../src/content/save-conversation';
+import { downloadTextFile, saveConversation } from '../../src/content/save-conversation';
 
 // The headless saver is the one seam between the toolbar and a real download. Mocked for the
 // whole file so the single-export tests below can drive `runExport` to a SUCCESSFUL finish
 // without pdfmake or an object URL; every other test in this file stops before reaching it.
-vi.mock('../../src/content/save-conversation', () => ({ saveConversation: vi.fn() }));
+// `downloadTextFile` is the same seam for the copy for sharing, which skips the saver.
+vi.mock('../../src/content/save-conversation', () => ({ saveConversation: vi.fn(), downloadTextFile: vi.fn() }));
 
 // setToolbarSettings mutates module state; reset to the all-on default after every test so
 // the filtering cases below never leak into the syncButtons tests that assume a full toolbar.
@@ -36,6 +40,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks(); // spies only — the module-mock `vi.fn()` below keeps its calls and queued results
   vi.mocked(saveConversation).mockReset();
+  vi.mocked(downloadTextFile).mockReset();
 });
 
 // `alert` is stubbed on `globalThis` because that is what the bare call resolves against, not the
@@ -187,7 +192,7 @@ describe('syncButtons', () => {
     const container = doc.getElementById(CONTAINER_ID);
     expect(container).not.toBeNull();
     expect(container?.parentElement?.id).toBe(HEADER_ID);
-    expect(container?.querySelectorAll('button').length).toBe(5);
+    expect(container?.querySelectorAll('button').length).toBe(6);
     // Native buttons wear the ChatGPT adapter's icon-button class so they blend with
     // the header's native square icon controls.
     expect(container?.querySelector('button')?.className).toContain('rounded-lg');
@@ -200,8 +205,8 @@ describe('syncButtons', () => {
     const container = doc.getElementById(CONTAINER_ID);
     expect(container).not.toBeNull();
     expect(container?.parentElement?.getAttribute('data-testid')).toBe(CLAUDE_ACTIONS_ID);
-    // Four format downloads plus the Claude sidebar bulk action.
-    expect(container?.querySelectorAll('button').length).toBe(5);
+    // Four format downloads, the share copy, and the Claude sidebar bulk action.
+    expect(container?.querySelectorAll('button').length).toBe(6);
     const labels = Array.from(container?.querySelectorAll('button') ?? []).map((b) =>
       b.getAttribute('aria-label'),
     );
@@ -266,8 +271,8 @@ describe('syncButtons', () => {
     syncButtons(doc, CONV_URL);
 
     const header = doc.getElementById(HEADER_ID);
-    // 4 per-format buttons + the bulk button + the fixture's Share and options buttons.
-    expect(header?.querySelectorAll('button').length).toBe(7);
+    // 4 per-format buttons + the share and bulk buttons + the fixture's Share and options buttons.
+    expect(header?.querySelectorAll('button').length).toBe(8);
     expect(doc.querySelectorAll(`#${CONTAINER_ID}`).length).toBe(1);
   });
 
@@ -446,7 +451,7 @@ describe('syncButtons on a Project home page', () => {
   });
 
   it('does not mount the trigger when the bulk-export setting is disabled', () => {
-    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false });
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false, share: true });
     const doc = docWithProjectSection();
     syncButtons(doc, PROJECT_URL);
     expect(doc.getElementById(CONTAINER_ID)).toBeNull();
@@ -457,7 +462,7 @@ describe('syncButtons on a Project home page', () => {
     syncButtons(doc, PROJECT_URL);
     expect(doc.getElementById(CONTAINER_ID)).not.toBeNull();
 
-    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false });
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false, share: true });
     syncButtons(doc, PROJECT_URL);
     expect(doc.getElementById(CONTAINER_ID)).toBeNull();
   });
@@ -603,7 +608,7 @@ describe('syncButtons on Claude’s /recents history page', () => {
     // A conversation page gets the per-format toolbar in the header, not a list trigger.
     const conversation = step(CLAUDE_CONV_URL);
     expect(conversation?.parentElement?.getAttribute('data-testid')).toBe(CLAUDE_ACTIONS_ID);
-    expect(conversation?.querySelectorAll('button').length).toBe(5);
+    expect(conversation?.querySelectorAll('button').length).toBe(6);
 
     const recents = step(CLAUDE_RECENTS_URL);
     expect(recents?.parentElement?.tagName).toBe('DIV');
@@ -632,7 +637,7 @@ describe('syncButtons on Claude’s /recents history page', () => {
     const conversation = step(CLAUDE_CONV_URL);
     expect(conversation?.getAttribute(TRACK_ATTR)).toBe('conversation');
     expect(conversation?.parentElement?.getAttribute('data-testid')).toBe(CLAUDE_ACTIONS_ID);
-    expect(conversation?.querySelectorAll('button').length).toBe(5);
+    expect(conversation?.querySelectorAll('button').length).toBe(6);
 
     const recents = step(CLAUDE_RECENTS_URL);
     expect(recents?.getAttribute(TRACK_ATTR)).toBe('recents');
@@ -699,7 +704,7 @@ describe('bulk-export triggers when the click cannot be serviced', () => {
     const alerts = stubAlert();
     vi.stubGlobal('location', NO_ADAPTER_LOCATION);
 
-    doc.getElementById(CONTAINER_ID)?.querySelectorAll('button')[4]?.click();
+    doc.getElementById(CONTAINER_ID)?.querySelectorAll('button')[5]?.click();
 
     expect(alerts).toHaveBeenCalledWith(EXPORT_NO_ADAPTER_MESSAGE);
     expect(doc.getElementById(BULK_PANEL_ID)).toBeNull();
@@ -713,7 +718,7 @@ describe('bulk-export triggers when the click cannot be serviced', () => {
 
     const restore = suppressMember(claudeAdapter, 'listConversations');
     try {
-      doc.getElementById(CONTAINER_ID)?.querySelectorAll('button')[4]?.click();
+      doc.getElementById(CONTAINER_ID)?.querySelectorAll('button')[5]?.click();
     } finally {
       restore();
     }
@@ -846,14 +851,15 @@ describe('createButtons', () => {
     const container = createButtons(bareDoc(), 'native', 'btn btn-ghost');
     const buttons = container.querySelectorAll('button');
 
-    expect(buttons.length).toBe(5);
+    expect(buttons.length).toBe(6);
     expect(buttons[0].className).toBe('btn btn-ghost');
     expect(buttons[0].getAttribute('aria-label')).toBe('Download conversation as Markdown');
     expect(buttons[1].getAttribute('aria-label')).toBe('Download conversation as PDF');
     expect(buttons[2].getAttribute('aria-label')).toBe('Download conversation as JSON');
     expect(buttons[3].getAttribute('aria-label')).toBe('Download conversation as HTML');
-    // The bulk action is the last button, after the per-format downloads.
-    expect(buttons[4].getAttribute('aria-label')).toBe('Export multiple conversations');
+    // The share copy follows the per-format downloads; the bulk action is last.
+    expect(buttons[4].getAttribute('aria-label')).toBe('Make a Markdown copy for sharing');
+    expect(buttons[5].getAttribute('aria-label')).toBe('Export multiple conversations');
   });
 
   it('renders icon-only native buttons with a tooltip title and no visible text label', () => {
@@ -869,7 +875,8 @@ describe('createButtons', () => {
     expect(buttons[1].getAttribute('title')).toBe('Download conversation as PDF');
     expect(buttons[2].getAttribute('title')).toBe('Download conversation as JSON');
     expect(buttons[3].getAttribute('title')).toBe('Download conversation as HTML');
-    expect(buttons[4].getAttribute('title')).toBe('Export multiple conversations');
+    expect(buttons[4].getAttribute('title')).toBe('Make a Markdown copy for sharing');
+    expect(buttons[5].getAttribute('title')).toBe('Export multiple conversations');
   });
 
   it('draws real icon geometry and makes every button a non-submitting button', () => {
@@ -885,21 +892,22 @@ describe('createButtons', () => {
   });
 
   it('renders only the enabled format buttons plus the bulk button', () => {
-    setToolbarSettings({ formats: { md: true, pdf: false, json: false, html: false }, bulk: true });
+    setToolbarSettings({ formats: { md: true, pdf: false, json: false, html: false }, bulk: true, share: true });
     const buttons = createButtons(bareDoc(), 'native', 'icon-btn').querySelectorAll('button');
 
-    // Just the Markdown download + the bulk action.
-    expect(buttons.length).toBe(2);
+    // Just the Markdown download + the share copy + the bulk action.
+    expect(buttons.length).toBe(3);
     expect(buttons[0].getAttribute('aria-label')).toBe('Download conversation as Markdown');
-    expect(buttons[1].getAttribute('aria-label')).toBe('Export multiple conversations');
+    expect(buttons[1].getAttribute('aria-label')).toBe('Make a Markdown copy for sharing');
+    expect(buttons[2].getAttribute('aria-label')).toBe('Export multiple conversations');
   });
 
   it('omits the bulk button when the bulk icon is disabled', () => {
-    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false });
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: false, share: true });
     const buttons = createButtons(bareDoc(), 'native', 'icon-btn').querySelectorAll('button');
 
-    // All four format downloads, no bulk.
-    expect(buttons.length).toBe(4);
+    // All four format downloads and the share copy, no bulk.
+    expect(buttons.length).toBe(5);
     expect(Array.from(buttons).some((b) => b.getAttribute('aria-label') === 'Export multiple conversations')).toBe(
       false,
     );
@@ -909,21 +917,21 @@ describe('createButtons', () => {
   // the icon would render on every one of its conversation pages and answer a click with
   // "not supported", which is worse than the feature being absent.
   it('omits the bulk button when the page’s adapter does not support bulk', () => {
-    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: true });
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: true, share: true });
     const buttons = createButtons(bareDoc(), 'native', 'icon-btn', false).querySelectorAll('button');
 
-    expect(buttons.length).toBe(4);
+    expect(buttons.length).toBe(5);
     expect(Array.from(buttons).some((b) => b.getAttribute('aria-label') === 'Export multiple conversations')).toBe(
       false,
     );
   });
 
   it('keeps the bulk button for an adapter that does support bulk', () => {
-    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: true });
+    setToolbarSettings({ formats: { md: true, pdf: true, json: true, html: true }, bulk: true, share: true });
     const buttons = createButtons(bareDoc(), 'native', 'icon-btn', true).querySelectorAll('button');
 
-    expect(buttons.length).toBe(5);
-    expect(buttons[4].getAttribute('aria-label')).toBe('Export multiple conversations');
+    expect(buttons.length).toBe(6);
+    expect(buttons[5].getAttribute('aria-label')).toBe('Export multiple conversations');
   });
 });
 
@@ -932,10 +940,25 @@ describe('setToolbarSettings', () => {
     // Baseline is the all-on default (restored by afterEach). Re-applying it is a no-op.
     expect(setToolbarSettings(DEFAULT_SETTINGS)).toBe(false);
 
-    const custom = { formats: { md: true, pdf: false, json: true, html: true }, bulk: true };
+    const custom = { formats: { md: true, pdf: false, json: true, html: true }, bulk: true, share: true };
     expect(setToolbarSettings(custom)).toBe(true); // differs from default → changed
-    expect(setToolbarSettings({ formats: { ...custom.formats }, bulk: custom.bulk })).toBe(false); // equal value → no change
+    expect(setToolbarSettings({ formats: { ...custom.formats }, bulk: custom.bulk, share: custom.share })).toBe(false); // equal value → no change
     expect(setToolbarSettings({ ...custom, bulk: false })).toBe(true); // bulk flip → changed
+    expect(setToolbarSettings({ ...custom, bulk: false, share: false })).toBe(true); // share flip → changed
+  });
+
+  it('omits the share button when the share icon is disabled', () => {
+    setToolbarSettings({ ...DEFAULT_SETTINGS, share: false });
+    const buttons = createButtons(bareDoc(), 'native', 'icon-btn').querySelectorAll('button');
+
+    // All four format downloads and the bulk action, no share copy.
+    expect(Array.from(buttons, (b) => b.getAttribute('aria-label'))).toEqual([
+      'Download conversation as Markdown',
+      'Download conversation as PDF',
+      'Download conversation as JSON',
+      'Download conversation as HTML',
+      'Export multiple conversations',
+    ]);
   });
 });
 
@@ -1055,6 +1078,94 @@ describe('single export through a toolbar button', () => {
 
     expect(save).not.toHaveBeenCalled();
     await expectToolbarIdle(buttons);
+  });
+});
+
+// The copy-for-sharing button, driven like the single export: mount via `syncButtons`, stub the
+// adapter's extraction, click. The modal itself is covered in share-panel.test.ts; this pins the
+// wiring — fail-loud extraction, the shared in-flight guard, and that the backup saver is untouched.
+describe('copy for sharing through the toolbar button', () => {
+  const CHATGPT_LOCATION = { href: CONV_URL, origin: 'https://chatgpt.com', pathname: '/c/abc-123' };
+
+  const conversation: Conversation = makeConversation({
+    title: 'Deal with jane@acme.test',
+    url: CONV_URL,
+    messages: [{ role: 'user', content: 'Mail jane@acme.test about it.' }],
+  });
+
+  function toolbarButton(doc: Document, ariaLabel: string): HTMLButtonElement {
+    const button = Array.from(doc.getElementById(CONTAINER_ID)?.querySelectorAll('button') ?? []).find(
+      (b) => b.getAttribute('aria-label') === ariaLabel,
+    );
+    expect(button).toBeDefined();
+    return button!;
+  }
+
+  function mountAndArm(extract: () => Promise<Conversation>) {
+    const doc = docWithHeader();
+    syncButtons(doc, CONV_URL);
+    const alerts = stubAlert();
+    vi.stubGlobal('location', CHATGPT_LOCATION);
+    const spy = vi.spyOn(chatgptAdapter, 'extract').mockImplementation(extract);
+    return { doc, alerts, extract: spy, share: toolbarButton(doc, DOWNLOAD_SHARE_ARIA_LABEL) };
+  }
+
+  it('opens the review modal on the extracted conversation and saves the previewed copy, not a backup', async () => {
+    const { doc, alerts, share } = mountAndArm(() => Promise.resolve(conversation));
+
+    share.click();
+    await vi.waitFor(() => expect(doc.getElementById(SHARE_PANEL_ID)).not.toBeNull());
+    const panel = doc.getElementById(SHARE_PANEL_ID)!;
+    const preview = panel.querySelector('pre')!.textContent ?? '';
+    expect(preview).toContain('Mail [EMAIL] about it.');
+    expect(preview).not.toContain('jane@acme.test');
+
+    Array.from(panel.querySelectorAll('button')).find((b) => b.textContent === 'Save copy')!.click();
+
+    expect(downloadTextFile).toHaveBeenCalledWith(
+      doc,
+      expect.stringMatching(/^chatgpt-shared-\d{8}\.md$/),
+      preview,
+      'text/markdown',
+    );
+    expect(saveConversation).not.toHaveBeenCalled();
+    expect(alerts).not.toHaveBeenCalled();
+    expect(doc.getElementById(SHARE_PANEL_ID)).toBeNull();
+  });
+
+  it('alerts and opens no modal when the conversation is empty', async () => {
+    const { doc, alerts, share } = mountAndArm(() => Promise.resolve({ ...conversation, messages: [] }));
+
+    share.click();
+    await vi.waitFor(() => expect(alerts).toHaveBeenCalledWith(EXPORT_EMPTY_MESSAGE));
+    expect(doc.getElementById(SHARE_PANEL_ID)).toBeNull();
+  });
+
+  it('alerts the extraction error and opens no modal', async () => {
+    const { doc, alerts, share } = mountAndArm(() => Promise.reject(new ExtractionError('markup drifted')));
+
+    share.click();
+    await vi.waitFor(() => expect(alerts).toHaveBeenCalledWith('markup drifted'));
+    expect(doc.getElementById(SHARE_PANEL_ID)).toBeNull();
+  });
+
+  it('is swallowed while a backup export is in flight, and re-enables the toolbar after', async () => {
+    const { doc, extract, share } = mountAndArm(() => Promise.resolve(conversation));
+    let finish!: (unsupported: string[]) => void;
+    vi.mocked(saveConversation).mockReturnValue(new Promise<string[]>((resolve) => (finish = resolve)));
+
+    toolbarButton(doc, DOWNLOAD_PDF_ARIA_LABEL).click();
+    await vi.waitFor(() => expect(saveConversation).toHaveBeenCalledTimes(1));
+    expect(share.disabled).toBe(true);
+    // A disabled button ignores a real click; dispatching the handler directly proves the guard,
+    // not just the disabled attribute, blocks it (the toolbar may be re-mounted mid-export).
+    share.disabled = false;
+    share.click();
+    expect(extract).toHaveBeenCalledTimes(1);
+
+    finish([]);
+    await vi.waitFor(() => expect(share.disabled).toBe(false));
+    expect(doc.getElementById(SHARE_PANEL_ID)).toBeNull();
   });
 });
 

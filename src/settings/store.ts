@@ -9,10 +9,12 @@
 
 import type { ExportFormat } from '../content/save-conversation';
 
-/** Which single-export format icons show in the toolbar, and whether the bulk icon shows. */
+/** Which single-export format icons show in the toolbar, and whether the bulk and share icons show. */
 export interface ToolbarSettings {
   formats: Record<ExportFormat, boolean>;
   bulk: boolean;
+  /** The Share-safe Markdown button (docs/design/share-copy-export.md). */
+  share: boolean;
 }
 
 // The single-export formats, in the same display order as the toolbar (src/content/mount.ts).
@@ -23,6 +25,7 @@ export const FORMAT_KEYS: ReadonlyArray<ExportFormat> = ['md', 'pdf', 'json', 'h
 export const DEFAULT_SETTINGS: ToolbarSettings = {
   formats: { md: true, pdf: true, json: true, html: true },
   bulk: true,
+  share: true,
 };
 
 // Storage key under which the settings object lives in chrome.storage.sync.
@@ -35,7 +38,11 @@ const STORAGE_KEY = 'toolbarSettings';
  * toolbar is never left with no way to export the current conversation (fail-safe).
  */
 export function sanitize(raw: unknown): ToolbarSettings {
-  const obj = (raw ?? {}) as Partial<{ formats: Partial<Record<ExportFormat, unknown>>; bulk: unknown }>;
+  const obj = (raw ?? {}) as Partial<{
+    formats: Partial<Record<ExportFormat, unknown>>;
+    bulk: unknown;
+    share: unknown;
+  }>;
   const rawFormats = obj.formats ?? {};
   const formats = {} as Record<ExportFormat, boolean>;
   for (const key of FORMAT_KEYS) {
@@ -46,7 +53,8 @@ export function sanitize(raw: unknown): ToolbarSettings {
     Object.assign(formats, DEFAULT_SETTINGS.formats);
   }
   const bulk = typeof obj.bulk === 'boolean' ? obj.bulk : DEFAULT_SETTINGS.bulk;
-  return { formats, bulk };
+  const share = typeof obj.share === 'boolean' ? obj.share : DEFAULT_SETTINGS.share;
+  return { formats, bulk, share };
 }
 
 /** Read and sanitize the persisted settings. Returns defaults when nothing is stored yet. */

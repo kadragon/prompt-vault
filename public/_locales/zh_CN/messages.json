@@ -596,5 +596,74 @@
   "errClaudeArtifactMetadataUnreadable": {
     "message": "无法读取 Claude 显示的 Artifact 卡片的标题或类型。页面结构可能已更改，请反馈此问题。",
     "description": "Extraction error (Claude): an artifact card's title or kind could not be read."
+  },
+  "downloadShareLabel": {
+    "message": "分享副本",
+    "description": "Short label for the copy-for-sharing button on the overlay fallback (native buttons are icon-only)."
+  },
+  "downloadShareAriaLabel": {
+    "message": "生成用于分享的 Markdown 副本",
+    "description": "Accessible name and tooltip of the toolbar button that opens the copy-for-sharing review modal."
+  },
+  "sharePanelTitle": {
+    "message": "用于分享的 Markdown 副本",
+    "description": "Heading of the copy-for-sharing review modal."
+  },
+  "sharePanelWarning": {
+    "message": "系统会自动识别邮箱和电话号码，但可能有遗漏。分享文件前请务必检查预览。",
+    "description": "Warning at the top of the copy-for-sharing modal: detection is incomplete, so the user must read the preview. Must never claim the copy is anonymized or complete."
+  },
+  "sharePanelDetectedLabel": {
+    "message": "副本中将遮盖的内容——需要保留的请取消勾选",
+    "description": "Heading above the checklist of detected emails/phone numbers that will be masked in the copy."
+  },
+  "sharePanelNoCandidates": {
+    "message": "未识别到邮箱或电话号码。如需遮盖姓名等信息，请在下方添加。",
+    "description": "Shown in the copy-for-sharing modal when no email or phone number was detected."
+  },
+  "shareKindEmail": {
+    "message": "邮箱",
+    "description": "Kind label next to a detected email address in the copy-for-sharing checklist."
+  },
+  "shareKindPhone": {
+    "message": "电话",
+    "description": "Kind label next to a detected phone number in the copy-for-sharing checklist."
+  },
+  "sharePanelTermLabel": {
+    "message": "其他需要遮盖的词语（姓名、公司名等）",
+    "description": "Label of the text field where the user adds their own words to mask (names, company names)."
+  },
+  "sharePanelAddTerm": {
+    "message": "添加",
+    "description": "Button that adds the typed word to the list of words to mask."
+  },
+  "sharePanelRemoveTerm": {
+    "message": "移除 $term$",
+    "description": "Accessible name of the button that removes one added word from the mask list.",
+    "placeholders": {
+      "term": {
+        "content": "$1"
+      }
+    }
+  },
+  "sharePanelPreviewLabel": {
+    "message": "预览",
+    "description": "Label above the read-only preview of the Markdown copy for sharing."
+  },
+  "sharePanelSave": {
+    "message": "保存副本",
+    "description": "Button that saves the previewed copy for sharing as a Markdown file."
+  },
+  "sharePanelCancel": {
+    "message": "取消",
+    "description": "Button that closes the copy-for-sharing modal without saving."
+  },
+  "shareNeutralTitle": {
+    "message": "分享的对话",
+    "description": "Fixed title written into every copy for sharing in place of the original conversation title."
+  },
+  "optionsShareLabel": {
+    "message": "显示分享副本图标",
+    "description": "Label for the copy-for-sharing icon toggle on the options page."
   }
 }

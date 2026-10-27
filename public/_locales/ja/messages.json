@@ -596,5 +596,74 @@
   "errClaudeArtifactMetadataUnreadable": {
     "message": "Claude が表示したアーティファクトカードのタイトルか種類を読み取れませんでした。ページ構成が変わった可能性があります。ご報告ください。",
     "description": "Extraction error (Claude): an artifact card's title or kind could not be read."
+  },
+  "downloadShareLabel": {
+    "message": "共有用コピー",
+    "description": "Short label for the copy-for-sharing button on the overlay fallback (native buttons are icon-only)."
+  },
+  "downloadShareAriaLabel": {
+    "message": "共有用の Markdown コピーを作成",
+    "description": "Accessible name and tooltip of the toolbar button that opens the copy-for-sharing review modal."
+  },
+  "sharePanelTitle": {
+    "message": "共有用 Markdown コピー",
+    "description": "Heading of the copy-for-sharing review modal."
+  },
+  "sharePanelWarning": {
+    "message": "メールアドレスと電話番号は自動で検出しますが、見落とすことがあります。共有する前に必ずプレビューを確認してください。",
+    "description": "Warning at the top of the copy-for-sharing modal: detection is incomplete, so the user must read the preview. Must never claim the copy is anonymized or complete."
+  },
+  "sharePanelDetectedLabel": {
+    "message": "コピーで伏せる項目（残すものはチェックを外してください）",
+    "description": "Heading above the checklist of detected emails/phone numbers that will be masked in the copy."
+  },
+  "sharePanelNoCandidates": {
+    "message": "メールアドレスや電話番号は見つかりませんでした。伏せたい名前などは下で追加できます。",
+    "description": "Shown in the copy-for-sharing modal when no email or phone number was detected."
+  },
+  "shareKindEmail": {
+    "message": "メール",
+    "description": "Kind label next to a detected email address in the copy-for-sharing checklist."
+  },
+  "shareKindPhone": {
+    "message": "電話番号",
+    "description": "Kind label next to a detected phone number in the copy-for-sharing checklist."
+  },
+  "sharePanelTermLabel": {
+    "message": "ほかに伏せる語句（名前、会社名など）",
+    "description": "Label of the text field where the user adds their own words to mask (names, company names)."
+  },
+  "sharePanelAddTerm": {
+    "message": "追加",
+    "description": "Button that adds the typed word to the list of words to mask."
+  },
+  "sharePanelRemoveTerm": {
+    "message": "$term$ を削除",
+    "description": "Accessible name of the button that removes one added word from the mask list.",
+    "placeholders": {
+      "term": {
+        "content": "$1"
+      }
+    }
+  },
+  "sharePanelPreviewLabel": {
+    "message": "プレビュー",
+    "description": "Label above the read-only preview of the Markdown copy for sharing."
+  },
+  "sharePanelSave": {
+    "message": "コピーを保存",
+    "description": "Button that saves the previewed copy for sharing as a Markdown file."
+  },
+  "sharePanelCancel": {
+    "message": "キャンセル",
+    "description": "Button that closes the copy-for-sharing modal without saving."
+  },
+  "shareNeutralTitle": {
+    "message": "共有された会話",
+    "description": "Fixed title written into every copy for sharing in place of the original conversation title."
+  },
+  "optionsShareLabel": {
+    "message": "共有用コピーのアイコンを表示",
+    "description": "Label for the copy-for-sharing icon toggle on the options page."
   }
 }
