@@ -4,6 +4,7 @@
 
 - [done] Make the ChatGPT toolbar clickable again under the app-shell header's `pointer-events: none` (2026-10-27) → docs/live-dom-verification.md
 - [done] Show the bulk panel's checkboxes and format dropdown on ChatGPT, whose CSS reset hid them (2026-10-27) → docs/live-dom-verification.md
+- [done] Measure that Claude's and Gemini's toolbars and list triggers receive real clicks (2026-10-27) → docs/live-dom-verification.md
 - [done] Add the copy-for-sharing toolbar button, review modal and options toggle in all five locales (2026-10-27) → docs/design/share-copy-export.md
 - [done] Add the share-copy core: local email/phone detection and single-pass masking into a separate neutral-titled copy (2026-10-27) → docs/design/share-copy-export.md
 - [done] Pin the ChatGPT adapter member set so its project trigger keeps the shared project name (2026-10-24)

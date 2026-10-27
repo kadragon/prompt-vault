@@ -872,6 +872,19 @@ extracted 5/5 titles with no `'ChatGPT conversation'` fallbacks and no preview-s
 
 ## Claude
 
+### 2026-10-27 — every toolbar and list trigger receives real clicks
+
+Playwright MCP session, ko-KR account, unpacked build without the ChatGPT `pointer-events` fix
+(PR #136), so this measures whether Claude needs it. `elementFromPoint` at each button's centre:
+
+- `/recents`: trigger mounted **native**, button `pointer-events: auto`, hit itself (1 / 1).
+- Project home (`PV probe docs-only project`, zero conversations): trigger mounted as the
+  **overlay**, hit itself (1 / 1). A project with conversations was not measured
+  `[unknown — not measured]`.
+- Conversation (`PV probe file creation`): toolbar **native**, **6 / 6** buttons hit themselves.
+
+No Claude ancestor switches pointer events off, so nothing beyond PR #136 is needed here.
+
 ### 2026-10-15 — code-execution output files render as artifact cards; no root-less `file-card-open`
 
 Playwright MCP session, ko-KR account. Counts only. Closes the PR #119 review concern that a
@@ -1849,6 +1862,13 @@ Scope limits: one account, `ko-KR`, 26 conversations, three projects (0, 1 and 4
 `[unknown — not measured]`). `/project/<id>` remains `[unknown — not measured]`.
 
 ## Gemini
+
+### 2026-10-27 — every toolbar and list trigger receives real clicks
+
+Same session and method as the Claude entry of this date. Notebook `PV probe notebook`: trigger
+mounted **native** (`data-prompt-vault-track="project"`), hit itself (1 / 1). A conversation
+under `/app/<id>`: toolbar **native**, **6 / 6** buttons hit themselves. No Gemini ancestor
+switches pointer events off.
 
 ### 2026-10-17 (later) — a 106-chat Notebook still renders whole; the trigger is legible in dark
 
