@@ -432,8 +432,8 @@ conversation (`PV probe long project`). Counts and computed styles only.
 
 ### 2026-10-27 — host CSS hides bare checkboxes; the bulk panel showed no checkbox at all
 
-Same session and conversation as the share-copy review (Playwright MCP, ko-KR). Computed styles
-and sizes only.
+Playwright MCP session, ko-KR account, unpacked build loaded, opened from the project
+conversation `PV probe replies` (`PV probe long project`). Computed styles and sizes only.
 
 - **Measured.** Every `input[type=checkbox]` in the bulk panel — **20** (19 rows + select-all) —
   computed `appearance: none`, `border-width: 0`, transparent background and a **0 × 0** box: the

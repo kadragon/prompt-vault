@@ -347,6 +347,8 @@ describe('openBulkPanel', () => {
     const boxes = checkboxes(panel);
     expect(boxes[1].checked).toBe(true); // Alpha
     expect(boxes.slice(4).every((b) => !b.checked)).toBe(true); // Delta, Epsilon
+    // Appended rows get the same host-proof rendering as the first batch.
+    expect(boxes.slice(4).every((b) => b.style.appearance === 'auto')).toBe(true);
     // Export count still reflects the single prior selection.
     expect(buttonByText(panel, 'Export 1 selected')).toBeTruthy();
   });
