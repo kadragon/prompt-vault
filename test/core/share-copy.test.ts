@@ -121,6 +121,16 @@ describe('findShareCandidates', () => {
     expect(share(content)).toBe(expected);
   });
 
+  it('scans a long unbroken token in linear time', () => {
+    // A base64/minified blob is one long run of local-part characters with no `@`. An
+    // unanchored local part retried at every offset made this quadratic: 40k chars took ~2.7 s
+    // per call, and the modal recomputes on every checkbox or term change.
+    const blob = 'A'.repeat(200_000);
+    const started = performance.now();
+    expect(texts(`${blob} then a@b.com`)).toEqual(['a@b.com']);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it('scans code blocks too', () => {
     expect(texts('```\nADMIN=ops@corp.test\n```')).toEqual(['ops@corp.test']);
   });
