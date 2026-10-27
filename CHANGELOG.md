@@ -4,6 +4,7 @@
 
 - [done] Make the ChatGPT toolbar clickable again under the app-shell header's `pointer-events: none` (2026-10-27) → docs/live-dom-verification.md
 - [done] Show the bulk panel's checkboxes and format dropdown on ChatGPT, whose CSS reset hid them (2026-10-27) → docs/live-dom-verification.md
+- [done] Keep escaped `\\` pairs intact when an email follows them (2026-10-27)
 - [done] Group repeated detected values with a select-all, show the masked count, and trap Tab / restore focus in the share and bulk modals (2026-10-27)
 - [done] Detect North-American and Chinese mobile phone numbers, and mask emails whose local part holds Latin accents, a raw backtick or a non-Markdown backslash (2026-10-27)
 - [done] Match Latin-script mask terms as whole words; Hangul/CJK terms still match inside longer runs (2026-10-27)

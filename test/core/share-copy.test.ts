@@ -173,6 +173,14 @@ describe('findShareCandidates', () => {
     expect(share(content)).toBe(expected);
   });
 
+  it.each([
+    ['\\\\a@x.io', '\\\\[EMAIL]'],
+    ['C:\\\\Users\\\\kim\\_@corp.com', 'C:\\\\Users\\\\[EMAIL]'],
+    ['\\qb@x.io', '[EMAIL]'],
+  ])('never starts a match on the second backslash of an escaped pair in %s', (content, expected) => {
+    expect(share(content)).toBe(expected);
+  });
+
   it('scans code blocks too', () => {
     expect(texts('```\nADMIN=ops@corp.test\n```')).toEqual(['ops@corp.test']);
   });

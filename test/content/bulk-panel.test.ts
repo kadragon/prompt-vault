@@ -90,6 +90,7 @@ describe('openBulkPanel', () => {
       expect(box.style.height).toBe('16px');
     }
     expect(panelOf(doc).querySelector('select')!.style.appearance).toBe('auto');
+  });
 
   it('keeps Tab inside the dialog and returns focus to the opener on close', () => {
     const doc = freshDoc();

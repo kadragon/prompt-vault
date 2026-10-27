@@ -13,8 +13,6 @@ continuation line is invisible to it and the blocked item is offered as actionab
 > Non-blocking findings from the product evaluation and QA of the share-copy modal. Design:
 > `docs/design/share-copy-export.md`.
 
-- [ ] [FIX] Do not start an email match on the second backslash of an escaped `\\` pair: `C:\\Users\\kim\_@corp.com` (escaped producer output) renders as `C:\Users[EMAIL]`, losing a backslash (QA, display only — no leak)
-  Done when: core tests show `\\a@x.io` → `\\[EMAIL]` and the escaped-local-part, touching-address and linear-time tests stay green → `npm run lint && npm run typecheck && npm test`
 - [ ] [FIX] Match mask terms across Unicode case and normalization forms: `istanbul` misses `İstanbul`, `straße` misses `STRASSE`, and `Renée` misses a decomposed `Rene\u0301e` (QA-measured leaks of terms the user typed)
   Done when: core tests cover each pair, offsets still point into the original text (NFC can change length), and existing term tests stay green → `npm run lint && npm run typecheck && npm test`
 

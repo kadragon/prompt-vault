@@ -48,6 +48,9 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 //     match and still render. Any other backslash before a local-part character
 //     (`a\qb@x.io`, raw text) is taken too; one before `[` is not, so the escaped
 //     brackets of `\[a@x.io\]` stay balanced.
+// A match never starts right after an odd run of backslashes: that backslash is the second
+// half of an escaped `\\` pair (`C:\\Users\\kim@x.io`), and taking it would drop a
+// backslash from the rendered text.
 // Local-part characters include Latin-1 and Latin Extended letters (`Renée@x.io`), but
 // not Hangul or CJK: those touch the address without a space (`메일은a@x.io`), and
 // swallowing them would mask the surrounding sentence.
@@ -61,7 +64,7 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 const LOCAL_CHARS = String.raw`A-Za-z0-9._%+\-\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u024F`;
 const LOCAL_ATOM = String.raw`(?:[${LOCAL_CHARS}]|\\[${LOCAL_CHARS}_*~|'\`])+`;
 const EMAIL = new RegExp(
-  String.raw`(?=[^\s@]{1,128}@)${LOCAL_ATOM}(?:[*~|'\`]+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
+  String.raw`(?=[^\s@]{1,128}@)(?<!(?:^|[^\\])(?:\\\\)*\\)${LOCAL_ATOM}(?:[*~|'\`]+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
   'g',
 );
 
