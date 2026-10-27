@@ -10,6 +10,7 @@
 import type { IncompleteCause, SidebarConversation } from '../core/sidebar';
 import type { ExportFormat } from './save-conversation';
 import type { BulkExportSummary } from './bulk-export';
+import { restoreFocus, trapTab } from './modal-focus';
 import {
   BULK_EMPTY_MESSAGE,
   bulkListErrorMessage,
@@ -88,6 +89,8 @@ export interface BulkPanelDeps {
  */
 export function openBulkPanel(doc: Document, deps: BulkPanelDeps): void {
   if (doc.getElementById(BULK_PANEL_ID)) return;
+  // The toolbar or list trigger that opened the panel; focus returns there on close.
+  const opener = doc.activeElement;
 
   let conversations: SidebarConversation[] = [];
   let listError: unknown = null;
@@ -99,7 +102,7 @@ export function openBulkPanel(doc: Document, deps: BulkPanelDeps): void {
     // click as an uncaught synchronous exception.
     listError = error;
   }
-  const { backdrop, dialog, close, setRunning } = buildShell(doc);
+  const { backdrop, dialog, close, setRunning } = buildShell(doc, opener);
 
   const notice = listError === null ? deps.notice : undefined;
   dialog.appendChild(makeHeader(doc, notice));
@@ -119,7 +122,10 @@ export function openBulkPanel(doc: Document, deps: BulkPanelDeps): void {
 }
 
 /** The modal shell: a full-screen backdrop holding a centered dialog, plus Escape-to-close. */
-function buildShell(doc: Document): {
+function buildShell(
+  doc: Document,
+  opener: Element | null,
+): {
   backdrop: HTMLDivElement;
   dialog: HTMLDivElement;
   close: () => void;
@@ -169,13 +175,17 @@ function buildShell(doc: Document): {
   // Escape is bound on the document rather than the backdrop: a backdrop-scoped listener
   // only fires while focus is inside it, but on open focus may sit on the toolbar button
   // that triggered the panel, so document scope makes Escape work regardless of focus.
+  // Tab is trapped in the dialog even while a batch runs: the toolbar behind the backdrop
+  // must not be reachable by keyboard while the modal is up.
   const onKeydown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') close();
+    else trapTab(dialog, e);
   };
   const close = (): void => {
     if (running) return;
     doc.removeEventListener('keydown', onKeydown);
     backdrop.remove();
+    restoreFocus(opener);
   };
   doc.addEventListener('keydown', onKeydown);
   // Click on the backdrop (outside the dialog) closes; clicks inside do not bubble out.

@@ -468,6 +468,12 @@ async function runExport(container: HTMLDivElement, format: ExportFormat): Promi
 async function openShareExport(doc: Document, container: HTMLDivElement): Promise<void> {
   if (exportInFlight) return;
   exportInFlight = true;
+  // Where focus returns when the modal closes. Read before the buttons are disabled, which
+  // drops focus to <body>; a pointer click that never focused the button falls back to it.
+  const opener =
+    doc.activeElement && container.contains(doc.activeElement)
+      ? doc.activeElement
+      : container.querySelector(`[aria-label="${DOWNLOAD_SHARE_ARIA_LABEL}"]`);
   const buttons = container.querySelectorAll('button');
   buttons.forEach((b) => (b.disabled = true));
   try {
@@ -482,6 +488,7 @@ async function openShareExport(doc: Document, container: HTMLDivElement): Promis
       conversation,
       download: (filename, text) => downloadTextFile(doc, filename, text, 'text/markdown'),
       now: new Date(),
+      opener,
     });
   } catch (error) {
     alert(error instanceof ExtractionError ? error.message : EXPORT_FAILED_MESSAGE);

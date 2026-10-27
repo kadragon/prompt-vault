@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { conversation } from '../fixtures/conversation';
-import { createShareCopy, findShareCandidates } from '../../src/core/share-copy';
+import { createShareCopy, createShareCopyWithCount, findShareCandidates } from '../../src/core/share-copy';
 import type { Conversation } from '../../src/core/conversation';
 import { toMarkdown } from '../../src/export/markdown';
 import { escapeMarkdownText } from '../../src/core/markdown-escape';
@@ -57,6 +57,12 @@ describe('findShareCandidates', () => {
     ['010-12345678'],
     ['(02) 123-4567'],
     ['(031)123-4567'],
+    ['(415) 555-0123'],
+    ['415-555-0123'],
+    ['415.555.0123'],
+    ['415 555 0123'],
+    ['138 0013 8000'],
+    ['138-0013-8000'],
   ])('detects the phone number %s', (phone) => {
     const found = findShareCandidates(single(`call ${phone} today`));
     expect(found).toEqual([
@@ -71,6 +77,12 @@ describe('findShareCandidates', () => {
     ['an order id', 'order 123456789012'],
     ['an amount', '1,234,567 KRW'],
     ['a version', 'v1.13.5'],
+    ['an IPv4 address', '192.168.100.200'],
+    ['an ISBN', 'ISBN 978-0-12-345678-9'],
+    ['an SSN-shaped id', '123-45-6789'],
+    ['a 3-3-4 run starting with 1', '123-456-7890'],
+    ['a bare Chinese mobile run', '13800138000'],
+    ['a 3-3-4 run inside a longer number', '9415-555-01234'],
     ['fraction digits after a decimal point', 'p=0.05 12345678'],
     ['a 00-prefixed id', 'id 00-1234567'],
   ])('leaves %s alone', (_label, content) => {
@@ -143,6 +155,32 @@ describe('findShareCandidates', () => {
     expect(share(content)).not.toMatch(/@/);
   });
 
+  it.each([
+    ['aéb@x.io'],
+    ['é@x.io'],
+    ['Renée.Dubois@x.io'],
+    ['a`b@x.io'],
+    ['a\\qb@x.io'],
+  ])('takes the whole local part of %s', (address) => {
+    expect(share(`mail ${address} now`)).toBe('mail [EMAIL] now');
+  });
+
+  it.each([
+    ['`a@b.com`', '`[EMAIL]`'],
+    ['\\[a@b.com\\]', '\\[[EMAIL]\\]'],
+    ['메일은a@b.com입니다', '메일은[EMAIL]입니다'],
+  ])('keeps the delimiters and Hangul around %s outside the match', (content, expected) => {
+    expect(share(content)).toBe(expected);
+  });
+
+  it.each([
+    ['\\\\a@x.io', '\\\\[EMAIL]'],
+    ['C:\\\\Users\\\\kim\\_@corp.com', 'C:\\\\Users\\\\[EMAIL]'],
+    ['\\qb@x.io', '[EMAIL]'],
+  ])('never starts a match on the second backslash of an escaped pair in %s', (content, expected) => {
+    expect(share(content)).toBe(expected);
+  });
+
   it('scans code blocks too', () => {
     expect(texts('```\nADMIN=ops@corp.test\n```')).toEqual(['ops@corp.test']);
   });
@@ -213,8 +251,9 @@ describe('createShareCopy', () => {
 
   it.each([
     ['John Smith & Co', ['John Smith', 'Smith & Co'], '[REDACTED]'],
-    ['Acme Corp', ['Acme Co', 'Corp'], '[REDACTED]'],
-    ['banana', ['ana'], 'b[REDACTED]'],
+    // Hangul terms match as substrings (no spaces between words), so they exercise overlap.
+    ['삼성전자', ['삼성전', '성전자'], '[REDACTED]'],
+    ['아아아', ['아아'], '[REDACTED]'],
   ])('masks every overlapping manual-term match in %s', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
   });
@@ -226,6 +265,45 @@ describe('createShareCopy', () => {
     expect(
       share(content, { manualTerms: ['[Falcon]', 'Acme_', '~Acme', 'a|b', 'C:\\dir'] }),
     ).toBe('Project [REDACTED] and [REDACTED] and [REDACTED] and [REDACTED] and [REDACTED]');
+  });
+
+  it.each([
+    ['Lee sleeps; lee. LEE!', ['Lee'], '[REDACTED] sleeps; [REDACTED]. [REDACTED]!'],
+    ['Acme2 and Acme', ['Acme'], 'Acme2 and [REDACTED]'],
+    ['Renée and Renéeville', ['Renée'], '[REDACTED] and Renéeville'],
+    ["Acme's deal", ['Acme'], "[REDACTED]'s deal"],
+  ])('matches a Latin-script term only as a whole word in %s', (content, manualTerms, expected) => {
+    expect(share(content, { manualTerms })).toBe(expected);
+  });
+
+  it('still matches a Hangul or CJK term inside a longer run, where words are not space-separated', () => {
+    expect(share('김철수님과 田中さん', { manualTerms: ['김철수', '田中'] })).toBe('[REDACTED]님과 [REDACTED]さん');
+    // Mixed: the Latin edge is bounded, the Hangul edge is not.
+    expect(share('xKim철수님 Kim철수님', { manualTerms: ['Kim철수'] })).toBe('xKim철수님 [REDACTED]님');
+  });
+
+  it.each([
+    ['İstanbul office', ['istanbul'], '[REDACTED] office'],
+    ['STRASSE and STRAẞE and Straße', ['straße'], '[REDACTED] and [REDACTED] and [REDACTED]'],
+    ['IŞIK geldi', ['ışık'], '[REDACTED] geldi'],
+    ['Rene\u0301e and Renée', ['Renée'], '[REDACTED] and [REDACTED]'],
+    ['Renée and Rene\u0301e', ['Rene\u0301e'], '[REDACTED] and [REDACTED]'],
+    ['José, Jose\u0301, Joséphine and Jose\u0301phine', ['José'], '[REDACTED], [REDACTED], Joséphine and Jose\u0301phine'],
+    ['KİM, kİm and kım', ['KIM'], '[REDACTED], [REDACTED] and [REDACTED]'],
+    ['KİM and kım', ['kim'], '[REDACTED] and [REDACTED]'],
+    ['Işık Kaya and IŞIK', ['ışık'], '[REDACTED] Kaya and [REDACTED]'],
+    ['Işık Kaya', ['IŞIK'], '[REDACTED] Kaya'],
+  ])('matches a term across Unicode case and normalization forms in %s', (content, manualTerms, expected) => {
+    expect(share(content, { manualTerms })).toBe(expected);
+  });
+
+  it.each([
+    ['a 😀 b 😀', ['😀'], 'a [REDACTED] b [REDACTED]'],
+    ['𠮷田さんと𠮷田', ['𠮷田'], '[REDACTED]さんと[REDACTED]'],
+    ['👍🏽 ok', ['🏽'], '👍[REDACTED] ok'],
+  ])('terminates on a term that starts outside the BMP (%s)', (content, manualTerms, expected) => {
+    // A code-unit step into a surrogate pair under the `u` flag rematched the same spot forever.
+    expect(share(content, { manualTerms })).toBe(expected);
   });
 
   it('does not let a term match inside an inserted token', () => {
@@ -241,6 +319,23 @@ describe('createShareCopy', () => {
     expect(share('Jane Doe jane@x.io ok', { manualTerms: ['Doe jane'] })).toBe(
       'Jane [REDACTED] ok',
     );
+  });
+
+  it('counts one masked value per inserted token, after overlaps merge, ignoring literal tokens in the text', () => {
+    const input = conversation({
+      messages: [
+        { role: 'user', content: 'jane@acme.test and [EMAIL] literally' },
+        { role: 'assistant', content: 'call 010-1234-5678 or Acme' },
+      ],
+    });
+    const { copy, masked } = createShareCopyWithCount(input, {
+      excluded: [],
+      manualTerms: ['acme', 'Acme'],
+      neutralTitle: NEUTRAL,
+    });
+    // jane@acme.test (term overlap merged into it) + phone + Acme = 3; the literal [EMAIL] is not counted.
+    expect(masked).toBe(3);
+    expect(copy).toEqual(createShareCopy(input, { excluded: [], manualTerms: ['acme', 'Acme'], neutralTitle: NEUTRAL }));
   });
 
   it('builds a fresh copy with a neutral title, no url, no timestamp and no message ids', () => {

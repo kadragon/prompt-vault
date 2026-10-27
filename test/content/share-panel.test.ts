@@ -52,7 +52,13 @@ function buttonByText(root: ParentNode, text: string): HTMLButtonElement {
 }
 
 function candidateBoxes(doc: Document): HTMLInputElement[] {
-  return Array.from(panelOf(doc).querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+  return Array.from(
+    panelOf(doc).querySelectorAll<HTMLInputElement>('input[type="checkbox"]:not([data-prompt-vault-select-all])'),
+  );
+}
+
+function selectAllBox(doc: Document): HTMLInputElement | null {
+  return panelOf(doc).querySelector<HTMLInputElement>('input[data-prompt-vault-select-all]');
 }
 
 function termInput(doc: Document): HTMLInputElement {
@@ -164,6 +170,105 @@ describe('openSharePanel', () => {
     termInput(doc).dispatchEvent(event(doc, 'KeyboardEvent', 'keydown', { key: 'Enter', isComposing: true }));
     expect(panelOf(doc).querySelectorAll('li')).toHaveLength(1);
     expect(termInput(doc).value).toBe('제인');
+  });
+
+  it('groups identical values into one row with a count; unchecking it keeps every occurrence', () => {
+    const { doc } = open(
+      makeConversation({
+        messages: [
+          { role: 'user', content: 'sample a@b.com, again a@b.com' },
+          { role: 'assistant', content: 'and a@b.com, plus real@x.io' },
+        ],
+      }),
+    );
+    const rows = candidateBoxes(doc);
+    expect(rows.map((b) => b.closest('label')?.textContent)).toEqual(['Emaila@b.com×3', 'Emailreal@x.io']);
+
+    uncheck(rows[0]);
+    expect(preview(doc)).toContain('sample a@b.com, again a@b.com');
+    expect(preview(doc)).toContain('and a@b.com, plus [EMAIL]');
+  });
+
+  it('toggles every row with select-all, and marks it indeterminate when rows disagree', () => {
+    const { doc } = open();
+    const all = selectAllBox(doc)!;
+    expect(all.checked).toBe(true);
+
+    uncheck(candidateBoxes(doc)[0]);
+    expect(all.checked).toBe(false);
+    expect(all.indeterminate).toBe(true);
+
+    uncheck(all);
+    expect(candidateBoxes(doc).every((b) => !b.checked)).toBe(true);
+    expect(preview(doc)).toContain('Mail jane@acme.test or call 010-1234-5678.');
+
+    all.checked = true;
+    all.dispatchEvent(event(doc, 'Event', 'change'));
+    expect(candidateBoxes(doc).every((b) => b.checked)).toBe(true);
+    expect(all.indeterminate).toBe(false);
+    expect(preview(doc)).toContain('Mail [EMAIL] or call [PHONE].');
+  });
+
+  it('shows no select-all for a single row', () => {
+    const { doc } = open(makeConversation({ messages: [{ role: 'user', content: 'a@b.com' }] }));
+    expect(selectAllBox(doc)).toBeNull();
+  });
+
+  it('shows how many values the copy masks, refreshed with the preview', () => {
+    const { doc } = open();
+    const count = (): string | undefined =>
+      Array.from(panelOf(doc).querySelectorAll('[aria-live="polite"]')).map((e) => e.textContent ?? '')[0];
+    expect(count()).toBe('Masked in this copy: 2');
+    uncheck(candidateBoxes(doc)[0]);
+    expect(count()).toBe('Masked in this copy: 1');
+    addTerm(doc, 'Acme');
+    // `Acme` masks the assistant's "Acme" and, case-insensitively, the now-unmasked email's domain.
+    expect(count()).toBe('Masked in this copy: 3');
+    buttonByText(panelOf(doc), '×').click(); // remove the term again
+    expect(count()).toBe('Masked in this copy: 1');
+  });
+
+  it('keeps Tab inside the dialog: past the last control it wraps to the first, and back', () => {
+    const { doc } = open();
+    const dialog = panelOf(doc).querySelector<HTMLElement>('[role="dialog"]')!;
+    const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, [tabindex="0"]'));
+    const first = controls[0];
+    const last = controls.at(-1)!;
+
+    last.focus();
+    doc.dispatchEvent(event(doc, 'KeyboardEvent', 'keydown', { key: 'Tab' }));
+    expect(doc.activeElement).toBe(first);
+
+    doc.dispatchEvent(event(doc, 'KeyboardEvent', 'keydown', { key: 'Tab', shiftKey: true }));
+    expect(doc.activeElement).toBe(last);
+
+    // Focus that escaped to the host page is pulled back in.
+    (doc.getElementById('host') as HTMLElement).focus();
+    doc.dispatchEvent(event(doc, 'KeyboardEvent', 'keydown', { key: 'Tab' }));
+    expect(doc.activeElement).toBe(first);
+  });
+
+  it.each([
+    ['Cancel', (doc: Document) => buttonByText(panelOf(doc), 'Cancel').click()],
+    ['Escape', (doc: Document) => doc.dispatchEvent(event(doc, 'KeyboardEvent', 'keydown', { key: 'Escape' }))],
+    ['a backdrop click', (doc: Document) => panelOf(doc).click()],
+    ['Save', (doc: Document) => buttonByText(panelOf(doc), 'Save copy').click()],
+  ])('returns focus to the opener after %s', (_label, dismiss) => {
+    const { doc } = freshDoc();
+    const opener = doc.getElementById('host') as HTMLElement;
+    openSharePanel(doc, { conversation: CONV, download: vi.fn(), now: NOW, opener });
+    expect(doc.activeElement).not.toBe(opener);
+    dismiss(doc);
+    expect(doc.activeElement).toBe(opener);
+  });
+
+  it('leaves focus alone when the opener has left the page', () => {
+    const { doc } = freshDoc();
+    const opener = doc.getElementById('host') as HTMLElement;
+    openSharePanel(doc, { conversation: CONV, download: vi.fn(), now: NOW, opener });
+    opener.remove();
+    buttonByText(panelOf(doc), 'Cancel').click();
+    expect(doc.activeElement).not.toBe(opener);
   });
 
   it('saves exactly the previewed text under the share filename, then closes', () => {

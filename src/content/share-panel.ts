@@ -10,10 +10,12 @@
 // localStorage, or the network; the original Conversation is never mutated.
 
 import type { Conversation } from '../core/conversation';
-import { createShareCopy, findShareCandidates, type ShareCandidate } from '../core/share-copy';
+import { createShareCopyWithCount, findShareCandidates, type ShareCandidate } from '../core/share-copy';
 import { buildShareFilename } from '../export/filename';
 import { toMarkdown } from '../export/markdown';
+import { restoreFocus, trapTab } from './modal-focus';
 import {
+  BULK_PANEL_SELECT_ALL,
   EXPORT_FAILED_MESSAGE,
   SHARE_KIND_EMAIL,
   SHARE_KIND_PHONE,
@@ -27,6 +29,8 @@ import {
   SHARE_PANEL_TERM_LABEL,
   SHARE_PANEL_TITLE,
   SHARE_PANEL_WARNING,
+  sharePanelMaskedCount,
+  sharePanelOccurrences,
   sharePanelRemoveTermLabel,
 } from '../strings';
 
@@ -45,6 +49,12 @@ export interface SharePanelDeps {
   download: (filename: string, text: string) => void;
   /** The moment the panel opened, for the filename date. */
   now: Date;
+  /**
+   * The control focus returns to on close. Passed in because the toolbar disables its buttons
+   * while extracting, which drops focus to `<body>` before the panel opens; defaults to
+   * whatever is focused at open.
+   */
+  opener?: Element | null;
 }
 
 const KIND_LABEL: Record<ShareCandidate['kind'], string> = {
@@ -58,6 +68,7 @@ const KIND_LABEL: Record<ShareCandidate['kind'], string> = {
  */
 export function openSharePanel(doc: Document, deps: SharePanelDeps): void {
   if (doc.getElementById(SHARE_PANEL_ID)) return;
+  const opener = deps.opener ?? doc.activeElement;
 
   const candidates = findShareCandidates(deps.conversation);
   const excluded = new Set<ShareCandidate>();
@@ -100,10 +111,12 @@ export function openSharePanel(doc: Document, deps: SharePanelDeps): void {
   // teardown path must unbind it — a detached panel's listener would otherwise keep firing.
   const onKeydown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') close();
+    else trapTab(dialog, e);
   };
   const close = (): void => {
     doc.removeEventListener('keydown', onKeydown);
     backdrop.remove();
+    restoreFocus(opener);
   };
   doc.addEventListener('keydown', onKeydown);
   backdrop.addEventListener('click', (e) => {
@@ -147,22 +160,25 @@ export function openSharePanel(doc: Document, deps: SharePanelDeps): void {
     border: '1px solid #e5e5e5',
     borderRadius: '8px',
   });
-  const render = (): string =>
-    toMarkdown(
-      createShareCopy(deps.conversation, {
-        excluded: [...excluded],
-        manualTerms: terms,
-        neutralTitle: SHARE_NEUTRAL_TITLE,
-      }),
-    );
+  // How many values the copy masks, beside the preview label: a summary to check a long
+  // preview against. Polite live region, so a screen reader hears it change.
+  const maskedCount = doc.createElement('span');
+  maskedCount.setAttribute('aria-live', 'polite');
+  Object.assign(maskedCount.style, { fontSize: '12px', fontWeight: '400', color: '#555555' });
   const refresh = (): void => {
-    preview.textContent = render();
+    const { copy, masked } = createShareCopyWithCount(deps.conversation, {
+      excluded: [...excluded],
+      manualTerms: terms,
+      neutralTitle: SHARE_NEUTRAL_TITLE,
+    });
+    preview.textContent = toMarkdown(copy);
+    maskedCount.textContent = sharePanelMaskedCount(masked);
   };
 
   body.append(
     candidateSection(doc, candidates, excluded, refresh),
     termSection(doc, terms, refresh),
-    previewSection(doc, preview),
+    previewSection(doc, preview, maskedCount),
   );
 
   // Footer: Cancel / Save. Save writes exactly the text the preview shows.
@@ -196,7 +212,11 @@ export function openSharePanel(doc: Document, deps: SharePanelDeps): void {
   dialog.focus();
 }
 
-/** The detected-candidate checklist: checked means masked; unchecking keeps the text. */
+/**
+ * The detected-candidate checklist: checked means masked; unchecking keeps the text.
+ * Identical values (same kind and text) share one row with an occurrence count, so keeping a
+ * sample address that recurs through a long conversation is one click, not one per mention.
+ */
 function candidateSection(
   doc: Document,
   candidates: ShareCandidate[],
@@ -212,6 +232,14 @@ function candidateSection(
     return none;
   }
 
+  const groups = new Map<string, ShareCandidate[]>();
+  for (const candidate of candidates) {
+    const key = `${candidate.kind}\u0000${candidate.text}`;
+    const group = groups.get(key);
+    if (group) group.push(candidate);
+    else groups.set(key, [candidate]);
+  }
+
   const section = doc.createElement('fieldset');
   Object.assign(section.style, { margin: '0', padding: '0', border: 'none' });
   const legend = doc.createElement('legend');
@@ -219,42 +247,88 @@ function candidateSection(
   Object.assign(legend.style, { padding: '0', marginBottom: '6px', fontSize: '13px', fontWeight: '600' });
   section.appendChild(legend);
 
+  const rowBoxes: HTMLInputElement[] = [];
+  const selectAll = checkbox(doc);
+  const syncSelectAll = (): void => {
+    const checked = rowBoxes.filter((b) => b.checked).length;
+    selectAll.checked = checked === rowBoxes.length;
+    selectAll.indeterminate = checked > 0 && checked < rowBoxes.length;
+  };
+  const setGroup = (members: ShareCandidate[], masked: boolean): void => {
+    for (const member of members) {
+      if (masked) excluded.delete(member);
+      else excluded.add(member);
+    }
+  };
+
   const list = doc.createElement('div');
   Object.assign(list.style, { display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '22vh', overflowY: 'auto' });
-  for (const candidate of candidates) {
+  for (const members of groups.values()) {
+    const first = members[0];
     const row = doc.createElement('label');
     Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' });
-    const box = doc.createElement('input');
-    box.type = 'checkbox';
+    const box = checkbox(doc);
     box.checked = true;
-    // ChatGPT's CSS gives bare checkboxes `appearance: none` and a 0×0 box (measured live
-    // 2026-10-27), so the control must restore its own native rendering and size.
-    Object.assign(box.style, {
-      appearance: 'auto',
-      display: 'inline-block',
-      flex: '0 0 auto',
-      width: '16px',
-      height: '16px',
-      margin: '0',
-      accentColor: '#10a37f',
-      cursor: 'pointer',
-    });
     box.addEventListener('change', () => {
-      if (box.checked) excluded.delete(candidate);
-      else excluded.add(candidate);
+      setGroup(members, box.checked);
+      syncSelectAll();
       refresh();
     });
+    rowBoxes.push(box);
     const kind = doc.createElement('span');
-    kind.textContent = KIND_LABEL[candidate.kind];
+    kind.textContent = KIND_LABEL[first.kind];
     Object.assign(kind.style, { minWidth: '72px', color: '#555555' });
     const text = doc.createElement('code');
-    text.textContent = candidate.text;
+    text.textContent = first.text;
     Object.assign(text.style, { wordBreak: 'break-all' });
     row.append(box, kind, text);
+    if (members.length > 1) {
+      const count = doc.createElement('span');
+      count.textContent = sharePanelOccurrences(members.length);
+      Object.assign(count.style, { color: '#555555' });
+      row.appendChild(count);
+    }
     list.appendChild(row);
+  }
+
+  // Select-all only earns its row when there is more than one row to toggle.
+  if (rowBoxes.length > 1) {
+    const allRow = doc.createElement('label');
+    Object.assign(allRow.style, { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', marginBottom: '4px', cursor: 'pointer' });
+    selectAll.checked = true;
+    selectAll.setAttribute('data-prompt-vault-select-all', '');
+    selectAll.addEventListener('change', () => {
+      for (const [index, members] of [...groups.values()].entries()) {
+        rowBoxes[index].checked = selectAll.checked;
+        setGroup(members, selectAll.checked);
+      }
+      selectAll.indeterminate = false;
+      refresh();
+    });
+    allRow.append(selectAll, doc.createTextNode(BULK_PANEL_SELECT_ALL));
+    section.appendChild(allRow);
   }
   section.appendChild(list);
   return section;
+}
+
+// A checkbox that renders on any host. ChatGPT's CSS gives bare checkboxes
+// `appearance: none` and a 0×0 box (measured live 2026-10-27), so the control restores its
+// own native rendering and size.
+function checkbox(doc: Document): HTMLInputElement {
+  const box = doc.createElement('input');
+  box.type = 'checkbox';
+  Object.assign(box.style, {
+    appearance: 'auto',
+    display: 'inline-block',
+    flex: '0 0 auto',
+    width: '16px',
+    height: '16px',
+    margin: '0',
+    accentColor: '#10a37f',
+    cursor: 'pointer',
+  });
+  return box;
 }
 
 /** The manual-term input, its Add control, and the removable list of added terms. */
@@ -348,16 +422,19 @@ function termSection(doc: Document, terms: string[], refresh: () => void): HTMLE
   return section;
 }
 
-function previewSection(doc: Document, preview: HTMLElement): HTMLElement {
+function previewSection(doc: Document, preview: HTMLElement, maskedCount: HTMLElement): HTMLElement {
   const section = doc.createElement('div');
+  const header = doc.createElement('div');
+  Object.assign(header.style, { display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '6px' });
   const label = doc.createElement('div');
   label.id = `${PREVIEW_ID}-label`;
   label.textContent = SHARE_PANEL_PREVIEW_LABEL;
-  Object.assign(label.style, { marginBottom: '6px', fontSize: '13px', fontWeight: '600' });
+  Object.assign(label.style, { fontSize: '13px', fontWeight: '600' });
+  header.append(label, maskedCount);
   preview.setAttribute('aria-labelledby', label.id);
   // Scrollable, so keyboard users must be able to reach it to read the whole copy.
   preview.tabIndex = 0;
-  section.append(label, preview);
+  section.append(header, preview);
   return section;
 }
 

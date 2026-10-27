@@ -8,24 +8,6 @@ A `*(blocked by: ...)*` / `*(deferred: ...)*` marker MUST sit on the item's own 
 and in `tasks.md`). The picker tokenizes checkboxes line by line, so a marker pushed onto a
 continuation line is invisible to it and the blocked item is offered as actionable work.
 
-## Copy for sharing — follow-ups (2026-10-27)
-
-> Non-blocking findings from the product evaluation and QA of the share-copy modal. Design:
-> `docs/design/share-copy-export.md`.
-
-- [ ] [FIX] Match Latin-script manual terms on word boundaries so `Lee` no longer turns `sleeps` into `s[REDACTED]ps`; keep substring matching for CJK/Hangul terms, which have no spaces between words
-  Done when: core tests show `Lee` masks `Lee`/`lee.` but not `sleeps`, `김철수` still masks inside `김철수님`, and the overlap/escape/union tests stay green → `npm run lint && npm run typecheck && npm test`
-- [ ] [FEAT] Detect North-American `(415) 555-0123` / `415-555-0123` and Chinese mobile `138 0013 8000` phone numbers (separators required, bare digit runs still never match)
-  Done when: core tests cover each format plus date/id/version false-positive guards, and the existing phone cases are unchanged → `npm run lint && npm run typecheck && npm test`
-- [ ] [UX] Group identical detected values into one checklist row (with a count) and add a select-all toggle, so keeping one repeated sample address is one click
-  Done when: happy-dom tests show three `a@b.com` occurrences render as one row "×3" whose uncheck keeps all three, and select-all toggles every row → `npm run lint && npm run typecheck && npm test`
-- [ ] [UX] Show how many values the preview masks (e.g. "12 masked") above the preview, refreshed with it, so a 200-turn review has a summary to check against
-  Done when: happy-dom tests show the count tracks unchecking and adding/removing terms; new string in all five locales → `npm run lint && npm run typecheck && npm test`
-- [ ] [a11y] Trap Tab inside the share and bulk modals and return focus to the toolbar button that opened them on close
-  Done when: happy-dom tests show Tab/Shift+Tab cycle within each dialog and focus lands back on the opener after Cancel/Escape/backdrop/Save → `npm run lint && npm run typecheck && npm test`
-- [ ] [FIX] Mask the whole local part of emails that hold non-ASCII letters (`aéb@x.io` leaves `aé`, `é@x.io` is missed), a raw backtick (`` a`b@x.io `` leaves `` a` ``) or a non-Markdown backslash (`a\qb@x.io` leaves `a\`) — QA-measured leaks, all raw text or code
-  Done when: core tests show each input fully replaced by `[EMAIL]`, the inline-code `` `a@b.com` `` delimiters still survive, and the touching-address and linear-time tests stay green → `npm run lint && npm run typecheck && npm test`
-
 ## Tooling & static analysis
 
 > Goal: deepen mechanical enforcement of the golden principles (esp. #1 local-only) beyond the

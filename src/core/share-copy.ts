@@ -43,9 +43,17 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 //     `john_@x.io` arrives as `john\_@x.io` — the local part takes those backslash
 //     escapes, or `john` would be left unmasked in front of the token;
 //   - code keeps its text raw, so `x*y@x.io` arrives as-is — the local part takes a
-//     raw run of `* ~ | '` too, but only between local-part characters, so the delimiters
-//     around `**a@x.io**` or `~~a@x.io~~` stay outside the match and the emphasis
-//     still renders.
+//     raw run of `* ~ | ' \`` too, but only between local-part characters, so the
+//     delimiters around `**a@x.io**`, `~~a@x.io~~` or inline code stay outside the
+//     match and still render. Any other backslash before a local-part character
+//     (`a\qb@x.io`, raw text) is taken too; one before `[` is not, so the escaped
+//     brackets of `\[a@x.io\]` stay balanced.
+// A match never starts right after an odd run of backslashes: that backslash is the second
+// half of an escaped `\\` pair (`C:\\Users\\kim@x.io`), and taking it would drop a
+// backslash from the rendered text.
+// Local-part characters include Latin-1 and Latin Extended letters (`Renée@x.io`), but
+// not Hangul or CJK: those touch the address without a space (`메일은a@x.io`), and
+// swallowing them would mask the surrounding sentence.
 // The leading lookahead only lets a match start where an `@` follows within 128
 // non-space characters (an RFC local part is at most 64; escapes can double it). Without
 // it a long `@`-less run — a base64 blob, minified code, `a*a*a*…` — was rescanned from
@@ -53,9 +61,10 @@ const TOKEN: Record<ShareCandidateKind | 'term', string> = {
 // review modal recomputes on every change. A left-boundary lookbehind was tried first
 // and dropped: it missed the second of two touching addresses (`a@x.com.b@y.com`) and
 // left runs broken by `* ' \` quadratic.
-const LOCAL_ATOM = String.raw`(?:[A-Za-z0-9._%+-]|\\[_*~|\`])+`;
+const LOCAL_CHARS = String.raw`A-Za-z0-9._%+\-\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u024F`;
+const LOCAL_ATOM = String.raw`(?:[${LOCAL_CHARS}]|\\[${LOCAL_CHARS}_*~|'\`])+`;
 const EMAIL = new RegExp(
-  String.raw`(?=[^\s@]{1,128}@)${LOCAL_ATOM}(?:[*~|']+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
+  String.raw`(?=[^\s@]{1,128}@)(?<!(?:^|[^\\])(?:\\\\)*\\)${LOCAL_ATOM}(?:[*~|'\`]+${LOCAL_ATOM})*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`,
   'g',
 );
 
@@ -67,8 +76,22 @@ const EMAIL = new RegExp(
 //   - `+`-country-code international: `+82 10-1234-5678`, `+1 415 555 2671`, `+442071838750`
 //   - Korean mobile/landline: `010-1234-5678`, `02.123.4567`, `010 1234 5678`,
 //     `010-12345678`, and a parenthesized area code `(02) 123-4567`
-const PHONE =
-  /(?<![\d+]|\d\.)(?:\+\d{1,3}[-. ]?\d{1,4}(?:[-. ]?\d{3,4}){1,3}|0[1-9]\d?[-. ]\d{3,4}[-. ]?\d{4}|\(0[1-9]\d?\) ?\d{3,4}[-. ]\d{4})(?!\d)/g;
+//   - North-American `(415) 555-0123`, `415-555-0123`: the area code starts 2–9, as
+//     NANP area codes do, which keeps `123-456-7890`-shaped ids out
+//   - Chinese mobile `138 0013 8000`, `138-0013-8000`: 3-4-4 after a `1[3-9]` prefix
+const PHONE = new RegExp(
+  String.raw`(?<![\d+]|\d\.)(?:` +
+    [
+      String.raw`\+\d{1,3}[-. ]?\d{1,4}(?:[-. ]?\d{3,4}){1,3}`,
+      String.raw`0[1-9]\d?[-. ]\d{3,4}[-. ]?\d{4}`,
+      String.raw`\(0[1-9]\d?\) ?\d{3,4}[-. ]\d{4}`,
+      String.raw`\([2-9]\d{2}\) ?\d{3}[-. ]\d{4}`,
+      String.raw`[2-9]\d{2}[-. ]\d{3}[-. ]\d{4}`,
+      String.raw`1[3-9]\d[- ]\d{4}[- ]\d{4}`,
+    ].join('|') +
+    String.raw`)(?!\d)`,
+  'g',
+);
 
 const DETECTORS: ReadonlyArray<[ShareCandidateKind, RegExp]> = [
   ['email', EMAIL],
@@ -100,19 +123,34 @@ export function findShareCandidates(conversation: Conversation): ShareCandidate[
  * message ids. The input is never mutated.
  */
 export function createShareCopy(conversation: Conversation, options: ShareCopyOptions): Conversation {
+  return createShareCopyWithCount(conversation, options).copy;
+}
+
+/**
+ * `createShareCopy`, plus how many tokens it inserted — one per masked span after
+ * overlaps merge — so the review UI can summarize the copy without re-parsing it
+ * (the original text may itself contain a literal `[EMAIL]`).
+ */
+export function createShareCopyWithCount(
+  conversation: Conversation,
+  options: ShareCopyOptions,
+): { copy: Conversation; masked: number } {
   const excluded = new Set(options.excluded.map(refKey));
   const termPatterns = manualTermPatterns(options.manualTerms);
   const kept = findShareCandidates(conversation).filter((c) => !excluded.has(refKey(c)));
 
+  let masked = 0;
   const messages: Message[] = conversation.messages.map((message, messageIndex) => {
     const spans: Span[] = kept
       .filter((c) => c.messageIndex === messageIndex)
       .map((c) => ({ start: c.start, end: c.end, token: TOKEN[c.kind] }));
     for (const pattern of termPatterns) spans.push(...termSpans(message.content, pattern));
-    return { role: message.role, content: replaceSpans(message.content, spans) };
+    const replaced = replaceSpans(message.content, spans);
+    masked += replaced.count;
+    return { role: message.role, content: replaced.text };
   });
 
-  return { title: options.neutralTitle, provider: conversation.provider, url: '', messages };
+  return { copy: { title: options.neutralTitle, provider: conversation.provider, url: '', messages }, masked };
 }
 
 interface Span {
@@ -125,37 +163,75 @@ function refKey(ref: ShareCandidateRef): string {
   return `${ref.messageIndex}:${ref.start}:${ref.end}`;
 }
 
-// One case-insensitive literal pattern per distinct non-blank term. Kept separate,
-// not joined into one alternation: an alternation only reports non-overlapping
-// matches, so a term overlapping an earlier match (`Smith & Co` after `John Smith`)
-// would never become a span and its tail would survive.
+// One case-insensitive literal pattern per distinct non-blank term spelling. Kept
+// separate, not joined into one alternation: an alternation only reports
+// non-overlapping matches, so a term overlapping an earlier match (`Smith & Co` after
+// `John Smith`) would never become a span and its tail would survive.
 function manualTermPatterns(terms: readonly string[]): RegExp[] {
-  const usable = [...new Set(terms.filter((t) => t.trim() !== ''))];
-  return usable.map((term) => new RegExp(termSource(term), 'gi'));
+  const usable = new Set(terms.filter((t) => t.trim() !== '').flatMap(termSpellings));
+  return [...usable].map((spelling) => new RegExp(termSource(spelling), 'giu'));
+}
+
+// The spellings of one term to search for. The text is never normalized — offsets must
+// keep pointing into the original — so the term is expanded instead:
+//   - NFC and NFD, for text that carries `é` as one code point or as `e` + U+0301;
+//   - full upper-casing, which the `iu` flags' simple case folding cannot do:
+//     `straße` → `STRASSE` (`ẞ` already folds to `ß` under `u`);
+//   - Turkish casing, whose dotted/dotless i never fold to ASCII `i`/`I`, applied to the
+//     term as typed and to its upper and lower forms so it is symmetric: `istanbul` →
+//     `İSTANBUL`, `ışık` → `IŞIK`, and `KIM` → `KİM` as well as `kim` → `kım`.
+function termSpellings(term: string): string[] {
+  const cased = [term, term.toUpperCase(), term.toLowerCase()].flatMap((t) => [
+    t,
+    t.toLocaleUpperCase('tr'),
+    t.toLocaleLowerCase('tr'),
+  ]);
+  return [...new Set(cased.flatMap((t) => [t.normalize('NFC'), t.normalize('NFD')]))];
 }
 
 // A term is typed as plain text, but content is adapter Markdown in which
 // escapeMarkdownText may have put a backslash before any ASCII punctuation
 // (`[Falcon]` arrives as `\[Falcon\]`, `Acme_` as `Acme\_`). Each punctuation
 // character therefore also matches with that optional backslash in front.
+// A term edge that is a Latin letter or digit only matches at a word boundary, so
+// `Lee` masks `Lee.` but not `sleeps`. Hangul and CJK edges stay unbounded: those
+// scripts attach particles without a space (`김철수님`, `田中さん`). The end edge looks
+// past trailing combining marks, so the NFD spelling `Jose\u0301` is bounded like `José`
+// and leaves a decomposed `Joséphine` alone.
 function termSource(term: string): string {
-  let source = '';
-  for (const char of term) {
-    source += ASCII_PUNCTUATION.test(char) ? `\\\\?${escapeRegExp(char)}` : escapeRegExp(char);
+  const chars = [...term];
+  let source = LATIN_WORD_CHAR.test(chars[0] ?? '') ? `(?<!${LATIN_WORD_CLASS})` : '';
+  for (const char of chars) {
+    if (TURKISH_I.has(char)) source += '[iIıİ]';
+    else source += ASCII_PUNCTUATION.test(char) ? `\\\\?${escapeRegExp(char)}` : escapeRegExp(char);
   }
-  return source;
+  const lastBase = [...chars].reverse().find((char) => !COMBINING_MARK.test(char)) ?? '';
+  return LATIN_WORD_CHAR.test(lastBase) ? `${source}(?!${COMBINING_MARKS}*${LATIN_WORD_CLASS})` : source;
 }
 
-const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
+// Combining Diacritical Marks: what NFD splits off Latin letters (`é` → `e` + U+0301).
+const COMBINING_MARKS = '[\\u0300-\\u036F]';
+const COMBINING_MARK = new RegExp(`^${COMBINING_MARKS}$`);
 
-// Every occurrence of one term, overlapping ones included (`ana` twice in `banana`):
+const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
+// The four i letters match one another per character: whole-term casing alone cannot reach a
+// mixed form like `Işık` from `ışık` or `IŞIK`, and a Turkish name is often written that way.
+const TURKISH_I = new Set(['i', 'I', 'ı', 'İ']);
+// ASCII letters and digits plus Latin-1 Supplement and Latin Extended-A/B letters.
+const LATIN_WORD_CLASS = '[A-Za-z0-9\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u024F]';
+const LATIN_WORD_CHAR = new RegExp(`^${LATIN_WORD_CLASS}$`);
+
+// Every occurrence of one term, overlapping ones included (`아아` twice in `아아아`):
 // the scan restarts one code unit past each match start instead of past its end.
 function termSpans(content: string, pattern: RegExp): Span[] {
   const spans: Span[] = [];
   pattern.lastIndex = 0;
   for (let match = pattern.exec(content); match; match = pattern.exec(content)) {
     spans.push({ start: match.index, end: match.index + match[0].length, token: TOKEN.term });
-    pattern.lastIndex = match.index + 1;
+    // Step one code point, not one code unit: under the `u` flag a lastIndex inside a
+    // surrogate pair snaps back to the pair's start, so `+ 1` on a match that starts with an
+    // emoji or `𠮷` would rematch the same spot forever.
+    pattern.lastIndex = match.index + (content.codePointAt(match.index)! > 0xffff ? 2 : 1);
   }
   return spans;
 }
@@ -169,7 +245,7 @@ function escapeRegExp(text: string): string {
 // `[EMAIL]` and nest tokens. Overlapping spans collapse into one token — the
 // earliest start wins, then the longer span — covering the union of the overlap,
 // so a later span is never left with an unmasked tail.
-function replaceSpans(content: string, spans: Span[]): string {
+function replaceSpans(content: string, spans: Span[]): { text: string; count: number } {
   const merged: Span[] = [];
   for (const span of [...spans].sort((a, b) => a.start - b.start || b.end - a.end)) {
     const last = merged.at(-1);
@@ -182,5 +258,5 @@ function replaceSpans(content: string, spans: Span[]): string {
     out += content.slice(cursor, span.start) + span.token;
     cursor = span.end;
   }
-  return out + content.slice(cursor);
+  return { text: out + content.slice(cursor), count: merged.length };
 }

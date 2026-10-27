@@ -1133,6 +1133,19 @@ describe('copy for sharing through the toolbar button', () => {
     expect(doc.getElementById(SHARE_PANEL_ID)).toBeNull();
   });
 
+  it('returns focus to the share button when the modal closes', async () => {
+    const { doc, share } = mountAndArm(() => Promise.resolve(conversation));
+
+    share.click();
+    await vi.waitFor(() => expect(doc.getElementById(SHARE_PANEL_ID)).not.toBeNull());
+    expect(doc.activeElement).not.toBe(share);
+    Array.from(doc.getElementById(SHARE_PANEL_ID)!.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Cancel')!
+      .click();
+
+    expect(doc.activeElement).toBe(share);
+  });
+
   it('alerts and opens no modal when the conversation is empty', async () => {
     const { doc, alerts, share } = mountAndArm(() => Promise.resolve({ ...conversation, messages: [] }));
 

@@ -665,5 +665,23 @@
   "optionsShareLabel": {
     "message": "共有用コピーのアイコンを表示",
     "description": "Label for the copy-for-sharing icon toggle on the options page."
+  },
+  "sharePanelMaskedCount": {
+    "message": "このコピーで伏せた数: $count$ 箇所",
+    "description": "Summary beside the copy-for-sharing preview label: how many values the copy masks. Must not imply that everything personal was masked.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "sharePanelOccurrences": {
+    "message": "×$count$",
+    "description": "Occurrence count after a checklist row that groups identical detected values (e.g. the same email found three times).",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   }
 }
