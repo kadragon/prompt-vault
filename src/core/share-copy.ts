@@ -195,7 +195,9 @@ function termSpellings(term: string): string[] {
 // character therefore also matches with that optional backslash in front.
 // A term edge that is a Latin letter or digit only matches at a word boundary, so
 // `Lee` masks `Lee.` but not `sleeps`. Hangul and CJK edges stay unbounded: those
-// scripts attach particles without a space (`김철수님`, `田中さん`).
+// scripts attach particles without a space (`김철수님`, `田中さん`). The end edge looks
+// past trailing combining marks, so the NFD spelling `Jose\u0301` is bounded like `José`
+// and leaves a decomposed `Joséphine` alone.
 function termSource(term: string): string {
   const chars = [...term];
   let source = LATIN_WORD_CHAR.test(chars[0] ?? '') ? `(?<!${LATIN_WORD_CLASS})` : '';
@@ -203,8 +205,13 @@ function termSource(term: string): string {
     if (TURKISH_I.has(char)) source += '[iIıİ]';
     else source += ASCII_PUNCTUATION.test(char) ? `\\\\?${escapeRegExp(char)}` : escapeRegExp(char);
   }
-  return LATIN_WORD_CHAR.test(chars.at(-1) ?? '') ? `${source}(?!${LATIN_WORD_CLASS})` : source;
+  const lastBase = [...chars].reverse().find((char) => !COMBINING_MARK.test(char)) ?? '';
+  return LATIN_WORD_CHAR.test(lastBase) ? `${source}(?!${COMBINING_MARKS}*${LATIN_WORD_CLASS})` : source;
 }
+
+// Combining Diacritical Marks: what NFD splits off Latin letters (`é` → `e` + U+0301).
+const COMBINING_MARKS = '[\\u0300-\\u036F]';
+const COMBINING_MARK = new RegExp(`^${COMBINING_MARKS}$`);
 
 const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
 // The four i letters match one another per character: whole-term casing alone cannot reach a

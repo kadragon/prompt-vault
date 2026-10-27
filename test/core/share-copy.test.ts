@@ -288,6 +288,7 @@ describe('createShareCopy', () => {
     ['IŞIK geldi', ['ışık'], '[REDACTED] geldi'],
     ['Rene\u0301e and Renée', ['Renée'], '[REDACTED] and [REDACTED]'],
     ['Renée and Rene\u0301e', ['Rene\u0301e'], '[REDACTED] and [REDACTED]'],
+    ['José, Jose\u0301, Joséphine and Jose\u0301phine', ['José'], '[REDACTED], [REDACTED], Joséphine and Jose\u0301phine'],
     ['KİM, kİm and kım', ['KIM'], '[REDACTED], [REDACTED] and [REDACTED]'],
     ['KİM and kım', ['kim'], '[REDACTED] and [REDACTED]'],
     ['Işık Kaya and IŞIK', ['ışık'], '[REDACTED] Kaya and [REDACTED]'],

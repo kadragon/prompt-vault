@@ -235,7 +235,9 @@ function candidateSection(
   const groups = new Map<string, ShareCandidate[]>();
   for (const candidate of candidates) {
     const key = `${candidate.kind}\u0000${candidate.text}`;
-    groups.set(key, [...(groups.get(key) ?? []), candidate]);
+    const group = groups.get(key);
+    if (group) group.push(candidate);
+    else groups.set(key, [candidate]);
   }
 
   const section = doc.createElement('fieldset');
