@@ -177,10 +177,15 @@ function manualTermPatterns(terms: readonly string[]): RegExp[] {
 //   - NFC and NFD, for text that carries `é` as one code point or as `e` + U+0301;
 //   - full upper-casing, which the `iu` flags' simple case folding cannot do:
 //     `straße` → `STRASSE` (`ẞ` already folds to `ß` under `u`);
-//   - Turkish casing, whose dotted/dotless i never fold to ASCII `i`/`I`:
-//     `istanbul` → `İSTANBUL`, `ışık` → `IŞIK`.
+//   - Turkish casing, whose dotted/dotless i never fold to ASCII `i`/`I`, applied to the
+//     term as typed and to its upper and lower forms so it is symmetric: `istanbul` →
+//     `İSTANBUL`, `ışık` → `IŞIK`, and `KIM` → `KİM` as well as `kim` → `kım`.
 function termSpellings(term: string): string[] {
-  const cased = [term, term.toUpperCase(), term.toLocaleUpperCase('tr'), term.toLocaleLowerCase('tr')];
+  const cased = [term, term.toUpperCase(), term.toLowerCase()].flatMap((t) => [
+    t,
+    t.toLocaleUpperCase('tr'),
+    t.toLocaleLowerCase('tr'),
+  ]);
   return [...new Set(cased.flatMap((t) => [t.normalize('NFC'), t.normalize('NFD')]))];
 }
 
@@ -212,7 +217,10 @@ function termSpans(content: string, pattern: RegExp): Span[] {
   pattern.lastIndex = 0;
   for (let match = pattern.exec(content); match; match = pattern.exec(content)) {
     spans.push({ start: match.index, end: match.index + match[0].length, token: TOKEN.term });
-    pattern.lastIndex = match.index + 1;
+    // Step one code point, not one code unit: under the `u` flag a lastIndex inside a
+    // surrogate pair snaps back to the pair's start, so `+ 1` on a match that starts with an
+    // emoji or `𠮷` would rematch the same spot forever.
+    pattern.lastIndex = match.index + (content.codePointAt(match.index)! > 0xffff ? 2 : 1);
   }
   return spans;
 }

@@ -288,7 +288,18 @@ describe('createShareCopy', () => {
     ['IŞIK geldi', ['ışık'], '[REDACTED] geldi'],
     ['Rene\u0301e and Renée', ['Renée'], '[REDACTED] and [REDACTED]'],
     ['Renée and Rene\u0301e', ['Rene\u0301e'], '[REDACTED] and [REDACTED]'],
+    ['KİM, kİm and kım', ['KIM'], '[REDACTED], [REDACTED] and [REDACTED]'],
+    ['KİM and kım', ['kim'], '[REDACTED] and [REDACTED]'],
   ])('matches a term across Unicode case and normalization forms in %s', (content, manualTerms, expected) => {
+    expect(share(content, { manualTerms })).toBe(expected);
+  });
+
+  it.each([
+    ['a 😀 b 😀', ['😀'], 'a [REDACTED] b [REDACTED]'],
+    ['𠮷田さんと𠮷田', ['𠮷田'], '[REDACTED]さんと[REDACTED]'],
+    ['👍🏽 ok', ['🏽'], '👍[REDACTED] ok'],
+  ])('terminates on a term that starts outside the BMP (%s)', (content, manualTerms, expected) => {
+    // A code-unit step into a surrogate pair under the `u` flag rematched the same spot forever.
     expect(share(content, { manualTerms })).toBe(expected);
   });
 
