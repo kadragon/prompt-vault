@@ -157,6 +157,8 @@ interface Span {
   start: number;
   end: number;
   token: string;
+  /** Emphasis runs a term's word gap swallowed, as [offset, length]: + opener, − closer. */
+  gapStars?: ReadonlyArray<readonly [number, number]>;
 }
 
 function refKey(ref: ShareCandidateRef): string {
@@ -169,7 +171,7 @@ function refKey(ref: ShareCandidateRef): string {
 // `John Smith`) would never become a span and its tail would survive.
 function manualTermPatterns(terms: readonly string[]): RegExp[] {
   const usable = new Set(terms.filter((t) => t.trim() !== '').flatMap(termSpellings));
-  return [...usable].map((spelling) => new RegExp(termSource(spelling), 'giu'));
+  return [...usable].map((spelling) => new RegExp(termSource(spelling), 'dgiu'));
 }
 
 // The spellings of one term to search for. The text is never normalized — offsets must
@@ -225,8 +227,10 @@ const COMBINING_MARK = new RegExp(`^${COMBINING_MARKS}$`);
 const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
 const WHITESPACE = /^\s$/;
 // Up to three `*` each side: the adapter emits `*em*`, `**strong**`, and both nested. The
-// bounded counts keep a failed match linear in the whitespace run.
-const TERM_WORD_GAP = '\\*{0,3}\\s+\\*{0,3}';
+// bounded counts keep a failed match linear in the whitespace run. The two groups capture
+// the closers and openers the gap swallowed, for replaceSpans to re-balance; they are the
+// pattern's only capturing groups.
+const TERM_WORD_GAP = '(\\*{0,3})\\s+(\\*{0,3})';
 // The four i letters match one another per character: whole-term casing alone cannot reach a
 // mixed form like `Işık` from `ışık` or `IŞIK`, and a Turkish name is often written that way.
 const TURKISH_I = new Set(['i', 'I', 'ı', 'İ']);
@@ -240,7 +244,13 @@ function termSpans(content: string, pattern: RegExp): Span[] {
   const spans: Span[] = [];
   pattern.lastIndex = 0;
   for (let match = pattern.exec(content); match; match = pattern.exec(content)) {
-    spans.push({ start: match.index, end: match.index + match[0].length, token: TOKEN.term });
+    // Only the gap's own `*` are delimiters: a `*` the term spells (`int* p` in code) is text.
+    const gapStars: Array<[number, number]> = [];
+    for (let g = 1; g < match.length; g += 2) {
+      if (match[g]) gapStars.push([match.indices![g]![0], -match[g].length]);
+      if (match[g + 1]) gapStars.push([match.indices![g + 1]![0], match[g + 1].length]);
+    }
+    spans.push({ start: match.index, end: match.index + match[0].length, token: TOKEN.term, gapStars });
     // Step one code point, not one code unit: under the `u` flag a lastIndex inside a
     // surrogate pair snaps back to the pair's start, so `+ 1` on a match that starts with an
     // emoji or `𠮷` would rematch the same spot forever.
@@ -258,47 +268,68 @@ function escapeRegExp(text: string): string {
 // `[EMAIL]` and nest tokens. Overlapping spans collapse into one token — the
 // earliest start wins, then the longer span — covering the union of the overlap,
 // so a later span is never left with an unmasked tail.
+// A term's word gap may swallow emphasis delimiters (`*John* Smith` masks `John* Smith`),
+// leaving their partners outside the span unpaired: `*[REDACTED] said *hi*` would italicize
+// the wrong text. The swallowed delimiters net out over a run of touching tokens — a pair
+// inside it, or a closer then an opener, leaves nothing — and the rest is re-emitted,
+// openers before the run and closers after it, only where CommonMark still reads them as
+// delimiters: against whitespace, punctuation or a text edge. Against a letter they would
+// print as literal `*`, so they drop, as before this re-balancing. Against an adjacent `*`
+// run they join it when it points the same way (`**[REDACTED]**`) and cancel with it when it
+// points the other way, so the outer emphasis runs across the token.
 function replaceSpans(content: string, spans: Span[]): { text: string; count: number } {
-  const merged: Span[] = [];
+  const merged: Array<Omit<Span, 'gapStars'> & { stars: Map<number, number> }> = [];
   for (const span of [...spans].sort((a, b) => a.start - b.start || b.end - a.end)) {
     const last = merged.at(-1);
-    if (last && span.start < last.end) last.end = Math.max(last.end, span.end);
-    else merged.push({ ...span });
+    if (last && span.start < last.end) {
+      last.end = Math.max(last.end, span.end);
+      // Keyed by offset: overlapping matches of one gap count it once.
+      for (const [at, count] of span.gapStars ?? []) last.stars.set(at, count);
+    } else merged.push({ start: span.start, end: span.end, token: span.token, stars: new Map(span.gapStars) });
   }
   let out = '';
   let cursor = 0;
-  let closers = 0;
-  for (const span of merged) {
-    const balance = emphasisBalance(content.slice(span.start, span.end));
+  for (let i = 0; i < merged.length; ) {
+    let j = i;
+    while (merged[j + 1]?.start === merged[j].end) j++;
+    const run = merged.slice(i, j + 1);
+    let balance = 0;
+    for (const span of run) for (const count of span.stars.values()) balance += count;
+
+    let head = run[0].start;
     let openers = Math.max(balance, 0);
-    // Touching spans: the first one's closer would meet this one's opener as a literal `**`.
-    if (span.start === cursor) {
-      const met = Math.min(closers, openers);
-      closers -= met;
-      openers -= met;
+    if (openers > 0 && !canFlank(content[head - 1])) {
+      let stars = 0;
+      while (head - stars > cursor && content[head - stars - 1] === '*') stars++;
+      const before = content[head - stars - 1];
+      // A letter before the `*` run makes it a closer.
+      const closer = !canFlank(before);
+      if (stars > 0 && closer) head -= Math.min(stars, openers);
+      if (stars === 0 || closer) openers = 0;
     }
-    out += '*'.repeat(closers) + content.slice(cursor, span.start) + '*'.repeat(openers) + span.token;
-    closers = Math.max(-balance, 0);
-    cursor = span.end;
+
+    let tail = run.at(-1)!.end;
+    let closers = Math.max(-balance, 0);
+    if (closers > 0 && !canFlank(content[tail])) {
+      const limit = merged[j + 1]?.start ?? content.length;
+      let stars = 0;
+      while (tail + stars < limit && content[tail + stars] === '*') stars++;
+      // A letter after the `*` run makes it an opener.
+      const opener = !canFlank(content[tail + stars]);
+      if (stars > 0 && opener) tail += Math.min(stars, closers);
+      if (stars === 0 || opener) closers = 0;
+    }
+
+    out += content.slice(cursor, head) + '*'.repeat(openers) + run.map((span) => span.token).join('');
+    out += '*'.repeat(closers);
+    cursor = tail;
+    i = j + 1;
   }
-  return { text: out + '*'.repeat(closers) + content.slice(cursor), count: merged.length };
+  return { text: out + content.slice(cursor), count: merged.length };
 }
 
-// A term's word gap may swallow emphasis delimiters (`*John* Smith` masks `John* Smith`),
-// leaving their partners outside the span unpaired: `*[REDACTED] said *hi*` would italicize
-// the wrong text. Returns openers minus closers inside the span: a positive balance is
-// re-emitted as openers before the token, a negative one as closers after it. A pair inside
-// the span and a closer followed by an opener both net to zero, so the outer emphasis runs
-// across the token. Measured on the merged span's text, so overlapping spans balance
-// together. Only a `*` run with whitespace on exactly one side counts — what the gap allows;
-// `a * b` in code is a literal, and a `\*` escape is a character the term spelled.
-function emphasisBalance(masked: string): number {
-  let balance = 0;
-  for (const run of masked.matchAll(/\\[\s\S]|\*+/g)) {
-    if (run[0][0] !== '*' || run.index === 0 || run.index + run[0].length === masked.length) continue;
-    const before = WHITESPACE.test(masked[run.index - 1]);
-    const after = WHITESPACE.test(masked[run.index + run[0].length]);
-    if (before !== after) balance += before ? run[0].length : -run[0].length;
-  }
-  return balance;
+// Whether a `*` run next to a token (`]` or `[`, both punctuation) can still open or close
+// emphasis when `char` sits on its other side.
+function canFlank(char: string | undefined): boolean {
+  return char === undefined || (char !== '*' && /[\s\p{P}\p{S}]/u.test(char));
 }

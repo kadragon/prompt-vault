@@ -308,8 +308,21 @@ describe('createShareCopy', () => {
     ['a ** b c', ['a ** b'], '[REDACTED] c'],
     // So is a `*` the term itself starts or ends with.
     ['* x y', ['* x'], '[REDACTED] y'],
-    // Touching spans: the first one's closer and the second one's opener would meet as `**`.
+    // So is a `*` the term spells in raw code: only the word gap's `*` are delimiters.
+    ['`a* b` ok', ['a* b'], '`[REDACTED]` ok'],
+    ['```\nint* p = q;\nFoo* ptr;\n```', ['int* p', 'Foo* ptr'], '```\n[REDACTED] = q;\n[REDACTED];\n```'],
+    // Touching spans net their delimiters across both tokens.
     ['*김* 철수박 *영희* 끝', ['김 철수', '박 영희'], '*[REDACTED][REDACTED]* 끝'],
+    ['**김** 철수박 *영희* 끝', ['김 철수', '박 영희'], '**[REDACTED][REDACTED]** 끝'],
+    ['*김* 철수박 **영희** 끝', ['김 철수', '박 영희'], '**[REDACTED][REDACTED]** 끝'],
+    // A closer against the next emphasis's opener cancels with it instead of forming `**`.
+    ['*김* 철수*박* 영희 끝', ['김 철수', '박 영희'], '*[REDACTED][REDACTED]* 끝'],
+    ['*안녕*김 *철수* 님', ['김 철수'], '*안녕[REDACTED]* 님'],
+    // An escaped `\*` before the span is text, so a re-emitted opener can follow it.
+    [String.raw`x\*John *Smith* y`, ['John Smith'], String.raw`x\**[REDACTED]* y`],
+    // Against a letter a re-emitted `*` could not flank, so it drops as before.
+    ['안녕김 *철수* 님', ['김 철수'], '안녕[REDACTED]* 님'],
+    ['*김* 철수님이 왔다', ['김 철수'], '*[REDACTED]님이 왔다'],
   ])('keeps emphasis balanced when a masked term spans its delimiters in %j', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
   });

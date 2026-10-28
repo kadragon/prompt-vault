@@ -23,7 +23,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ### Share-copy emphasis balance follow-ups (2026-10-28)
 
-- [ ] [FIX] A re-emitted closer touching a letter does not render: `<em>김</em> 철수님이` with term `김 철수` → `*[REDACTED]*님이`, and CommonMark does not treat `]*님` as right-flanking, so the `*` shows literally; cosmetic, no leak, and v1.15.0 was also broken (`*[REDACTED]님`) (source: qa-verifier) — `src/core/share-copy.ts` `replaceSpans`
+- [ ] [FIX] A swallowed delimiter whose token touches a letter still leaves its outer partner unpaired: `*김* 철수님이` (term `김 철수`) → `*[REDACTED]님이`, `안녕김 *철수* 님` → `안녕[REDACTED]* 님` — re-emitting it would not flank (`]*님`), so it drops as in v1.15.0; fixing it means removing the outer partner, which needs CommonMark delimiter matching; cosmetic, no leak (source: qa-verifier, code-review) — `src/core/share-copy.ts` `replaceSpans`
 
 ### PR #118 — exclude the Claude screenshot from the English store upload set (2026-10-11)
 
