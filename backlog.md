@@ -21,9 +21,10 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 - [ ] [FIX] A cold-loaded Gemini conversation exports as `Gemini conversation`: `document.title` stayed `Google Gemini` for ≥ ~40 s, so `deriveTitle` fell back; sidebar-reached ones carried the real title (source: live-DOM) — `docs/live-dom-verification.md` → Gemini 2026-10-27 *(blocked by: a live Gemini session measuring cold-load titles across several conversations — only one conversation, two cold loads so far; pace loads, `google.com/sorry` rate-limits cold `page.goto` loops)*
 
-### Share-copy emphasis balance follow-ups (2026-10-28)
+### PR #142 — Keep emphasis balanced around a masked share term (2026-10-28)
 
 - [ ] [FIX] A swallowed delimiter whose token touches a letter still leaves its outer partner unpaired: `*김* 철수님이` (term `김 철수`) → `*[REDACTED]님이`, `안녕김 *철수* 님` → `안녕[REDACTED]* 님` — re-emitting it would not flank (`]*님`), so it drops as in v1.15.0; fixing it means removing the outer partner, which needs CommonMark delimiter matching; cosmetic, no leak (source: qa-verifier, code-review) — `src/core/share-copy.ts` `replaceSpans`
+- [ ] [debt] `codeRanges` reads an escaped prose backtick (`\``) as an inline-code delimiter, so a term between two of them skips re-balancing and drops its delimiters (`\` *John* Smith \`` → `\` *[REDACTED] \``) — parity with v1.15.0, no leak (source: greptile) — `src/core/share-copy.ts` `codeRanges` (introduced here)
 
 ### PR #118 — exclude the Claude screenshot from the English store upload set (2026-10-11)
 
