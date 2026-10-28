@@ -37,8 +37,11 @@ Key points:
   (gemini.google.com), and asks for the minimum permissions those need.
 • Fails loud. When a conversation can't be read properly, you get an error message instead
   of a half-empty file in your downloads folder.
-• Your toolbar, your call. The extension popup shows or hides each export format icon and
-  the bulk-export icon.
+• Copy for sharing. Makes a separate Markdown copy with emails and phone numbers masked
+  automatically, and shows a preview before you save it. Detection can miss things, so read
+  the preview first. The masking also happens only in your browser.
+• Your toolbar, your call. The extension popup shows or hides each export format icon, the
+  bulk-export icon and the copy-for-sharing icon.
 • The interface is in English, Korean, Japanese, Simplified Chinese and Traditional
   Chinese, and follows your browser language.
 

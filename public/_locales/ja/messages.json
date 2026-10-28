@@ -667,7 +667,7 @@
     "description": "Label for the copy-for-sharing icon toggle on the options page."
   },
   "sharePanelMaskedCount": {
-    "message": "このコピーで伏せた数: $count$ 箇所",
+    "message": "このコピーで伏せた箇所: $count$",
     "description": "Summary beside the copy-for-sharing preview label: how many values the copy masks. Must not imply that everything personal was masked.",
     "placeholders": {
       "count": {

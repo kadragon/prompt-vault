@@ -19,10 +19,12 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ### v1.15.0 pre-release checks (2026-10-27)
 
-- [ ] [FIX] A cold-loaded Gemini conversation exports as `Gemini conversation`: `document.title` stayed `Google Gemini` for ≥ ~40 s, so `deriveTitle` fell back; sidebar-reached ones carried the real title (source: live-DOM) — `docs/live-dom-verification.md` → Gemini 2026-10-27 *(one conversation, two cold loads — measure more widely before fixing)*
-- [ ] [doc] Store listing toolbar-toggle sentence omits the copy-for-sharing icon in all five locales; `docs/store-listing.md` storage-permission rationale likewise; optionally add a copy-for-sharing bullet (claims: email/phone auto-masked in a separate Markdown copy, previewed before save, processed only in the browser — no "anonymize") (source: product-evaluator) — `docs/store-listing/{en,ko,ja,zh_CN,zh_TW}.md`
-- [ ] [FIX] Share copy leaves an unpaired emphasis delimiter when a masked term spans emphasis (`*John* Smith said *hi*` → `*[REDACTED] said *hi*` misplaces the italics); cosmetic, no leak (source: qa-verifier) — `src/core/share-copy.ts` `replaceSpans`
-- [ ] [doc] Locale polish: ko `sharePanelMaskedCount` repeats 곳 ("가린 곳: $count$곳"), ja repeats 数/箇所 (source: product-evaluator) — `public/_locales/{ko,ja}/messages.json`
+- [ ] [FIX] A cold-loaded Gemini conversation exports as `Gemini conversation`: `document.title` stayed `Google Gemini` for ≥ ~40 s, so `deriveTitle` fell back; sidebar-reached ones carried the real title (source: live-DOM) — `docs/live-dom-verification.md` → Gemini 2026-10-27 *(blocked by: a live Gemini session measuring cold-load titles across several conversations — only one conversation, two cold loads so far; pace loads, `google.com/sorry` rate-limits cold `page.goto` loops)*
+
+### PR #142 — Keep emphasis balanced around a masked share term (2026-10-28)
+
+- [ ] [FIX] A swallowed delimiter whose token touches a letter still leaves its outer partner unpaired: `*김* 철수님이` (term `김 철수`) → `*[REDACTED]님이`, `안녕김 *철수* 님` → `안녕[REDACTED]* 님` — re-emitting it would not flank (`]*님`), so it drops as in v1.15.0; fixing it means removing the outer partner, which needs CommonMark delimiter matching; cosmetic, no leak (source: qa-verifier, code-review) — `src/core/share-copy.ts` `replaceSpans`
+- [ ] [debt] `codeRanges` reads an escaped prose backtick (`\``) as an inline-code delimiter, so a term between two of them skips re-balancing and drops its delimiters (`\` *John* Smith \`` → `\` *[REDACTED] \``) — parity with v1.15.0, no leak (source: greptile) — `src/core/share-copy.ts` `codeRanges` (introduced here)
 
 ### PR #118 — exclude the Claude screenshot from the English store upload set (2026-10-11)
 
