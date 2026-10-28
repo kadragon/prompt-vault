@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Keep emphasis balanced around a masked term, name the copy-for-sharing icon in the store listings, and polish the ko/ja masked count (2026-10-28)
 - [done] Make the ChatGPT toolbar clickable again under the app-shell header's `pointer-events: none` (2026-10-27) → docs/live-dom-verification.md
 - [done] Show the bulk panel's checkboxes and format dropdown on ChatGPT, whose CSS reset hid them (2026-10-27) → docs/live-dom-verification.md
 - [done] Match mask terms across Unicode case and normalization forms (`İstanbul`, `STRASSE`, decomposed accents) (2026-10-27)

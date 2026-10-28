@@ -19,10 +19,11 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ### v1.15.0 pre-release checks (2026-10-27)
 
-- [ ] [FIX] A cold-loaded Gemini conversation exports as `Gemini conversation`: `document.title` stayed `Google Gemini` for ≥ ~40 s, so `deriveTitle` fell back; sidebar-reached ones carried the real title (source: live-DOM) — `docs/live-dom-verification.md` → Gemini 2026-10-27 *(one conversation, two cold loads — measure more widely before fixing)*
-- [ ] [doc] Store listing toolbar-toggle sentence omits the copy-for-sharing icon in all five locales; `docs/store-listing.md` storage-permission rationale likewise; optionally add a copy-for-sharing bullet (claims: email/phone auto-masked in a separate Markdown copy, previewed before save, processed only in the browser — no "anonymize") (source: product-evaluator) — `docs/store-listing/{en,ko,ja,zh_CN,zh_TW}.md`
-- [ ] [FIX] Share copy leaves an unpaired emphasis delimiter when a masked term spans emphasis (`*John* Smith said *hi*` → `*[REDACTED] said *hi*` misplaces the italics); cosmetic, no leak (source: qa-verifier) — `src/core/share-copy.ts` `replaceSpans`
-- [ ] [doc] Locale polish: ko `sharePanelMaskedCount` repeats 곳 ("가린 곳: $count$곳"), ja repeats 数/箇所 (source: product-evaluator) — `public/_locales/{ko,ja}/messages.json`
+- [ ] [FIX] A cold-loaded Gemini conversation exports as `Gemini conversation`: `document.title` stayed `Google Gemini` for ≥ ~40 s, so `deriveTitle` fell back; sidebar-reached ones carried the real title (source: live-DOM) — `docs/live-dom-verification.md` → Gemini 2026-10-27 *(blocked by: a live Gemini session measuring cold-load titles across several conversations — only one conversation, two cold loads so far; pace loads, `google.com/sorry` rate-limits cold `page.goto` loops)*
+
+### Share-copy emphasis balance follow-ups (2026-10-28)
+
+- [ ] [FIX] A re-emitted closer touching a letter does not render: `<em>김</em> 철수님이` with term `김 철수` → `*[REDACTED]*님이`, and CommonMark does not treat `]*님` as right-flanking, so the `*` shows literally; cosmetic, no leak, and v1.15.0 was also broken (`*[REDACTED]님`) (source: qa-verifier) — `src/core/share-copy.ts` `replaceSpans`
 
 ### PR #118 — exclude the Claude screenshot from the English store upload set (2026-10-11)
 

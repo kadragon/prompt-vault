@@ -267,9 +267,38 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
   }
   let out = '';
   let cursor = 0;
+  let closers = 0;
   for (const span of merged) {
-    out += content.slice(cursor, span.start) + span.token;
+    const balance = emphasisBalance(content.slice(span.start, span.end));
+    let openers = Math.max(balance, 0);
+    // Touching spans: the first one's closer would meet this one's opener as a literal `**`.
+    if (span.start === cursor) {
+      const met = Math.min(closers, openers);
+      closers -= met;
+      openers -= met;
+    }
+    out += '*'.repeat(closers) + content.slice(cursor, span.start) + '*'.repeat(openers) + span.token;
+    closers = Math.max(-balance, 0);
     cursor = span.end;
   }
-  return { text: out + content.slice(cursor), count: merged.length };
+  return { text: out + '*'.repeat(closers) + content.slice(cursor), count: merged.length };
+}
+
+// A term's word gap may swallow emphasis delimiters (`*John* Smith` masks `John* Smith`),
+// leaving their partners outside the span unpaired: `*[REDACTED] said *hi*` would italicize
+// the wrong text. Returns openers minus closers inside the span: a positive balance is
+// re-emitted as openers before the token, a negative one as closers after it. A pair inside
+// the span and a closer followed by an opener both net to zero, so the outer emphasis runs
+// across the token. Measured on the merged span's text, so overlapping spans balance
+// together. Only a `*` run with whitespace on exactly one side counts — what the gap allows;
+// `a * b` in code is a literal, and a `\*` escape is a character the term spelled.
+function emphasisBalance(masked: string): number {
+  let balance = 0;
+  for (const run of masked.matchAll(/\\[\s\S]|\*+/g)) {
+    if (run[0][0] !== '*' || run.index === 0 || run.index + run[0].length === masked.length) continue;
+    const before = WHITESPACE.test(masked[run.index - 1]);
+    const after = WHITESPACE.test(masked[run.index + run[0].length]);
+    if (before !== after) balance += before ? run[0].length : -run[0].length;
+  }
+  return balance;
 }

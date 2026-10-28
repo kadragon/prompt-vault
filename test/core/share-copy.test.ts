@@ -279,17 +279,48 @@ describe('createShareCopy', () => {
   });
 
   it.each([
-    ['<p>Hi <em>John</em> Smith</p>', 'Hi *[REDACTED]'],
-    ['<p>Hi <strong>John</strong> <em>Smith</em> here</p>', 'Hi **[REDACTED]* here'],
-    ['<p>Hi <strong><em>John</em></strong> Smith</p>', 'Hi ***[REDACTED]'],
-    ['<p>Hi John <strong>Smith</strong></p>', 'Hi [REDACTED]**'],
-    ['<p>Hi <em>김</em> 철수</p>', 'Hi *[REDACTED]'],
+    ['<p>Hi <em>John</em> Smith</p>', 'Hi *[REDACTED]*'],
+    ['<p>Hi <strong>John</strong> <em>Smith</em> here</p>', 'Hi **[REDACTED]** here'],
+    ['<p>Hi <strong><em>John</em></strong> Smith</p>', 'Hi ***[REDACTED]***'],
+    ['<p>Hi John <strong>Smith</strong></p>', 'Hi **[REDACTED]**'],
+    ['<p>Hi <em>김</em> 철수</p>', 'Hi *[REDACTED]*'],
   ])('matches a multi-word term across the emphasis the serializer emits in %s', (html, expected) => {
     // Content is serializer output: run the real converter rather than hand-writing `*`.
     const container = new Window().document.createElement('div');
     container.innerHTML = html;
     const content = htmlToMarkdown(container as unknown as Element);
     expect(share(content, { manualTerms: ['John Smith', '김 철수'] })).toBe(expected);
+  });
+
+  it.each([
+    ['*John* Smith said *hi*', ['John Smith'], '*[REDACTED]* said *hi*'],
+    ['John *Smith* said', ['John Smith'], '*[REDACTED]* said'],
+    ['**John** **Smith**', ['John Smith'], '**[REDACTED]**'],
+    ['*Hi John* *Smith and* x', ['John Smith'], '*Hi [REDACTED] and* x'],
+    // A pair opened and closed inside the span leaves nothing behind.
+    ['Ann *Lee* Smith said', ['Ann Lee Smith'], '[REDACTED] said'],
+    // Overlapping spans merge first, so their delimiters balance across both terms.
+    ['*John* Smith *Jr* x', ['John Smith', 'Smith Jr'], '*[REDACTED]* x'],
+    // An escaped `\*` is text the term spelled, not a delimiter the span swallowed.
+    [String.raw`a\* b said`, ['a* b'], '[REDACTED] said'],
+    // A `*` with whitespace on both sides, as raw code keeps it, is a literal, not a delimiter.
+    ['```\nx = a * b\n```', ['a * b'], '```\nx = [REDACTED]\n```'],
+    ['a ** b c', ['a ** b'], '[REDACTED] c'],
+    // So is a `*` the term itself starts or ends with.
+    ['* x y', ['* x'], '[REDACTED] y'],
+    // Touching spans: the first one's closer and the second one's opener would meet as `**`.
+    ['*김* 철수박 *영희* 끝', ['김 철수', '박 영희'], '*[REDACTED][REDACTED]* 끝'],
+  ])('keeps emphasis balanced when a masked term spans its delimiters in %j', (content, manualTerms, expected) => {
+    expect(share(content, { manualTerms })).toBe(expected);
+  });
+
+  it('counts a span that re-emits emphasis delimiters once', () => {
+    const { masked } = createShareCopyWithCount(single('*John* Smith said *hi*'), {
+      excluded: [],
+      manualTerms: ['John Smith'],
+      neutralTitle: NEUTRAL,
+    });
+    expect(masked).toBe(1);
   });
 
   it('matches a multi-word term across a line break or a run of spaces', () => {
