@@ -272,11 +272,15 @@ function escapeRegExp(text: string): string {
 // leaving their partners outside the span unpaired: `*[REDACTED] said *hi*` would italicize
 // the wrong text. The swallowed delimiters net out over a run of touching tokens — a pair
 // inside it, or a closer then an opener, leaves nothing — and the rest is re-emitted,
-// openers before the run and closers after it, only where CommonMark still reads them as
-// delimiters: against whitespace, punctuation or a text edge. Against a letter they would
-// print as literal `*`, so they drop, as before this re-balancing. Against an adjacent `*`
-// run they join it when it points the same way (`**[REDACTED]**`) and cancel with it when it
-// points the other way, so the outer emphasis runs across the token.
+// openers before the run and closers after it, so `*John* Smith` reads `*[REDACTED]*`.
+// Re-emitting is only safe where CommonMark still reads every `*` involved as a delimiter,
+// so anything less certain drops them, exactly as before this re-balancing:
+//   - outside code, where `*` is text, and only when every unescaped `*` in the span is one
+//     the gap swallowed (a term that spells `*` makes the count unknowable);
+//   - the re-emitted run must touch whitespace, punctuation or a text edge, or join a `*` run
+//     pointing the same way (`**[REDACTED]**`), or cancel an equal run pointing the other way;
+//   - a partner run touching the span must still flank once the token's bracket replaces the
+//     letter beside it — `x*John* Smith` drops, since `x*[` cannot open.
 function replaceSpans(content: string, spans: Span[]): { text: string; count: number } {
   const merged: Array<Omit<Span, 'gapStars'> & { stars: Map<number, number> }> = [];
   for (const span of [...spans].sort((a, b) => a.start - b.start || b.end - a.end)) {
@@ -287,37 +291,48 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
       for (const [at, count] of span.gapStars ?? []) last.stars.set(at, count);
     } else merged.push({ start: span.start, end: span.end, token: span.token, stars: new Map(span.gapStars) });
   }
+  const code = codeRanges(content);
   let out = '';
   let cursor = 0;
   for (let i = 0; i < merged.length; ) {
     let j = i;
     while (merged[j + 1]?.start === merged[j].end) j++;
     const run = merged.slice(i, j + 1);
-    let balance = 0;
-    for (const span of run) for (const count of span.stars.values()) balance += count;
+    const limit = merged[j + 1]?.start ?? content.length;
+    // A neighbour already replaced, or the next run's token, is unknown here: treat it as a
+    // letter, so nothing is re-emitted against it.
+    const charBefore = (at: number): string | undefined => (at > cursor || cursor === 0 ? content[at - 1] : 'a');
+    const charAfter = (at: number): string | undefined => (at < limit || limit === content.length ? content[at] : 'a');
+    const starsBefore = (at: number): number => {
+      let n = 0;
+      while (charBefore(at - n) === '*') n++;
+      return n;
+    };
+    const starsAfter = (at: number): number => {
+      let n = 0;
+      while (charAfter(at + n) === '*') n++;
+      return n;
+    };
 
     let head = run[0].start;
-    let openers = Math.max(balance, 0);
-    if (openers > 0 && !canFlank(content[head - 1])) {
-      let stars = 0;
-      while (head - stars > cursor && content[head - stars - 1] === '*') stars++;
-      const before = content[head - stars - 1];
-      // A letter before the `*` run makes it a closer.
-      const closer = !canFlank(before);
-      if (stars > 0 && closer) head -= Math.min(stars, openers);
-      if (stars === 0 || closer) openers = 0;
-    }
-
     let tail = run.at(-1)!.end;
-    let closers = Math.max(-balance, 0);
-    if (closers > 0 && !canFlank(content[tail])) {
-      const limit = merged[j + 1]?.start ?? content.length;
-      let stars = 0;
-      while (tail + stars < limit && content[tail + stars] === '*') stars++;
-      // A letter after the `*` run makes it an opener.
-      const opener = !canFlank(content[tail + stars]);
-      if (stars > 0 && opener) tail += Math.min(stars, closers);
-      if (stars === 0 || opener) closers = 0;
+    let openers = 0;
+    let closers = 0;
+    const balance = swallowedBalance(content, run, code);
+    if (balance > 0) {
+      const partner = starsAfter(tail);
+      if (partner === 0 || flanks(charAfter(tail + partner))) {
+        const adjacent = starsBefore(head);
+        if (adjacent === 0 ? flanks(charBefore(head)) : flanks(charBefore(head - adjacent))) openers = balance;
+        else if (adjacent === balance) head -= adjacent;
+      }
+    } else if (balance < 0) {
+      const partner = starsBefore(head);
+      if (partner === 0 || flanks(charBefore(head - partner))) {
+        const adjacent = starsAfter(tail);
+        if (adjacent === 0 ? flanks(charAfter(tail)) : flanks(charAfter(tail + adjacent))) closers = -balance;
+        else if (adjacent === -balance) tail += adjacent;
+      }
     }
 
     out += content.slice(cursor, head) + '*'.repeat(openers) + run.map((span) => span.token).join('');
@@ -328,8 +343,46 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
   return { text: out + content.slice(cursor), count: merged.length };
 }
 
-// Whether a `*` run next to a token (`]` or `[`, both punctuation) can still open or close
-// emphasis when `char` sits on its other side.
-function canFlank(char: string | undefined): boolean {
+// Openers minus closers a run of touching spans swallowed, or 0 when re-emitting them is
+// not safe: inside code, or when the spans hold an unescaped `*` the gap did not capture.
+function swallowedBalance(
+  content: string,
+  run: ReadonlyArray<{ start: number; end: number; stars: ReadonlyMap<number, number> }>,
+  code: ReadonlyArray<readonly [number, number]>,
+): number {
+  let balance = 0;
+  let captured = 0;
+  let unescaped = 0;
+  for (const span of run) {
+    if (code.some(([start, end]) => start < span.end && span.start < end)) return 0;
+    for (const count of span.stars.values()) {
+      balance += count;
+      captured += Math.abs(count);
+    }
+    for (const [token] of content.slice(span.start, span.end).matchAll(/\\[\s\S]|\*+/g)) {
+      if (token[0] === '*') unescaped += token.length;
+    }
+  }
+  return unescaped === captured ? balance : 0;
+}
+
+// Whether a `*` run beside a token (`[` or `]`, both punctuation) can still open or close
+// when `char` sits on its other side: whitespace, punctuation or a text edge, not a letter.
+function flanks(char: string | undefined): boolean {
   return char === undefined || (char !== '*' && /[\s\p{P}\p{S}]/u.test(char));
+}
+
+// Fenced blocks and inline code spans, where `*` is text, never emphasis. Approximate on
+// purpose: a range it misses only re-balances a span that would otherwise drop its `*`.
+function codeRanges(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (const match of content.matchAll(/^ {0,3}(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?\n {0,3}\1[ \t]*(?=\n|$)|[\s\S]*$)/gm)) {
+    ranges.push([match.index, match.index + match[0].length]);
+  }
+  for (const match of content.matchAll(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g)) {
+    if (!ranges.some(([start, end]) => start <= match.index && match.index < end)) {
+      ranges.push([match.index, match.index + match[0].length]);
+    }
+  }
+  return ranges;
 }

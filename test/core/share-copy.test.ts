@@ -320,6 +320,17 @@ describe('createShareCopy', () => {
     ['*안녕*김 *철수* 님', ['김 철수'], '*안녕[REDACTED]* 님'],
     // An escaped `\*` before the span is text, so a re-emitted opener can follow it.
     [String.raw`x\*John *Smith* y`, ['John Smith'], String.raw`x\**[REDACTED]* y`],
+    // A `*` the gap swallowed inside code is text: nothing is re-emitted there.
+    ['`a* b` ok', ['a b'], '`[REDACTED]` ok'],
+    ['```js\nfoo(a*  b)\n```', ['a b'], '```js\nfoo([REDACTED])\n```'],
+    // An adjacent run of a different length is not the swallowed delimiter's partner.
+    ['*김* 철수**박** 끝', ['김 철수'], '*[REDACTED]**박** 끝'],
+    ['**안녕**김 *철수* 님', ['김 철수'], '**안녕**[REDACTED]* 님'],
+    // A partner that the token's bracket would stop from flanking drops the re-emit too.
+    ['x*John* Smith', ['John Smith'], 'x*[REDACTED]'],
+    ['John *Smith*x', ['John Smith'], '[REDACTED]*x'],
+    // A term that spells an unescaped `*` leaves the count unknowable: drop, as before.
+    ['*John* Smith *Jr*', ['John Smith', 'Smith *Jr'], '*[REDACTED]*'],
     // Against a letter a re-emitted `*` could not flank, so it drops as before.
     ['안녕김 *철수* 님', ['김 철수'], '안녕[REDACTED]* 님'],
     ['*김* 철수님이 왔다', ['김 철수'], '*[REDACTED]님이 왔다'],

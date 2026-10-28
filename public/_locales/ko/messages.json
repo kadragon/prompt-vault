@@ -667,7 +667,7 @@
     "description": "Label for the copy-for-sharing icon toggle on the options page."
   },
   "sharePanelMaskedCount": {
-    "message": "이 사본에서 가린 항목: $count$개",
+    "message": "이 사본에서 가린 곳: $count$",
     "description": "Summary beside the copy-for-sharing preview label: how many values the copy masks. Must not imply that everything personal was masked.",
     "placeholders": {
       "count": {
