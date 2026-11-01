@@ -284,6 +284,8 @@ describe('createShareCopy', () => {
     ['<p>Hi <strong><em>John</em></strong> Smith</p>', 'Hi ***[REDACTED]***'],
     ['<p>Hi John <strong>Smith</strong></p>', 'Hi **[REDACTED]**'],
     ['<p>Hi <em>김</em> 철수</p>', 'Hi *[REDACTED]*'],
+    ['<p>Hi `<em>John</em> Smith`</p>', 'Hi \\`*[REDACTED]*\\`'],
+    ['<p><em>김</em> 철수님</p>', '[REDACTED]님'],
   ])('matches a multi-word term across the emphasis the serializer emits in %s', (html, expected) => {
     // Content is serializer output: run the real converter rather than hand-writing `*`.
     const container = new Window().document.createElement('div');
@@ -331,9 +333,33 @@ describe('createShareCopy', () => {
     ['John *Smith*x', ['John Smith'], '[REDACTED]*x'],
     // A term that spells an unescaped `*` leaves the count unknowable: drop, as before.
     ['*John* Smith *Jr*', ['John Smith', 'Smith *Jr'], '*[REDACTED]*'],
-    // Against a letter a re-emitted `*` could not flank, so it drops as before.
-    ['안녕김 *철수* 님', ['김 철수'], '안녕[REDACTED]* 님'],
-    ['*김* 철수님이 왔다', ['김 철수'], '*[REDACTED]님이 왔다'],
+    // Against a letter a re-emitted `*` could not flank, so the swallowed delimiter's
+    // partner — the lone equal run touching the span, which it must have paired with — goes too.
+    ['안녕김 *철수* 님', ['김 철수'], '안녕[REDACTED] 님'],
+    ['*김* 철수님이 왔다', ['김 철수'], '[REDACTED]님이 왔다'],
+    ['(**김** 철수님)', ['김 철수'], '([REDACTED]님)'],
+    ['안녕김 **철수**.', ['김 철수'], '안녕[REDACTED].'],
+    // The nearest opener pairs with the closer even after an unclosed `*`.
+    ['*a *김* 철수님', ['김 철수'], '*a [REDACTED]님'],
+    // A partner that may have closed earlier emphasis instead stays, as in v1.15.0.
+    ['*a*김* 철수님', ['김 철수'], '*a*[REDACTED]님'],
+    // Between two punctuation marks the partner can close too, and here closes `*a`: it stays.
+    ['*a (*(김* 철수님', ['(김 철수'], '*a (*[REDACTED]님'],
+    // An escaped `\*` before the span is text, not the closer's pair: it stays.
+    [String.raw`*a \*김* 철수님`, ['김 철수'], String.raw`*a \*[REDACTED]님`],
+    // An emoji-led term is judged by its whole code point, so `(*😀` still reads as both-flanking.
+    ['*a (*😀김* 철수님', ['😀김 철수'], '*a (*[REDACTED]님'],
+    // An escaped backslash leaves the partner a real delimiter, so it still drops.
+    [String.raw`\\*김* 철수님`, ['김 철수'], String.raw`\\[REDACTED]님`],
+    // The backtick after escaped ones opens a real code span, where `*` is text.
+    ['a \\``*김* 철수님`', ['김 철수'], 'a \\``*[REDACTED]님`'],
+    ['a \\`\\``*김* 철수님`', ['김 철수'], 'a \\`\\``*[REDACTED]님`'],
+    // More than one swallowed run: the pairing is not checked, so the partner stays.
+    ['*A* *B* C님', ['A B C'], '*[REDACTED]님'],
+    // An escaped prose backtick does not open a code span, so the span still re-balances.
+    [String.raw`\` *John* Smith \``, ['John Smith'], String.raw`\` *[REDACTED]* \``],
+    // An escaped backslash before a backtick leaves the backtick a real code-span opener.
+    [String.raw`\\` + '`*John* Smith`', ['John Smith'], String.raw`\\` + '`*[REDACTED]`'],
   ])('keeps emphasis balanced when a masked term spans its delimiters in %j', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
   });
