@@ -17,6 +17,11 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
+### v1.15.1 pre-release checks (2026-11-01)
+
+- [ ] [FEAT] PDF export renders Japanese kana and Chinese hanzi as missing-glyph boxes: the bundled Jetendard faces cover Hangul and Latin only (`pdf-coverage-generated.ts` has no U+3040–30FF or U+4E00–9FFF), so a ja/zh conversation's PDF is unreadable; needs a CJK face (bundle size is the trade-off) and then the en/ja/zh listings' PDF caveat removed (source: release real-render check) — `src/content/pdf-download.ts`, `public/fonts/`
+- [ ] [FIX] Share copy still leaves a stray `*` in a few emphasis shapes, unchanged from v1.15.0 and no leak: emoji right before the partner (`😀*김* 철수님`, `flanks` reads half a surrogate pair), a closer-side partner between word characters (`김 *철수*님은`), a mixed `***홍* 길동**` run, and a `*` inside a code span the gap swallowed (source: product-evaluator) — `src/core/share-copy.ts` `replaceSpans`, `flanks`
+
 ### v1.15.0 pre-release checks (2026-10-27)
 
 - [ ] [FIX] A cold-loaded Gemini conversation exports as `Gemini conversation`: `document.title` stayed `Google Gemini` for ≥ ~40 s, so `deriveTitle` fell back; sidebar-reached ones carried the real title (source: live-DOM) — `docs/live-dom-verification.md` → Gemini 2026-10-27 *(blocked by: a live Gemini session measuring cold-load titles across several conversations — only one conversation, two cold loads so far; pace loads, `google.com/sorry` rate-limits cold `page.goto` loops)*

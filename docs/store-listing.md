@@ -229,7 +229,9 @@ close any backlog item that still asks for shot 3 to be removed.
 - [x] Use a non-sensitive demonstration conversation
 - [x] Capture five real screenshots at 1280×800 (2026-08-11, extension v1.10.1 — no UI change in 1.10.2)
 - [x] Inspect every image for names, email addresses, avatars, sidebar history, and private text
-- [x] Confirm PDF Korean/CJK glyphs render without missing-glyph boxes
+- [x] Confirm PDF Korean (Hangul) and Latin glyphs render without missing-glyph boxes;
+  Japanese kana and Chinese hanzi are outside the bundled font and render as boxes —
+  the listings say so (measured 2026-11-01, v1.15.1)
 
 ### Developer Dashboard — human-only
 
