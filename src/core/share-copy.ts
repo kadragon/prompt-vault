@@ -281,6 +281,11 @@ function escapeRegExp(text: string): string {
 //     pointing the same way (`**[REDACTED]**`), or cancel an equal run pointing the other way;
 //   - a partner run touching the span must still flank once the token's bracket replaces the
 //     letter beside it — `x*John* Smith` drops, since `x*[` cannot open.
+// Where the re-emit would not flank (`*김* 철수님`, `]*님`), the swallowed run's partner is
+// dropped with it instead — only when it is provably that run's CommonMark pair: the span
+// swallowed exactly one run, the partner touches the span with the same length, and it sits
+// between a word character and a flanking one, so it can only open (or only close).
+// Anything else keeps the partner, as before.
 function replaceSpans(content: string, spans: Span[]): { text: string; count: number } {
   const merged: Array<Omit<Span, 'gapStars'> & { stars: Map<number, number> }> = [];
   for (const span of [...spans].sort((a, b) => a.start - b.start || b.end - a.end)) {
@@ -319,12 +324,15 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
     let openers = 0;
     let closers = 0;
     const balance = swallowedBalance(content, run, code);
+    // One swallowed run only: then no `*` lies between it and the partner run touching the span.
+    const single = run.reduce((n, span) => n + span.stars.size, 0) === 1;
     if (balance > 0) {
       const partner = starsAfter(tail);
       if (partner === 0 || flanks(charAfter(tail + partner))) {
         const adjacent = starsBefore(head);
         if (adjacent === 0 ? flanks(charBefore(head)) : flanks(charBefore(head - adjacent))) openers = balance;
         else if (adjacent === balance) head -= adjacent;
+        else if (adjacent === 0 && single && partner === balance && wordChar(content[tail - 1])) tail += partner;
       }
     } else if (balance < 0) {
       const partner = starsBefore(head);
@@ -332,6 +340,7 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
         const adjacent = starsAfter(tail);
         if (adjacent === 0 ? flanks(charAfter(tail)) : flanks(charAfter(tail + adjacent))) closers = -balance;
         else if (adjacent === -balance) tail += adjacent;
+        else if (adjacent === 0 && single && partner === -balance && wordChar(content[head])) head -= partner;
       }
     }
 
@@ -372,6 +381,12 @@ function flanks(char: string | undefined): boolean {
   return char === undefined || (char !== '*' && /[\s\p{P}\p{S}]/u.test(char));
 }
 
+// Neither whitespace, punctuation nor a text edge: a `*` run between this and a flanking
+// character can only open (or only close), never both.
+function wordChar(char: string | undefined): boolean {
+  return char !== undefined && !/[\s\p{P}\p{S}]/u.test(char);
+}
+
 // Fenced blocks and inline code spans, where `*` is text, never emphasis. Approximate on
 // purpose: a range it misses only re-balances a span that would otherwise drop its `*`.
 function codeRanges(content: string): Array<[number, number]> {
@@ -379,7 +394,9 @@ function codeRanges(content: string): Array<[number, number]> {
   for (const match of content.matchAll(/^ {0,3}(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?\n {0,3}\1[ \t]*(?=\n|$)|[\s\S]*$)/gm)) {
     ranges.push([match.index, match.index + match[0].length]);
   }
-  for (const match of content.matchAll(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g)) {
+  // An opener escaped by an odd backslash run (`\``) is prose; inside the span a backslash is
+  // literal, so the closer needs no such check.
+  for (const match of content.matchAll(/(?<!`)(?<!(?<!\\)(?:\\\\)*\\)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g)) {
     if (!ranges.some(([start, end]) => start <= match.index && match.index < end)) {
       ranges.push([match.index, match.index + match[0].length]);
     }

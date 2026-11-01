@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Drop a masked term's unpaired emphasis partner beside a letter, and skip escaped backticks as code-span openers (2026-11-01)
 - [done] Keep emphasis balanced around a masked term, name the copy-for-sharing icon in the store listings, and polish the ko/ja masked count (2026-10-28)
 - [done] Make the ChatGPT toolbar clickable again under the app-shell header's `pointer-events: none` (2026-10-27) → docs/live-dom-verification.md
 - [done] Show the bulk panel's checkboxes and format dropdown on ChatGPT, whose CSS reset hid them (2026-10-27) → docs/live-dom-verification.md
