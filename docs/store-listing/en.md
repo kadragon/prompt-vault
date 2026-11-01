@@ -21,7 +21,8 @@ Open a conversation on ChatGPT, Claude, or Gemini and export buttons appear in t
 header. One click saves what you're reading, in the format you pick:
 
 • Markdown (.md) — plain, portable text with headings and code blocks intact
-• PDF (.pdf) — selectable text, with Korean and other CJK glyphs and monospace code blocks
+• PDF (.pdf) — selectable text, with Korean and Latin glyphs and monospace code blocks.
+  Japanese and Chinese characters don't render in PDF yet — save those chats as Markdown or HTML
 • JSON (.json) — structured data you can hand to other tools
 • HTML (.html) — a self-contained page that opens in any browser
 
