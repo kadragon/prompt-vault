@@ -3,8 +3,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   bytesToBase64,
+  CJK_BOLD_VFS_KEY,
+  CJK_VFS_KEY,
   JETENDARD_BOLD_VFS_KEY,
   JETENDARD_VFS_KEY,
+  loadCjkVfs,
   loadJetendardVfs,
 } from '../../src/export/fonts/jetendard';
 import { ExtractionError } from '../../src/core/errors';
@@ -88,5 +91,31 @@ describe('loadJetendardVfs', () => {
     // The user-facing message is deliberately non-technical, so the original failure
     // rides along as `cause` rather than being swallowed.
     expect((error as ExtractionError).cause).toBeInstanceOf(Error);
+  });
+});
+
+describe('loadCjkVfs', () => {
+  it('reads both CJK faces from the extension package, keyed for pdfmake', async () => {
+    stubChromeRuntime();
+    const requested: string[] = [];
+    vi.stubGlobal('fetch', (url: string) => {
+      requested.push(url);
+      return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new Uint8Array([4, 5]).buffer) });
+    });
+
+    const vfs = await loadCjkVfs();
+
+    expect(requested.sort()).toEqual([
+      'chrome-extension://test-id/fonts/PromptVaultCJK-Bold.otf',
+      'chrome-extension://test-id/fonts/PromptVaultCJK-Regular.otf',
+    ]);
+    expect(Object.keys(vfs).sort()).toEqual([CJK_BOLD_VFS_KEY, CJK_VFS_KEY].sort());
+  });
+
+  it('fails loud on a non-OK response', async () => {
+    stubChromeRuntime();
+    vi.stubGlobal('fetch', () => Promise.resolve({ ok: false, status: 404 }));
+
+    await expect(loadCjkVfs()).rejects.toBeInstanceOf(ExtractionError);
   });
 });

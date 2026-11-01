@@ -40,6 +40,18 @@ const FACE_PATHS: Readonly<Record<string, string>> = {
   [JETENDARD_BOLD_VFS_KEY]: 'fonts/Jetendard-Bold.ttf',
 };
 
+// The CJK companion faces (a Noto Sans CJK subset: kana, CJK punctuation and the
+// JIS X 0208 / GB 2312 / Big5 hanzi — see scripts/subset-cjk-font.py). They draw only what
+// Jetendard cannot, and at ~3.9 MB each they are read only for a document that needs them.
+// They live in this module so the fetch stays at its one pinned call site.
+export const CJK_VFS_KEY = 'PromptVaultCJK-Regular.otf';
+export const CJK_BOLD_VFS_KEY = 'PromptVaultCJK-Bold.otf';
+
+const CJK_FACE_PATHS: Readonly<Record<string, string>> = {
+  [CJK_VFS_KEY]: 'fonts/PromptVaultCJK-Regular.otf',
+  [CJK_BOLD_VFS_KEY]: 'fonts/PromptVaultCJK-Bold.otf',
+};
+
 // btoa() takes a binary string, and building one with a single
 // `String.fromCharCode(...bytes)` spread blows the argument limit on a 4.6 MB face
 // (RangeError). Chunk it instead; 32 KiB is comfortably under every engine's limit.
@@ -66,10 +78,19 @@ export function bytesToBase64(bytes: Uint8Array): string {
  * boxes with no error. Every failure — a rejected fetch, a non-OK response, a decode
  * error — becomes one `ExtractionError` the content layer already knows how to show.
  */
-export async function loadJetendardVfs(): Promise<Record<string, string>> {
+export function loadJetendardVfs(): Promise<Record<string, string>> {
+  return loadFaces(FACE_PATHS);
+}
+
+/** Read both CJK faces, keyed like {@link loadJetendardVfs}, and failing loud the same way. */
+export function loadCjkVfs(): Promise<Record<string, string>> {
+  return loadFaces(CJK_FACE_PATHS);
+}
+
+async function loadFaces(paths: Readonly<Record<string, string>>): Promise<Record<string, string>> {
   try {
     const entries = await Promise.all(
-      Object.entries(FACE_PATHS).map(async ([vfsKey, path]) => {
+      Object.entries(paths).map(async ([vfsKey, path]) => {
         const response = await fetch(chrome.runtime.getURL(path));
         if (!response.ok) {
           throw new Error(`${path}: HTTP ${response.status}`);

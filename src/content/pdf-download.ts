@@ -13,11 +13,21 @@
 import pdfMake from 'pdfmake/build/pdfmake';
 import type { TFontDictionary } from 'pdfmake/interfaces';
 import {
+  CJK_BOLD_VFS_KEY,
+  CJK_VFS_KEY,
   JETENDARD_BOLD_VFS_KEY,
   JETENDARD_VFS_KEY,
+  loadCjkVfs,
   loadJetendardVfs,
 } from '../export/fonts/jetendard';
-import { collectUnsupportedChars, PDF_FONT, pdfFilename, toPdfDocDefinition } from '../export/pdf';
+import {
+  collectUnsupportedChars,
+  PDF_CJK_FONT,
+  PDF_FONT,
+  pdfFilename,
+  toPdfDocDefinition,
+  usesCjkFont,
+} from '../export/pdf';
 import type { Conversation } from '../core/conversation';
 
 // Register the font once per page. pdfmake accumulates vfs/font entries globally, so
@@ -26,6 +36,9 @@ import type { Conversation } from '../core/conversation';
 // back to back would otherwise both fetch. A failed load is not cached — clearing the
 // slot lets the next export retry rather than repeating the first failure forever.
 let registration: Promise<void> | null = null;
+// The CJK faces get their own slot, filled only by the first document that routes a
+// character to them: a Korean or English export never reads their ~7.8 MB.
+let cjkRegistration: Promise<void> | null = null;
 
 function ensureFontsRegistered(): Promise<void> {
   registration ??= registerFonts().catch((error: unknown) => {
@@ -33,6 +46,27 @@ function ensureFontsRegistered(): Promise<void> {
     throw error;
   });
   return registration;
+}
+
+function ensureCjkFontsRegistered(): Promise<void> {
+  cjkRegistration ??= registerCjkFonts().catch((error: unknown) => {
+    cjkRegistration = null;
+    throw error;
+  });
+  return cjkRegistration;
+}
+
+async function registerCjkFonts(): Promise<void> {
+  pdfMake.addVirtualFileSystem(await loadCjkVfs());
+  // Same four-slot shape as Jetendard: real Bold for bold runs, italics on upright faces.
+  pdfMake.addFonts({
+    [PDF_CJK_FONT]: {
+      normal: CJK_VFS_KEY,
+      bold: CJK_BOLD_VFS_KEY,
+      italics: CJK_VFS_KEY,
+      bolditalics: CJK_BOLD_VFS_KEY,
+    },
+  });
 }
 
 async function registerFonts(): Promise<void> {
@@ -66,6 +100,7 @@ async function registerFonts(): Promise<void> {
 export async function downloadPdf(conversation: Conversation, now: Date): Promise<string[]> {
   await ensureFontsRegistered();
   const docDefinition = toPdfDocDefinition(conversation);
+  if (usesCjkFont(docDefinition)) await ensureCjkFontsRegistered();
   // Collect BEFORE createPdf: pdfmake mutates the definition it is handed, hanging its
   // own layout state off the nodes (`_inlines`, `_margin`, injected `listMarker` nodes
   // that carry their own `text`, and an `item.font` back-reference into fontkit). The

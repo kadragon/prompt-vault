@@ -328,9 +328,11 @@ describe('createShareCopy', () => {
     // An adjacent run of a different length is not the swallowed delimiter's partner.
     ['*김* 철수**박** 끝', ['김 철수'], '*[REDACTED]**박** 끝'],
     ['**안녕**김 *철수* 님', ['김 철수'], '**안녕**[REDACTED]* 님'],
-    // A partner that the token's bracket would stop from flanking drops the re-emit too.
+    // A partner that the token's bracket would stop from flanking drops the re-emit too. The
+    // opener-side one after a letter may have closed earlier emphasis, so it stays; the
+    // closer-side one before a letter still closes the swallowed opener, so it goes with it.
     ['x*John* Smith', ['John Smith'], 'x*[REDACTED]'],
-    ['John *Smith*x', ['John Smith'], '[REDACTED]*x'],
+    ['John *Smith*x', ['John Smith'], '[REDACTED]x'],
     // A term that spells an unescaped `*` leaves the count unknowable: drop, as before.
     ['*John* Smith *Jr*', ['John Smith', 'Smith *Jr'], '*[REDACTED]*'],
     // Against a letter a re-emitted `*` could not flank, so the swallowed delimiter's
@@ -351,15 +353,48 @@ describe('createShareCopy', () => {
     ['*a (*😀김* 철수님', ['😀김 철수'], '*a (*[REDACTED]님'],
     // An escaped backslash leaves the partner a real delimiter, so it still drops.
     [String.raw`\\*김* 철수님`, ['김 철수'], String.raw`\\[REDACTED]님`],
-    // The backtick after escaped ones opens a real code span, where `*` is text.
-    ['a \\``*김* 철수님`', ['김 철수'], 'a \\``*[REDACTED]님`'],
-    ['a \\`\\``*김* 철수님`', ['김 철수'], 'a \\`\\``*[REDACTED]님`'],
+    // The backtick after escaped ones opens a real code span, where `*` is text: the literal
+    // twin goes with the span, where prose would have re-emitted `*[REDACTED]*`.
+    ['a \\``*김* 철수 님`', ['김 철수'], 'a \\``[REDACTED] 님`'],
+    ['a \\`\\``*김* 철수 님`', ['김 철수'], 'a \\`\\``[REDACTED] 님`'],
+    // A character beside a partner is judged by its whole code point: an emoji is a symbol,
+    // so the run beside it still flanks (re-emit) or the pair still drops.
+    ['😀*김* 철수님', ['김 철수'], '😀[REDACTED]님'],
+    ['김 *철수*😀', ['김 철수'], '*[REDACTED]*😀'],
+    ['*김* 철수😀', ['김 철수'], '*[REDACTED]*😀'],
+    // A closer-side partner between two word characters can open too, but as a closer it
+    // reaches the swallowed opener first, so it is still the pair.
+    ['김 *철수*님은', ['김 철수'], '[REDACTED]님은'],
+    // A partner run longer than the swallowed one: its rest pairs with the run on the span's
+    // other side, so all three go.
+    ['***홍* 길동**님', ['홍 길동'], '[REDACTED]님'],
+    ['**홍 *길동***님', ['홍 길동'], '[REDACTED]님'],
+    // Rule of 3: `**`+`*` cannot pair when one run can both open and close, so the trailing
+    // `*` opens instead — it is not the rest's pair, and the old handling stands.
+    ['**홍* 길동*님', ['홍 길동'], '**[REDACTED]님'],
+    // An adjacent run after a word character may close earlier emphasis: it stays.
+    ['안녕**홍 *길동***', ['홍 길동'], '안녕**[REDACTED]***'],
+    // Inside code `*` is text, but a literal pair around the term would leave half behind.
+    ['`*김* 철수` x', ['김 철수'], '`[REDACTED]` x'],
+    ['`김 *철수*` x', ['김 철수'], '`[REDACTED]` x'],
+    ['`**김* 철수` x', ['김 철수'], '`**[REDACTED]` x'],
+    // Away from the backtick a `*` in code may be an operator or part of a word: it stays.
+    ['`x = a *b* c`', ['a b'], '`x = [REDACTED]* c`'],
+    ['`a*김* 철수` x', ['김 철수'], '`a*[REDACTED]` x'],
+    ['`김 *철수*a` x', ['김 철수'], '`[REDACTED]*a` x'],
+    // A swallowed run with no `*` anywhere else in its paragraph is unpaired: never re-emitted,
+    // whatever flanks it — an emoji or punctuation.
+    ['a김* 철수😀', ['김 철수'], 'a[REDACTED]😀'],
+    ['김* 철수( x', ['김 철수'], '[REDACTED]( x'],
+    ['x 김 *철수', ['김 철수'], 'x [REDACTED]'],
+    // …but a `*` further off in the paragraph may be its pair, so the re-emit stands.
+    ['*a b 김* 철수😀', ['김 철수'], '*a b [REDACTED]*😀'],
     // More than one swallowed run: the pairing is not checked, so the partner stays.
     ['*A* *B* C님', ['A B C'], '*[REDACTED]님'],
     // An escaped prose backtick does not open a code span, so the span still re-balances.
     [String.raw`\` *John* Smith \``, ['John Smith'], String.raw`\` *[REDACTED]* \``],
     // An escaped backslash before a backtick leaves the backtick a real code-span opener.
-    [String.raw`\\` + '`*John* Smith`', ['John Smith'], String.raw`\\` + '`*[REDACTED]`'],
+    [String.raw`\\` + '`*John* Smith`', ['John Smith'], String.raw`\\` + '`[REDACTED]`'],
   ])('keeps emphasis balanced when a masked term spans its delimiters in %j', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
   });
