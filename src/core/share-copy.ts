@@ -283,9 +283,17 @@ function escapeRegExp(text: string): string {
 //     letter beside it — `x*John* Smith` drops, since `x*[` cannot open.
 // Where the re-emit would not flank (`*김* 철수님`, `]*님`), the swallowed run's partner is
 // dropped with it instead — only when it is provably that run's CommonMark pair: the span
-// swallowed exactly one run, the partner touches the span with the same length, and it sits
-// between a word character and a flanking one, so it can only open (or only close).
-// Anything else keeps the partner, as before.
+// swallowed exactly one run and the partner touches the span. An opener-side partner must
+// sit between a flanking character and a word one, so it can only open and cannot have
+// closed earlier emphasis; a closer-side partner only needs a word character before it,
+// since as a closer it reaches the swallowed opener before it could open anything. A partner
+// longer than the swallowed run drops too when its rest is exactly the run touching the
+// span's other side (`***홍* 길동**님`), which then provably pairs with that rest — both runs
+// one-way where they must be, and the rule of 3 checked wherever a run could both open and
+// close. Anything else keeps the partner, as before.
+// Inside code `*` is text, so nothing pairs; a lone swallowed run whose equal literal twin
+// touches the span's other side within the same code range goes with it instead
+// (`` `*김* 철수` ``), since half a literal wrapper is the same stray `*` to a reader.
 function replaceSpans(content: string, spans: Span[]): { text: string; count: number } {
   const merged: Array<Omit<Span, 'gapStars'> & { stars: Map<number, number> }> = [];
   for (const span of [...spans].sort((a, b) => a.start - b.start || b.end - a.end)) {
@@ -305,9 +313,12 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
     const run = merged.slice(i, j + 1);
     const limit = merged[j + 1]?.start ?? content.length;
     // A neighbour already replaced, or the next run's token, is unknown here: treat it as a
-    // letter, so nothing is re-emitted against it.
-    const charBefore = (at: number): string | undefined => (at > cursor || cursor === 0 ? content[at - 1] : 'a');
-    const charAfter = (at: number): string | undefined => (at < limit || limit === content.length ? content[at] : 'a');
+    // letter, so nothing is re-emitted against it. Both read a whole code point: half an
+    // emoji's surrogate pair matches no category and would pass as a letter.
+    const charBefore = (at: number): string | undefined =>
+      at > cursor || cursor === 0 ? codePointBefore(content, at) : 'a';
+    const charAfter = (at: number): string | undefined =>
+      at < limit || limit === content.length ? codePointFrom(content, at) : 'a';
     const starsBefore = (at: number): number => {
       let n = 0;
       while (charBefore(at - n) === '*') n++;
@@ -331,32 +342,59 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
     const balance = swallowedBalance(content, run, code);
     // One swallowed run only: then no `*` lies between it and the partner run touching the span.
     const single = run.reduce((n, span) => n + span.stars.size, 0) === 1;
+    // The span's own edge characters, never a token: the word character before a closer-side
+    // partner also rules out a `\` escaping its first `*`.
+    const startsWord = wordChar(codePointFrom(content, head));
+    const endsWord = wordChar(codePointBefore(content, tail));
+    // An odd `\` run before a run escapes its first `*`: then it is text, not the pair.
+    const unescaped = (at: number): boolean => backslashesBefore(at) % 2 === 0;
     if (balance > 0) {
       const partner = starsAfter(tail);
-      if (partner === 0 || flanks(charAfter(tail + partner))) {
-        const adjacent = starsBefore(head);
-        if (adjacent === 0 ? flanks(charBefore(head)) : flanks(charBefore(head - adjacent))) openers = balance;
-        else if (adjacent === balance) head -= adjacent;
-        // The word character also rules out a `\` escaping the partner's first `*`.
-        else if (adjacent === 0 && single && partner === balance && wordChar(lastCodePoint(content.slice(0, tail)))) {
-          tail += partner;
-        }
+      const adjacent = starsBefore(head);
+      const partnerFlanks = partner === 0 || flanks(charAfter(tail + partner));
+      // The partner closes the swallowed opener, then its rest the adjacent run. Followed by a
+      // word character it could also open, which brings in the rule of 3 for both pairings.
+      const partnerBoth = !partnerFlanks;
+      if (partnerFlanks && (adjacent === 0 ? flanks(charBefore(head)) : flanks(charBefore(head - adjacent)))) {
+        openers = balance;
+      } else if (partnerFlanks && adjacent === balance) head -= adjacent;
+      else if (
+        single &&
+        endsWord &&
+        partner === balance + adjacent &&
+        pairs(balance, partner, partnerBoth) &&
+        (adjacent === 0 ||
+          (startsWord && flanks(charBefore(head - adjacent)) && unescaped(head - adjacent) && pairs(adjacent, partner, partnerBoth)))
+      ) {
+        head -= adjacent;
+        tail += partner;
       }
     } else if (balance < 0) {
       const partner = starsBefore(head);
       if (partner === 0 || flanks(charBefore(head - partner))) {
         const adjacent = starsAfter(tail);
         if (adjacent === 0 ? flanks(charAfter(tail)) : flanks(charAfter(tail + adjacent))) closers = -balance;
-        else if (adjacent === -balance) tail += adjacent;
-        // An odd `\` run before the partner escapes its first `*`: then it is text, not the pair.
+        // The swallowed closer closes the partner, then the adjacent run its rest. Reached
+        // only where the adjacent run does not flank outward, so it could also open.
         else if (
-          adjacent === 0 &&
           single &&
-          partner === -balance &&
-          backslashesBefore(head - partner) % 2 === 0 &&
-          wordChar(String.fromCodePoint(content.codePointAt(head)!))
+          startsWord &&
+          partner === -balance + adjacent &&
+          unescaped(head - partner) &&
+          (adjacent === 0 || (endsWord && pairs(partner, adjacent, true)))
         ) {
           head -= partner;
+          tail += adjacent;
+        } else if (adjacent === -balance) tail += adjacent;
+      }
+    } else if (single && inOneRange(code, head, tail)) {
+      const swallowed = run.reduce((n, span) => n + [...span.stars.values()].reduce((a, b) => a + b, 0), 0);
+      const literalStars = run.reduce((n, span) => n + (content.slice(span.start, span.end).match(/\*/g)?.length ?? 0), 0);
+      if (literalStars === Math.abs(swallowed)) {
+        if (swallowed < 0 && starsBefore(head) === -swallowed && inOneRange(code, head + swallowed, tail)) {
+          head += swallowed;
+        } else if (swallowed > 0 && starsAfter(tail) === swallowed && inOneRange(code, head, tail + swallowed)) {
+          tail += swallowed;
         }
       }
     }
@@ -405,8 +443,26 @@ function wordChar(char: string | undefined): boolean {
   return char !== undefined && !/[\s\p{P}\p{S}]/u.test(char);
 }
 
-function lastCodePoint(text: string): string | undefined {
-  return [...text.slice(-2)].at(-1);
+// CommonMark's rule of 3: where either run can both open and close, an opener and a closer
+// whose run lengths sum to a multiple of 3 do not pair unless both lengths are.
+function pairs(opener: number, closer: number, eitherBoth: boolean): boolean {
+  return !eitherBoth || (opener + closer) % 3 !== 0 || (opener % 3 === 0 && closer % 3 === 0);
+}
+
+// The code point ending at `at` (undefined at the text start). Slices two code units, not the
+// whole prefix: this runs several times per masked span.
+function codePointBefore(text: string, at: number): string | undefined {
+  return [...text.slice(Math.max(0, at - 2), at)].at(-1);
+}
+
+// The code point starting at `at` (undefined at the text end).
+function codePointFrom(text: string, at: number): string | undefined {
+  const cp = text.codePointAt(at);
+  return cp === undefined ? undefined : String.fromCodePoint(cp);
+}
+
+function inOneRange(ranges: ReadonlyArray<readonly [number, number]>, start: number, end: number): boolean {
+  return ranges.some(([from, to]) => from <= start && end <= to);
 }
 
 // Fenced blocks and inline code spans, where `*` is text, never emphasis. Approximate on

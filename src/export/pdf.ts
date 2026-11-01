@@ -5,9 +5,11 @@
 // pdfmake runtime. Building/downloading the actual PDF (which touches browser
 // APIs) lives in the content layer (src/content/pdf-download.ts).
 //
-// The whole document renders in one embedded monospace family (Jetendard: JetBrains
-// Mono + Pretendard, Regular + Bold), so Korean/CJK glyphs render and fenced code
-// blocks are monospace by construction; code blocks additionally get a boxed
+// The document renders in one embedded monospace family (Jetendard: JetBrains Mono +
+// Pretendard, Regular + Bold), so Hangul and Latin render and fenced code blocks are
+// monospace by construction; the characters Jetendard lacks that a Japanese or Chinese
+// chat needs (kana, hanzi, CJK punctuation) are routed to a companion CJK face, run by
+// run (see withCharFallbacks). Code blocks additionally get a boxed
 // background so they stand apart from prose. Message bodies are Markdown, and turning
 // that into styled nodes lives in ./markdown-pdf — this module owns the document
 // shell: the font, the named styles those nodes reference, and the role sections.
@@ -18,12 +20,19 @@ import type { Conversation, Role } from '../core/conversation';
 import { buildExportFilename } from './filename';
 import { renderMarkdown } from './markdown-pdf';
 import { substituteUnsupportedChars } from './pdf-charmap';
+import { CJK_COVERED_RANGES } from './pdf-cjk-coverage-generated';
 import { COVERED_RANGES } from './pdf-coverage-generated';
 
 // The embedded font family name, referenced by the vfs/fonts registration in the
 // content layer. Kept here so the pure doc definition names the same family the
 // runtime registers.
 export const PDF_FONT = 'Jetendard';
+
+// The companion family for what Jetendard cannot draw (see ./fonts/jetendard). pdfmake
+// has no per-glyph font fallback, so withCharFallbacks splits each text run into
+// same-face segments and names this family on the CJK ones. A document that never
+// names it never makes the content layer read the CJK files.
+export const PDF_CJK_FONT = 'PromptVaultCJK';
 
 // Jetendard inherits JetBrains Mono's coding ligatures, which are on by default:
 // `=>` is substituted with a single `⇒` glyph, so what the reader copies out of the
@@ -110,22 +119,85 @@ export function pdfFilename(conversation: Conversation, now: Date): string {
   return buildExportFilename(conversation, now, 'pdf');
 }
 
-// Rewrite every text run the font has no glyph for (see ./pdf-charmap). This runs on
-// the finished nodes rather than on the Markdown source so a substitution that yields
-// `*` or `_` can never be re-read as emphasis, and it copies rather than mutates:
-// the renderer reuses shared (and sometimes frozen) node and layout constants, and
-// layout callbacks must survive by reference.
+// Rewrite every text run the font has no glyph for (see ./pdf-charmap), then route what
+// Jetendard still cannot draw but the CJK face can to PDF_CJK_FONT. This runs on the
+// finished nodes rather than on the Markdown source so a substitution that yields `*` or
+// `_` can never be re-read as emphasis, and it copies rather than mutates: the renderer
+// reuses shared (and sometimes frozen) node and layout constants, and layout callbacks
+// must survive by reference.
+// A node's own `text` string becomes an array of segments, which inherit the node's style
+// the way any inline array does. An inline object INSIDE a text array cannot nest that
+// way — pdfmake flattens nested arrays and drops the inner object's own style — so it is
+// split into sibling copies instead, each keeping every property of the original.
 function withCharFallbacks<T>(node: T): T {
   if (Array.isArray(node)) return node.map(withCharFallbacks) as T;
   if (node === null || typeof node !== 'object') return node;
   const copy: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
-    copy[key] =
-      key === 'text' && typeof value === 'string'
-        ? substituteUnsupportedChars(value)
-        : withCharFallbacks(value);
+    if (key === 'text' && typeof value === 'string') {
+      const runs = fontRuns(substituteUnsupportedChars(value));
+      copy[key] = runs.length === 1 && !runs[0].cjk ? runs[0].text : runs.map(inlineRun);
+    } else if (key === 'text' && Array.isArray(value)) {
+      copy[key] = value.flatMap(inlineWithFallbacks);
+    } else {
+      copy[key] = withCharFallbacks(value);
+    }
   }
   return copy as T;
+}
+
+function inlineWithFallbacks(item: unknown): unknown[] {
+  if (typeof item === 'string') return fontRuns(substituteUnsupportedChars(item)).map(inlineRun);
+  if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+    const { text, ...rest } = item as Record<string, unknown>;
+    if (typeof text === 'string') {
+      const props = withCharFallbacks(rest);
+      return fontRuns(substituteUnsupportedChars(text)).map((run) =>
+        run.cjk ? { ...props, text: run.text, font: PDF_CJK_FONT } : { ...props, text: run.text },
+      );
+    }
+  }
+  return [withCharFallbacks(item)];
+}
+
+// Always an object, never a bare string: both walks here (and the test pinning them)
+// rely on every visible string sitting under a `text` key.
+function inlineRun(run: FontRun): { text: string; font?: string } {
+  return run.cjk ? { text: run.text, font: PDF_CJK_FONT } : { text: run.text };
+}
+
+interface FontRun {
+  text: string;
+  cjk: boolean;
+}
+
+// Maximal same-face runs of `text`, never empty: an empty string is one Jetendard run, so
+// a node keeps its (empty) text. A character goes to the CJK face only when Jetendard
+// lacks it and the CJK face has it; anything neither draws stays on Jetendard and is
+// reported by collectUnsupportedChars.
+function fontRuns(text: string): FontRun[] {
+  const runs: FontRun[] = [];
+  for (const char of text) {
+    const cp = char.codePointAt(0) as number;
+    const cjk = !isCodePointCovered(cp) && isCjkCodePointCovered(cp);
+    const last = runs.at(-1);
+    if (last && last.cjk === cjk) last.text += char;
+    else runs.push({ text: char, cjk });
+  }
+  return runs.length > 0 ? runs : [{ text: '', cjk: false }];
+}
+
+/** Whether the built document names PDF_CJK_FONT anywhere, so the CJK faces must be loaded. */
+export function usesCjkFont(doc: TDocumentDefinitions): boolean {
+  return namesCjkFont(doc.content);
+}
+
+function namesCjkFont(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(namesCjkFont);
+  if (node === null || typeof node !== 'object') return false;
+  return Object.entries(node).some(([key, value]) =>
+    key === 'font' ? value === PDF_CJK_FONT : namesCjkFont(value),
+  );
 }
 
 /**
@@ -165,18 +237,27 @@ function collectFrom(node: unknown, found: Set<string>): void {
 }
 
 /**
- * Whether the embedded faces carry a glyph for `codePoint`, by binary search over the
+ * Whether the embedded Jetendard faces carry a glyph for `codePoint`, by binary search over the
  * generated ranges. Exported so test/export/pdf-charmap.test.ts can cross-check the
  * committed table against fontkit's own answer — the table is derived from
  * `face.characterSet` while ./pdf-charmap is derived from `hasGlyphForCodePoint`, and
  * nothing else pins those two APIs to each other.
  */
 export function isCodePointCovered(codePoint: number): boolean {
+  return inRanges(COVERED_RANGES, codePoint);
+}
+
+/** Whether the embedded CJK faces carry a glyph for `codePoint`; see isCodePointCovered. */
+export function isCjkCodePointCovered(codePoint: number): boolean {
+  return inRanges(CJK_COVERED_RANGES, codePoint);
+}
+
+function inRanges(ranges: ReadonlyArray<readonly [number, number]>, codePoint: number): boolean {
   let low = 0;
-  let high = COVERED_RANGES.length - 1;
+  let high = ranges.length - 1;
   while (low <= high) {
     const mid = (low + high) >> 1;
-    const [start, end] = COVERED_RANGES[mid];
+    const [start, end] = ranges[mid];
     if (codePoint < start) high = mid - 1;
     else if (codePoint > end) low = mid + 1;
     else return true;
@@ -189,7 +270,8 @@ export function isCodePointCovered(codePoint: number): boolean {
 // act on.
 function isDrawable(char: string): boolean {
   if (/\s/.test(char)) return true;
-  return isCodePointCovered(char.codePointAt(0) as number);
+  const cp = char.codePointAt(0) as number;
+  return isCodePointCovered(cp) || isCjkCodePointCovered(cp);
 }
 
 // Flatten any newlines in the title so it stays a single heading line.

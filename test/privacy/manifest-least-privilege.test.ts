@@ -90,11 +90,11 @@ describe('least-privilege manifest', () => {
     }
   });
 
-  it('exposes only the two font faces as web-accessible resources', () => {
+  it('exposes only the four font faces as web-accessible resources', () => {
     // A web-accessible resource is readable by every page the entry's `matches`
     // admits, and a `chrome-extension://<id>/...` URL that resolves is also an
     // extension-detection signal for that page. Two things therefore have to stay
-    // narrow: WHAT is exposed (the two .ttf faces the PDF exporter reads, never a
+    // narrow: WHAT is exposed (the four faces the PDF exporter reads, never a
     // directory wildcard that could later admit source) and TO WHOM (the same hosts
     // the content script already runs on, never `<all_urls>`).
     //
@@ -108,6 +108,8 @@ describe('least-privilege manifest', () => {
     expect(declaredResources?.[0]?.resources).toEqual([
       'fonts/Jetendard-Regular.ttf',
       'fonts/Jetendard-Bold.ttf',
+      'fonts/PromptVaultCJK-Regular.otf',
+      'fonts/PromptVaultCJK-Bold.otf',
     ]);
     const contentScripts = declared.content_scripts as Array<{ matches?: string[] }> | undefined;
     expect(declaredResources?.[0]?.matches).toEqual(contentScripts?.[0]?.matches);

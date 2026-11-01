@@ -17,10 +17,11 @@ continuation line is invisible to it and the blocked item is offered as actionab
 
 ## Review Backlog
 
-### v1.15.1 pre-release checks (2026-11-01)
+### QA pass on the CJK PDF face + share-copy emphasis fixes (2026-11-01)
 
-- [ ] [FEAT] PDF export renders Japanese kana and Chinese hanzi as missing-glyph boxes: the bundled Jetendard faces cover Hangul and Latin only (`pdf-coverage-generated.ts` has no U+3040–30FF or U+4E00–9FFF), so a ja/zh conversation's PDF is unreadable; needs a CJK face (bundle size is the trade-off) and then the en/ja/zh listings' PDF caveat removed (source: release real-render check) — `src/content/pdf-download.ts`, `public/fonts/`
-- [ ] [FIX] Share copy still leaves a stray `*` in a few emphasis shapes, unchanged from v1.15.0 and no leak: emoji right before the partner (`😀*김* 철수님`, `flanks` reads half a surrogate pair), a closer-side partner between word characters (`김 *철수*님은`), a mixed `***홍* 길동**` run, and a `*` inside a code span the gap swallowed (source: product-evaluator) — `src/core/share-copy.ts` `replaceSpans`, `flanks`
+- [ ] [FIX] PDF still folds `※` `①` `★` `‥` `℃` `Ⅳ` and ~125 other characters to ASCII stand-ins (`※注意` → `*注意`) although the CJK face now draws them, because `substituteUnsupportedChars` runs before CJK routing; skipping substitution for CJK-covered characters would make a Korean doc with one `※` load the 7.8 MB CJK faces — decide the trade-off (source: qa-verifier) — `src/export/pdf.ts` `withCharFallbacks`
+- [ ] [FIX] Share copy re-emits an UNPAIRED swallowed `*` against punctuation or (now, with code-point reads) an emoji: `a김* 철수😀` → `a[REDACTED]*😀`, `김* 철수( *y*` → `[REDACTED]*(`; re-emit only when the swallowed run had a partner. Also: inside code the literal-twin rule eats a non-wrapper `*` (`` `a*김* 철수` `` → `` `a[REDACTED]` ``) — cosmetic, no leak (source: qa-verifier) — `src/core/share-copy.ts` `replaceSpans`
+- [ ] [FIX] A share term split by a code-span boundary is never masked (`` `*김` 철수*님 ``, ``*김* `철수`님`` stay visible), and `<em>김</em><strong> 철수</strong>님` serializes as `*김***철수**님`, losing the space so `김 철수` never matches — a leak of the term, pre-existing (source: qa-verifier) — `src/core/share-copy.ts` `termSource`, `src/core/html-to-markdown.ts`
 
 ### v1.15.0 pre-release checks (2026-10-27)
 

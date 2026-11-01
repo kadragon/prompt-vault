@@ -345,10 +345,12 @@ describe('collectUnsupportedChars', () => {
   // conversation made of these characters exported as a page of empty boxes with
   // nothing anywhere to say so (AGENTS.md #4).
   it('reports the characters no embedded face can draw', () => {
+    // Kana and common hanzi render from the CJK face now; an emoji, a dingbat and an
+    // Extension B ideograph outside the subset still do not.
     const def = toPdfDocDefinition(
-      conversation({ messages: [{ role: 'assistant', content: 'kana あ ア emoji 😀 han 中' }] }),
+      conversation({ messages: [{ role: 'assistant', content: 'kana あ ア emoji 😀 han 中 rare 𠮷 mark ✅' }] }),
     );
-    expect(collectUnsupportedChars(def)).toEqual(['あ', 'ア', '中', '😀']);
+    expect(collectUnsupportedChars(def)).toEqual(['✅', '😀', '𠮷']);
   });
 
   it('reports nothing for a conversation the font fully covers', () => {
@@ -372,17 +374,17 @@ describe('collectUnsupportedChars', () => {
     // so a walk that only read the top level would under-report.
     const def = toPdfDocDefinition(
       conversation({
-        title: 'あ',
-        messages: [{ role: 'user', content: '| ア |\n| --- |\n| 中 |\n\n- 😀\n\n```\nア\n```' }],
+        title: '✅',
+        messages: [{ role: 'user', content: '| 𠮷 |\n| --- |\n| 中 |\n\n- 😀\n\n```\n🙂\n```' }],
       }),
     );
-    expect(collectUnsupportedChars(def)).toEqual(['あ', 'ア', '中', '😀']);
+    expect(collectUnsupportedChars(def)).toEqual(['✅', '😀', '🙂', '𠮷']);
   });
 
   it('deduplicates and sorts, so one repeated character is reported once', () => {
     const def = toPdfDocDefinition(
-      conversation({ messages: [{ role: 'user', content: 'ア ア ア あ' }] }),
+      conversation({ messages: [{ role: 'user', content: '😀 😀 😀 ✅' }] }),
     );
-    expect(collectUnsupportedChars(def)).toEqual(['あ', 'ア']);
+    expect(collectUnsupportedChars(def)).toEqual(['✅', '😀']);
   });
 });

@@ -63,8 +63,9 @@ Nothing else is persisted.
   analytics service, or third party. The extension makes no network requests of its own.
   (The only data that may leave your device is your toolbar-icon preference, and only via
   Chrome Sync as described above — never any conversation content.)
-  For completeness: the PDF exporter does read its two font files out of the extension's own
-  package, over a `chrome-extension://` address, the first time you export a PDF. That address
+  For completeness: the PDF exporter does read its font files out of the extension's own
+  package, over a `chrome-extension://` address, the first time you export a PDF (and its
+  Japanese/Chinese font files the first time a PDF needs those characters). That address
   is the installed extension on your own computer — it is not a server, nothing is sent, and
   no request ever leaves your device.
 - It does **not** track your browsing, build a profile, or use cookies or advertising

@@ -1,6 +1,6 @@
-// Regenerate src/export/pdf-charmap-generated.ts and src/export/pdf-coverage-generated.ts
-// from the embedded font files.
-// Run after replacing either Jetendard face:
+// Regenerate src/export/pdf-charmap-generated.ts, src/export/pdf-coverage-generated.ts and
+// src/export/pdf-cjk-coverage-generated.ts from the embedded font files.
+// Run after replacing any embedded face:
 //
 //   node scripts/gen-pdf-charmap.mjs
 //
@@ -72,6 +72,31 @@ export const COVERED_RANGES: ReadonlyArray<readonly [number, number]> = [
 ${ranges.map(([start, end]) => `  [${hex(start)}, ${hex(end)}],`).join('\n')}
 ];
 `;
+// The CJK faces fill in what Jetendard lacks (kana, hanzi/kanji, CJK punctuation); the
+// exporter routes a character to them only when Jetendard cannot draw it. They do not
+// feed the NFKC table above: substitution still targets Jetendard, as before they shipped.
+const CJK_FACES = ['PromptVaultCJK-Regular.otf', 'PromptVaultCJK-Bold.otf'].map((name) =>
+  fontkit.openSync(fileURLToPath(new URL(`../public/fonts/${name}`, import.meta.url))),
+);
+const cjkRanges = deriveCoverageRanges(CJK_FACES.map((face) => face.characterSet));
+const cjkSource = `// GENERATED FILE — do not edit by hand.
+// Produced by scripts/gen-pdf-charmap.mjs from the two embedded PromptVaultCJK faces
+// (a Noto Sans CJK subset built by scripts/subset-cjk-font.py); re-derived by
+// test/export/pdf-charmap.test.ts, which fails if this file drifts from the fonts.
+//
+// Inclusive [start, end] code-point ranges BOTH CJK faces can draw, ascending and
+// non-adjacent. src/export/pdf.ts draws a character with the CJK face only when it falls
+// in these ranges AND outside COVERED_RANGES (Jetendard keeps Hangul and Latin).
+
+/** Code-point ranges covered by both embedded CJK faces, ascending. */
+export const CJK_COVERED_RANGES: ReadonlyArray<readonly [number, number]> = [
+${cjkRanges.map(([start, end]) => `  [${hex(start)}, ${hex(end)}],`).join('\n')}
+];
+`;
+const cjkOut = fileURLToPath(new URL('../src/export/pdf-cjk-coverage-generated.ts', import.meta.url));
+writeFileSync(cjkOut, cjkSource);
+console.log(`wrote ${cjkRanges.length} CJK covered ranges to ${cjkOut}`);
+
 const coverageOut = fileURLToPath(
   new URL('../src/export/pdf-coverage-generated.ts', import.meta.url),
 );

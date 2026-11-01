@@ -85,12 +85,17 @@ export default defineManifest({
   // resource is readable by any page the `matches` list admits, and a fixed
   // `chrome-extension://<id>/...` URL that resolves is also an extension-detection
   // signal for that page. Narrow it to the origins that actually need the fonts —
-  // never `<all_urls>` — and keep `resources` to the two faces, never a directory
+  // never `<all_urls>` — and keep `resources` to the four font faces, never a directory
   // wildcard that could later admit source. Held by
   // test/privacy/manifest-least-privilege.test.ts.
   web_accessible_resources: [
     {
-      resources: ['fonts/Jetendard-Regular.ttf', 'fonts/Jetendard-Bold.ttf'],
+      resources: [
+        'fonts/Jetendard-Regular.ttf',
+        'fonts/Jetendard-Bold.ttf',
+        'fonts/PromptVaultCJK-Regular.otf',
+        'fonts/PromptVaultCJK-Bold.otf',
+      ],
       matches: HOSTS,
     },
   ],
