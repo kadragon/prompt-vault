@@ -318,6 +318,11 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
       while (charAfter(at + n) === '*') n++;
       return n;
     };
+    const backslashesBefore = (at: number): number => {
+      let n = 0;
+      while (charBefore(at - n) === '\\') n++;
+      return n;
+    };
 
     let head = run[0].start;
     let tail = run.at(-1)!.end;
@@ -343,12 +348,12 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
         const adjacent = starsAfter(tail);
         if (adjacent === 0 ? flanks(charAfter(tail)) : flanks(charAfter(tail + adjacent))) closers = -balance;
         else if (adjacent === -balance) tail += adjacent;
-        // A `\` before the partner escapes its first `*`: then it is text, not the pair.
+        // An odd `\` run before the partner escapes its first `*`: then it is text, not the pair.
         else if (
           adjacent === 0 &&
           single &&
           partner === -balance &&
-          charBefore(head - partner) !== '\\' &&
+          backslashesBefore(head - partner) % 2 === 0 &&
           wordChar(String.fromCodePoint(content.codePointAt(head)!))
         ) {
           head -= partner;
@@ -412,10 +417,10 @@ function codeRanges(content: string): Array<[number, number]> {
   for (const match of content.matchAll(/^ {0,3}(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?\n {0,3}\1[ \t]*(?=\n|$)|[\s\S]*$)/gm)) {
     ranges.push([match.index, match.index + match[0].length]);
   }
-  // A backtick escaped by an odd backslash run (`\``) is prose, but the backticks after it
-  // still open a span, as in `` \``code` ``. Inside the span a backslash is literal, so the
-  // closer needs no such check.
-  for (const match of content.matchAll(/(?<=(?:^|[^\\`])(?:\\\\)*(?:\\`)?)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g)) {
+  // A backtick escaped by an odd backslash run (`\``) is prose, but the backticks after any
+  // run of escapes still open a span, as in `` \``code` `` or `` \`\``code` ``. Inside the span
+  // a backslash is literal, so the closer needs no such check.
+  for (const match of content.matchAll(/(?<=(?:^|[^\\`])(?:\\[\\`])*)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g)) {
     if (!ranges.some(([start, end]) => start <= match.index && match.index < end)) {
       ranges.push([match.index, match.index + match[0].length]);
     }

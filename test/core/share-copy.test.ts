@@ -349,8 +349,11 @@ describe('createShareCopy', () => {
     [String.raw`*a \*김* 철수님`, ['김 철수'], String.raw`*a \*[REDACTED]님`],
     // An emoji-led term is judged by its whole code point, so `(*😀` still reads as both-flanking.
     ['*a (*😀김* 철수님', ['😀김 철수'], '*a (*[REDACTED]님'],
-    // The backtick after an escaped one opens a real code span, where `*` is text.
+    // An escaped backslash leaves the partner a real delimiter, so it still drops.
+    [String.raw`\\*김* 철수님`, ['김 철수'], String.raw`\\[REDACTED]님`],
+    // The backtick after escaped ones opens a real code span, where `*` is text.
     ['a \\``*김* 철수님`', ['김 철수'], 'a \\``*[REDACTED]님`'],
+    ['a \\`\\``*김* 철수님`', ['김 철수'], 'a \\`\\``*[REDACTED]님`'],
     // More than one swallowed run: the pairing is not checked, so the partner stays.
     ['*A* *B* C님', ['A B C'], '*[REDACTED]님'],
     // An escaped prose backtick does not open a code span, so the span still re-balances.
