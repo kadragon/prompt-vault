@@ -345,6 +345,12 @@ describe('createShareCopy', () => {
     ['*a*김* 철수님', ['김 철수'], '*a*[REDACTED]님'],
     // Between two punctuation marks the partner can close too, and here closes `*a`: it stays.
     ['*a (*(김* 철수님', ['(김 철수'], '*a (*[REDACTED]님'],
+    // An escaped `\*` before the span is text, not the closer's pair: it stays.
+    [String.raw`*a \*김* 철수님`, ['김 철수'], String.raw`*a \*[REDACTED]님`],
+    // An emoji-led term is judged by its whole code point, so `(*😀` still reads as both-flanking.
+    ['*a (*😀김* 철수님', ['😀김 철수'], '*a (*[REDACTED]님'],
+    // The backtick after an escaped one opens a real code span, where `*` is text.
+    ['a \\``*김* 철수님`', ['김 철수'], 'a \\``*[REDACTED]님`'],
     // More than one swallowed run: the pairing is not checked, so the partner stays.
     ['*A* *B* C님', ['A B C'], '*[REDACTED]님'],
     // An escaped prose backtick does not open a code span, so the span still re-balances.
