@@ -292,8 +292,9 @@ function escapeRegExp(text: string): string {
 // one-way where they must be, and the rule of 3 checked wherever a run could both open and
 // close. Anything else keeps the partner, as before.
 // Inside code `*` is text, so nothing pairs; a lone swallowed run whose equal literal twin
-// touches the span's other side within the same code range goes with it instead
-// (`` `*김* 철수` ``), since half a literal wrapper is the same stray `*` to a reader.
+// touches the span's other side within the same code span, against its backtick, goes with
+// it instead (`` `*김* 철수` ``), since half a literal wrapper is the same stray `*` to a
+// reader. A twin anywhere else may be an operator (`` `x = a *b* c` ``) and stays.
 function replaceSpans(content: string, spans: Span[]): { text: string; count: number } {
   const merged: Array<Omit<Span, 'gapStars'> & { stars: Map<number, number> }> = [];
   for (const span of [...spans].sort((a, b) => a.start - b.start || b.end - a.end)) {
@@ -348,6 +349,14 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
     const endsWord = wordChar(codePointBefore(content, tail));
     // An odd `\` run before a run escapes its first `*`: then it is text, not the pair.
     const unescaped = (at: number): boolean => backslashesBefore(at) % 2 === 0;
+    // With no touching partner, the swallowed run can only pair with a `*` further off in the
+    // same paragraph; where there is none it is unpaired, and re-emitting it would only put a
+    // stray `*` back (`a김* 철수😀`), so it is dropped as before. Any `*` at all, escaped or
+    // not, keeps the re-emit: this only rules out the case that is certain.
+    const paragraphStart = content.lastIndexOf('\n\n', head) + 1;
+    const paragraphEnd = content.indexOf('\n\n', tail);
+    const starBefore = content.slice(paragraphStart, head).includes('*');
+    const starAfter = content.slice(tail, paragraphEnd === -1 ? content.length : paragraphEnd).includes('*');
     if (balance > 0) {
       const partner = starsAfter(tail);
       const adjacent = starsBefore(head);
@@ -355,7 +364,11 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
       // The partner closes the swallowed opener, then its rest the adjacent run. Followed by a
       // word character it could also open, which brings in the rule of 3 for both pairings.
       const partnerBoth = !partnerFlanks;
-      if (partnerFlanks && (adjacent === 0 ? flanks(charBefore(head)) : flanks(charBefore(head - adjacent)))) {
+      if (
+        partnerFlanks &&
+        (partner > 0 || starAfter) &&
+        (adjacent === 0 ? flanks(charBefore(head)) : flanks(charBefore(head - adjacent)))
+      ) {
         openers = balance;
       } else if (partnerFlanks && adjacent === balance) head -= adjacent;
       else if (
@@ -373,7 +386,9 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
       const partner = starsBefore(head);
       if (partner === 0 || flanks(charBefore(head - partner))) {
         const adjacent = starsAfter(tail);
-        if (adjacent === 0 ? flanks(charAfter(tail)) : flanks(charAfter(tail + adjacent))) closers = -balance;
+        if ((partner > 0 || starBefore) && (adjacent === 0 ? flanks(charAfter(tail)) : flanks(charAfter(tail + adjacent)))) {
+          closers = -balance;
+        }
         // The swallowed closer closes the partner, then the adjacent run its rest. Reached
         // only where the adjacent run does not flank outward, so it could also open.
         else if (
@@ -391,9 +406,21 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
       const swallowed = run.reduce((n, span) => n + [...span.stars.values()].reduce((a, b) => a + b, 0), 0);
       const literalStars = run.reduce((n, span) => n + (content.slice(span.start, span.end).match(/\*/g)?.length ?? 0), 0);
       if (literalStars === Math.abs(swallowed)) {
-        if (swallowed < 0 && starsBefore(head) === -swallowed && inOneRange(code, head + swallowed, tail)) {
+        // Only a twin against the span's own backtick reads as a wrapper (`` `*김* 철수` ``);
+        // anywhere else a `*` in code may be an operator or a pointer, so it stays.
+        if (
+          swallowed < 0 &&
+          starsBefore(head) === -swallowed &&
+          content[head + swallowed - 1] === '`' &&
+          inOneRange(code, head + swallowed, tail)
+        ) {
           head += swallowed;
-        } else if (swallowed > 0 && starsAfter(tail) === swallowed && inOneRange(code, head, tail + swallowed)) {
+        } else if (
+          swallowed > 0 &&
+          starsAfter(tail) === swallowed &&
+          content[tail + swallowed] === '`' &&
+          inOneRange(code, head, tail + swallowed)
+        ) {
           tail += swallowed;
         }
       }

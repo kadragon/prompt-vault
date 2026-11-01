@@ -53,12 +53,19 @@ const ROLE_LABEL: Record<Role, string> = {
   system: 'System',
 };
 
+// Jetendard draws Hangul and its full-width punctuation two columns wide (1.2 em on its
+// 0.6 em grid); the CJK face's glyphs are 1.0 em. Inside a fenced code block, where columns
+// must line up, each CJK glyph gets the missing 0.2 em as trailing spacing — in points,
+// which is all pdfmake takes, so it is tied to the code style's own font size.
+const CODE_FONT_SIZE = 9;
+const CODE_CJK_SPACING = 0.2 * CODE_FONT_SIZE;
+
 // Named styles referenced from content nodes below.
 const STYLES: TDocumentDefinitions['styles'] = {
   title: { fontSize: 16, bold: true, margin: [0, 0, 0, 10] },
   role: { fontSize: 12, bold: true, color: '#10a37f', margin: [0, 10, 0, 4] },
   code: {
-    fontSize: 9,
+    fontSize: CODE_FONT_SIZE,
     background: '#f4f4f4',
     color: '#24292e',
     preserveLeadingSpaces: true,
@@ -136,7 +143,8 @@ function withCharFallbacks<T>(node: T): T {
   for (const [key, value] of Object.entries(node)) {
     if (key === 'text' && typeof value === 'string') {
       const runs = fontRuns(substituteUnsupportedChars(value));
-      copy[key] = runs.length === 1 && !runs[0].cjk ? runs[0].text : runs.map(inlineRun);
+      const spacing = (node as { style?: unknown }).style === 'code' ? CODE_CJK_SPACING : undefined;
+      copy[key] = runs.length === 1 && !runs[0].cjk ? runs[0].text : runs.map((run) => inlineRun(run, spacing));
     } else if (key === 'text' && Array.isArray(value)) {
       copy[key] = value.flatMap(inlineWithFallbacks);
     } else {
@@ -162,9 +170,11 @@ function inlineWithFallbacks(item: unknown): unknown[] {
 
 // Always an object, never a bare string: both walks here (and the test pinning them)
 // rely on every visible string sitting under a `text` key.
-function inlineRun(run: FontRun): { text: string; font?: string } {
-  return run.cjk ? { text: run.text, font: PDF_CJK_FONT } : { text: run.text };
+function inlineRun(run: FontRun, spacing?: number): { text: string; font?: string; characterSpacing?: number } {
+  if (!run.cjk) return { text: run.text };
+  return spacing === undefined ? { text: run.text, font: PDF_CJK_FONT } : { text: run.text, font: PDF_CJK_FONT, characterSpacing: spacing };
 }
+
 
 interface FontRun {
   text: string;

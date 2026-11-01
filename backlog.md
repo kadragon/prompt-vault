@@ -20,7 +20,7 @@ continuation line is invisible to it and the blocked item is offered as actionab
 ### QA pass on the CJK PDF face + share-copy emphasis fixes (2026-11-01)
 
 - [ ] [FIX] PDF still folds `※` `①` `★` `‥` `℃` `Ⅳ` and ~125 other characters to ASCII stand-ins (`※注意` → `*注意`) although the CJK face now draws them, because `substituteUnsupportedChars` runs before CJK routing; skipping substitution for CJK-covered characters would make a Korean doc with one `※` load the 7.8 MB CJK faces — decide the trade-off (source: qa-verifier) — `src/export/pdf.ts` `withCharFallbacks`
-- [ ] [FIX] Share copy re-emits an UNPAIRED swallowed `*` against punctuation or (now, with code-point reads) an emoji: `a김* 철수😀` → `a[REDACTED]*😀`, `김* 철수( *y*` → `[REDACTED]*(`; re-emit only when the swallowed run had a partner. Also: inside code the literal-twin rule eats a non-wrapper `*` (`` `a*김* 철수` `` → `` `a[REDACTED]` ``) — cosmetic, no leak (source: qa-verifier) — `src/core/share-copy.ts` `replaceSpans`
+- [ ] [FEAT] Extend the PDF CJK subset beyond JIS X 0208 / GB 2312 / Big5: jōyō kanji `塡` (U+5861) and GBK-only `啰` (U+5570, 啰嗦) still export as reported boxes; add the jōyō list and Tongyong Guifan level 1 to `scripts/subset-cjk-font.py` and re-measure the zip (source: code-review) — `scripts/subset-cjk-font.py`, `public/fonts/`
 - [ ] [FIX] A share term split by a code-span boundary is never masked (`` `*김` 철수*님 ``, ``*김* `철수`님`` stay visible), and `<em>김</em><strong> 철수</strong>님` serializes as `*김***철수**님`, losing the space so `김 철수` never matches — a leak of the term, pre-existing (source: qa-verifier) — `src/core/share-copy.ts` `termSource`, `src/core/html-to-markdown.ts`
 
 ### v1.15.0 pre-release checks (2026-10-27)

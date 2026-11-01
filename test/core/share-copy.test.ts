@@ -378,6 +378,17 @@ describe('createShareCopy', () => {
     ['`*김* 철수` x', ['김 철수'], '`[REDACTED]` x'],
     ['`김 *철수*` x', ['김 철수'], '`[REDACTED]` x'],
     ['`**김* 철수` x', ['김 철수'], '`**[REDACTED]` x'],
+    // Away from the backtick a `*` in code may be an operator or part of a word: it stays.
+    ['`x = a *b* c`', ['a b'], '`x = [REDACTED]* c`'],
+    ['`a*김* 철수` x', ['김 철수'], '`a*[REDACTED]` x'],
+    ['`김 *철수*a` x', ['김 철수'], '`[REDACTED]*a` x'],
+    // A swallowed run with no `*` anywhere else in its paragraph is unpaired: never re-emitted,
+    // whatever flanks it — an emoji or punctuation.
+    ['a김* 철수😀', ['김 철수'], 'a[REDACTED]😀'],
+    ['김* 철수( x', ['김 철수'], '[REDACTED]( x'],
+    ['x 김 *철수', ['김 철수'], 'x [REDACTED]'],
+    // …but a `*` further off in the paragraph may be its pair, so the re-emit stands.
+    ['*a b 김* 철수😀', ['김 철수'], '*a b [REDACTED]*😀'],
     // More than one swallowed run: the pairing is not checked, so the partner stays.
     ['*A* *B* C님', ['A B C'], '*[REDACTED]님'],
     // An escaped prose backtick does not open a code span, so the span still re-balances.

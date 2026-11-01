@@ -35,7 +35,7 @@ const TRADITIONAL = '繁體中文：這是臺灣的國語，說話。';
 
 const cp = (char: string): number => char.codePointAt(0) as number;
 
-type Run = { text: string; font?: string; bold?: boolean; link?: string };
+type Run = { text: string; font?: string; bold?: boolean; link?: string; characterSpacing?: number };
 
 function bodyNode(content: string): { text: unknown; style?: unknown } {
   const doc = toPdfDocDefinition(conversation({ messages: [{ role: 'user', content }] }));
@@ -90,7 +90,7 @@ describe('CJK font routing', () => {
       conversation({ messages: [{ role: 'user', content: '```\nprint("中文")\n```' }] }),
     );
     expect(usesCjkFont(doc)).toBe(true);
-    expect(JSON.stringify(doc.content)).toContain(`{"text":"中文","font":"${PDF_CJK_FONT}"}`);
+    expect(JSON.stringify(doc.content)).toContain(`{"text":"中文","font":"${PDF_CJK_FONT}","characterSpacing":1.8}`);
   });
 
   it('no longer reports kana or common hanzi as undrawable, in any of the three scripts', () => {
@@ -185,4 +185,30 @@ describe('a real pdfmake render', () => {
     expect(pdf).toMatch(/\/BaseFont \/[A-Z]{6}\+NotoSansCJKjp-Bold/);
     expect(pdf).toMatch(/\/BaseFont \/[A-Z]{6}\+Jetendard/);
   }, 60_000);
+});
+
+describe('CJK in code blocks', () => {
+  it('pads each CJK glyph to Jetendard’s two-column width, so columns still line up', () => {
+    // Jetendard: 0.6 em per column, Hangul 1.2 em; the CJK face draws 1.0 em, so 0.2 em
+    // of trailing spacing at the code style's 9 pt makes a CJK glyph exactly two columns.
+    const jetendard = fontkit.openSync(fontPath('Jetendard-Regular.ttf')) as FontkitFont & {
+      unitsPerEm: number;
+      glyphForCodePoint(cp: number): { advanceWidth: number };
+    };
+    const cjk = CJK_FACES[0] as FontkitFont & { unitsPerEm: number; glyphForCodePoint(cp: number): { advanceWidth: number } };
+    const em = (face: typeof cjk, char: string): number => face.glyphForCodePoint(cp(char)).advanceWidth / face.unitsPerEm;
+
+    const doc = toPdfDocDefinition(conversation({ messages: [{ role: 'user', content: '```\n| 名前 | 값 |\n```' }] }));
+    const code = (doc.content as Array<{ text: unknown; style?: string }>).find((n) => n.style === 'code')!;
+    const run = (code.text as Run[]).find((r) => r.font === PDF_CJK_FONT)!;
+
+    expect(run.text).toBe('名前');
+    expect(em(cjk, '名') + run.characterSpacing! / 9).toBeCloseTo(em(jetendard, '값'), 5);
+    expect(em(jetendard, '값')).toBeCloseTo(2 * em(jetendard, 'a'), 5);
+  });
+
+  it('leaves prose CJK unpadded', () => {
+    const runs = bodyNode('名前').text as Array<{ characterSpacing?: number }>;
+    expect(runs.every((r) => r.characterSpacing === undefined)).toBe(true);
+  });
 });
