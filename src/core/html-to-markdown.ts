@@ -372,7 +372,7 @@ function serializeInlineNodes(nodes: Node[], skip?: Set<Element>, inTable = fals
       );
       if (text === '') continue;
       flushCode();
-      out += text;
+      out += joinGap(out, text);
       continue;
     }
     if (node.nodeType !== NODE_ELEMENT) continue;
@@ -387,10 +387,16 @@ function serializeInlineNodes(nodes: Node[], skip?: Set<Element>, inTable = fals
     // neither emits anything nor separates two code spans that surround it.
     if (chunk === '') continue;
     flushCode();
-    out += chunk;
+    out += joinGap(out, chunk);
   }
   flushCode();
   return out;
+}
+
+// An emphasis element moves its edge whitespace outside its delimiters (see emphasis), so
+// that space can meet one the neighbouring text already carries: keep a single gap.
+function joinGap(out: string, next: string): string {
+  return next.startsWith(' ') && /\s$/.test(out) ? next.slice(1) : next;
 }
 
 /**
@@ -459,22 +465,31 @@ function lastVisibleChar(nodes: Node[], from: number, skip?: Set<Element>): stri
   return ' ';
 }
 
+// An empty emphasis element must render as nothing, not as a bare delimiter pair: `**`
+// with no body is literal text to every reader, and between two code spans it also splits
+// a run that the page showed as continuous code. Whitespace at the body's edges cannot
+// stay inside the delimiters (`** x**` is not emphasis), but it is still a word gap on the
+// page: `<em>김</em><strong> 철수</strong>` reads `김 철수`, so the space moves outside,
+// `*김* **철수**`, instead of vanishing into `*김***철수**`.
+function emphasis(el: Element, delimiter: string, inTable: boolean): string {
+  const raw = serializeInline(el, undefined, inTable);
+  const body = raw.trim();
+  // A body of whitespace alone (`김<strong> </strong>철수`) is still the word gap.
+  if (!body) return raw === '' ? '' : ' ';
+  const before = /^\s/.test(raw) ? ' ' : '';
+  const after = /\s$/.test(raw) ? ' ' : '';
+  return `${before}${delimiter}${body}${delimiter}${after}`;
+}
+
 function serializeInlineElement(el: Element, inTable = false): string {
   const tag = el.tagName.toLowerCase();
   switch (tag) {
     case 'strong':
-    case 'b': {
-      // An empty emphasis element must render as nothing, not as a bare delimiter
-      // pair: `**` with no body is literal text to every reader, and between two code
-      // spans it also splits a run that the page showed as continuous code.
-      const body = serializeInline(el, undefined, inTable).trim();
-      return body ? `**${body}**` : '';
-    }
+    case 'b':
+      return emphasis(el, '**', inTable);
     case 'em':
-    case 'i': {
-      const body = serializeInline(el, undefined, inTable).trim();
-      return body ? `*${body}*` : '';
-    }
+    case 'i':
+      return emphasis(el, '*', inTable);
     // Unreachable in practice — `serializeInlineNodes` intercepts a `<code>` before
     // dispatching here, so it can merge a run of them. Kept so this switch stays the
     // single statement of which tags render markup of their own, which is the

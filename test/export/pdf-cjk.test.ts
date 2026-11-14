@@ -101,6 +101,43 @@ describe('CJK font routing', () => {
   });
 });
 
+describe('substitution against the CJK face', () => {
+  it('keeps every CJK-covered stand-in character as itself once the document loads the CJK face', () => {
+    const doc = toPdfDocDefinition(conversation({ messages: [{ role: 'user', content: '※注意 ① ★ ℃ Ⅳ ‥' }] }));
+    const runs = bodyNode('※注意 ① ★ ℃ Ⅳ ‥').text as Run[];
+    expect(usesCjkFont(doc)).toBe(true);
+    expect(runs.map((r) => r.text).join('')).toBe('※注意 ① ★ ℃ Ⅳ ‥');
+    for (const char of ['※', '①', '★', '℃', 'Ⅳ', '‥']) {
+      expect(runs.find((r) => r.text.includes(char))?.font).toBe(PDF_CJK_FONT);
+    }
+    expect(collectUnsupportedChars(doc)).toEqual([]);
+  });
+
+  it('still substitutes them in a document that needs no CJK face, which then never names it', () => {
+    const doc = toPdfDocDefinition(
+      conversation({ title: '※ 메모', messages: [{ role: 'user', content: '※참고 ① 온도 -1.0℃ ★' }] }),
+    );
+    expect(usesCjkFont(doc)).toBe(false);
+    expect(JSON.stringify(doc.content)).not.toMatch(/[※①℃★]/);
+  });
+
+  it('keeps them in every node, the title and code included, when CJK appears anywhere', () => {
+    const doc = toPdfDocDefinition(
+      conversation({ title: '※ 메모', messages: [{ role: 'user', content: '```\nt = 1℃\n```\n\n日本' }] }),
+    );
+    const text = JSON.stringify(doc.content);
+    expect(text).toContain(`{"text":"※","font":"${PDF_CJK_FONT}"}`);
+    expect(text).toContain(`{"text":"℃","font":"${PDF_CJK_FONT}","characterSpacing":1.8}`);
+  });
+
+  it('substitutes a stand-in character the CJK face lacks even when the face is loaded', () => {
+    // ☑ has a curated fallback and no glyph in either face: keeping it would be a tofu box.
+    expect(isCjkCodePointCovered(cp('☑'))).toBe(false);
+    const runs = bodyNode('日本 ☑').text as Run[];
+    expect(runs.map((r) => r.text).join('')).toBe('日本 [v]');
+  });
+});
+
 describe('the CJK coverage table', () => {
   it('matches what the embedded CJK faces actually cover', () => {
     const derived = deriveCoverageRanges(CJK_FACES.map((face) => face.characterSet));
@@ -131,6 +168,18 @@ describe('the CJK coverage table', () => {
       const text = [...`${JAPANESE}${SIMPLIFIED}${TRADITIONAL}`].filter((c) => !isCodePointCovered(cp(c))).join('');
       expect(face.layout(text).glyphs.filter((g) => g.id === 0)).toEqual([]);
     }
+  });
+
+  it('covers jōyō kanji outside JIS X 0208 and level-1 Tongyong hanzi outside GB 2312', () => {
+    // 塡 (jōyō since 2010, not in JIS X 0208) and 啰 (Tongyong level 1, GBK only) were the
+    // reported gaps; 剝 and 𠮟 are jōyō too, the latter an Extension B character.
+    const wanted = ['塡', '剝', '𠮟', '啰'];
+    const missing = wanted.filter(
+      (c) => !isCjkCodePointCovered(cp(c)) || !CJK_FACES.every((face) => face.hasGlyphForCodePoint(cp(c))),
+    );
+    expect(missing).toEqual([]);
+    const doc = toPdfDocDefinition(conversation({ messages: [{ role: 'user', content: '装塡 啰嗦' }] }));
+    expect(collectUnsupportedChars(doc)).toEqual([]);
   });
 
   it('still leaves rare ideographs outside the subset uncovered', () => {

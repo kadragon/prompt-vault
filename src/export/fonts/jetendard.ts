@@ -41,7 +41,8 @@ const FACE_PATHS: Readonly<Record<string, string>> = {
 };
 
 // The CJK companion faces (a Noto Sans CJK subset: kana, CJK punctuation and the
-// JIS X 0208 / GB 2312 / Big5 hanzi — see scripts/subset-cjk-font.py). They draw only what
+// JIS X 0208 / GB 2312 / Big5 / jōyō / Tongyong level-1 hanzi — see
+// scripts/subset-cjk-font.py). They draw only what
 // Jetendard cannot, and at ~3.9 MB each they are read only for a document that needs them.
 // They live in this module so the fetch stays at its one pinned call site.
 export const CJK_VFS_KEY = 'PromptVaultCJK-Regular.otf';

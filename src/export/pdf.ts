@@ -105,7 +105,7 @@ export function toPdfDocDefinition(conversation: Conversation): TDocumentDefinit
     content.push(...renderMarkdown(message.content));
   }
   return {
-    content: withCharFallbacks(content),
+    content: withFontRouting(content),
     defaultStyle: {
       font: PDF_FONT,
       fontSize: 10,
@@ -136,36 +136,52 @@ export function pdfFilename(conversation: Conversation, now: Date): string {
 // the way any inline array does. An inline object INSIDE a text array cannot nest that
 // way — pdfmake flattens nested arrays and drops the inner object's own style — so it is
 // split into sibling copies instead, each keeping every property of the original.
-function withCharFallbacks<T>(node: T): T {
-  if (Array.isArray(node)) return node.map(withCharFallbacks) as T;
+// Two passes, so the CJK face's 7.8 MB is only ever loaded for text that needs it. The
+// first substitutes everything; if what survives still routes to the CJK face, the face is
+// loaded anyway, and the second pass keeps every character it can draw — `※注意` stays
+// `※注意` beside the kana instead of folding to `*注意`. A document the first pass leaves
+// CJK-free (a Korean chat with one `※`) keeps the substitutions and never names the face.
+function withFontRouting<T>(content: T): T {
+  const substituted = withCharFallbacks(content, undefined);
+  return namesCjkFont(substituted) ? withCharFallbacks(content, keepForCjk) : substituted;
+}
+
+function keepForCjk(char: string): boolean {
+  return isCjkCodePointCovered(char.codePointAt(0) as number);
+}
+
+type Keep = ((char: string) => boolean) | undefined;
+
+function withCharFallbacks<T>(node: T, keep: Keep): T {
+  if (Array.isArray(node)) return (node as unknown[]).map((child) => withCharFallbacks(child, keep)) as T;
   if (node === null || typeof node !== 'object') return node;
   const copy: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
     if (key === 'text' && typeof value === 'string') {
-      const runs = fontRuns(substituteUnsupportedChars(value));
+      const runs = fontRuns(substituteUnsupportedChars(value, keep));
       const spacing = (node as { style?: unknown }).style === 'code' ? CODE_CJK_SPACING : undefined;
       copy[key] = runs.length === 1 && !runs[0].cjk ? runs[0].text : runs.map((run) => inlineRun(run, spacing));
     } else if (key === 'text' && Array.isArray(value)) {
-      copy[key] = value.flatMap(inlineWithFallbacks);
+      copy[key] = value.flatMap((item: unknown) => inlineWithFallbacks(item, keep));
     } else {
-      copy[key] = withCharFallbacks(value);
+      copy[key] = withCharFallbacks(value, keep);
     }
   }
   return copy as T;
 }
 
-function inlineWithFallbacks(item: unknown): unknown[] {
-  if (typeof item === 'string') return fontRuns(substituteUnsupportedChars(item)).map(inlineRun);
+function inlineWithFallbacks(item: unknown, keep: Keep): unknown[] {
+  if (typeof item === 'string') return fontRuns(substituteUnsupportedChars(item, keep)).map((run) => inlineRun(run));
   if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
     const { text, ...rest } = item as Record<string, unknown>;
     if (typeof text === 'string') {
-      const props = withCharFallbacks(rest);
-      return fontRuns(substituteUnsupportedChars(text)).map((run) =>
+      const props = withCharFallbacks(rest, keep);
+      return fontRuns(substituteUnsupportedChars(text, keep)).map((run) =>
         run.cjk ? { ...props, text: run.text, font: PDF_CJK_FONT } : { ...props, text: run.text },
       );
     }
   }
-  return [withCharFallbacks(item)];
+  return [withCharFallbacks(item, keep)];
 }
 
 // Always an object, never a bare string: both walks here (and the test pinning them)
