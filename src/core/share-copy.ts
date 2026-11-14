@@ -201,8 +201,8 @@ function termSpellings(term: string): string[] {
 // past trailing combining marks, so the NFD spelling `Jose\u0301` is bounded like `José`
 // and leaves a decomposed `Joséphine` alone.
 // A whitespace run between two words of the term matches any whitespace run in the
-// content, with emphasis delimiters allowed on either side: `<em>John</em> Smith` arrives
-// as `*John* Smith`, and a line break or double space between the words is still the same
+// content, with emphasis delimiters and code-span backticks allowed on either side:
+// `<em>John</em> Smith` arrives as `*John* Smith`, and a line break or double space between the words is still the same
 // name. Whitespace at the term's ends stays literal: a leading gap would have no fixed
 // character to anchor on and rescan a long space run from every position in it.
 function termSource(term: string): string {
@@ -230,7 +230,12 @@ const WHITESPACE = /^\s$/;
 // bounded counts keep a failed match linear in the whitespace run. The two groups capture
 // the closers and openers the gap swallowed, for replaceSpans to re-balance; they are the
 // pattern's only capturing groups.
-const TERM_WORD_GAP = '(\\*{0,3})\\s+(\\*{0,3})';
+// A code span's backticks may sit in the gap too — `` `*김` 철수 `` or ``*김* `철수` `` show
+// the reader `김 철수` all the same. A backtick run may come before the `*` run and, only
+// when that `*` run is not empty, after it as well: two runs that could meet would let a
+// failed match try every split of a long backtick run.
+const TERM_GAP_SIDE = '`*(\\*{0,3})(?:(?<=\\*)`+)?';
+const TERM_WORD_GAP = `${TERM_GAP_SIDE}\\s+${TERM_GAP_SIDE}`;
 // The four i letters match one another per character: whole-term casing alone cannot reach a
 // mixed form like `Işık` from `ışık` or `IŞIK`, and a Turkish name is often written that way.
 const TURKISH_I = new Set(['i', 'I', 'ı', 'İ']);
@@ -426,8 +431,29 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
       }
     }
 
-    out += content.slice(cursor, head) + '*'.repeat(openers) + run.map((span) => span.token).join('');
-    out += '*'.repeat(closers);
+    // A term across a code span's edge (`` `*김` 철수 ``) takes one of its backticks with it,
+    // and a lone backtick left behind would open a code span over the rest of the paragraph.
+    // Where the span's code part is all the code span held, its other fence goes too;
+    // otherwise the code that is left is closed (or reopened) against the token. Only where
+    // the fence lies inside this run's reach: a neighbour already replaced, or the next
+    // run, is not this run's to touch. A run overlapping code never re-emits `*`
+    // (swallowedBalance), so neither interacts with the emphasis handling above.
+    let fenceBefore = '';
+    let fenceAfter = '';
+    for (const [start, end, fence] of code) {
+      if (fence === 0) continue;
+      if (start < head && head < end && end <= tail && start >= cursor) {
+        if (head <= start + fence) head = start;
+        else fenceBefore = '`'.repeat(fence);
+      }
+      if (start < tail && tail < end && head <= start && end <= limit) {
+        if (tail >= end - fence) tail = end;
+        else fenceAfter = '`'.repeat(fence);
+      }
+    }
+
+    out += content.slice(cursor, head) + fenceBefore + '*'.repeat(openers) + run.map((span) => span.token).join('');
+    out += '*'.repeat(closers) + fenceAfter;
     cursor = tail;
     i = j + 1;
   }
@@ -439,7 +465,7 @@ function replaceSpans(content: string, spans: Span[]): { text: string; count: nu
 function swallowedBalance(
   content: string,
   run: ReadonlyArray<{ start: number; end: number; stars: ReadonlyMap<number, number> }>,
-  code: ReadonlyArray<readonly [number, number]>,
+  code: ReadonlyArray<CodeRange>,
 ): number {
   let balance = 0;
   let captured = 0;
@@ -488,24 +514,27 @@ function codePointFrom(text: string, at: number): string | undefined {
   return cp === undefined ? undefined : String.fromCodePoint(cp);
 }
 
-function inOneRange(ranges: ReadonlyArray<readonly [number, number]>, start: number, end: number): boolean {
+function inOneRange(ranges: ReadonlyArray<CodeRange>, start: number, end: number): boolean {
   return ranges.some(([from, to]) => from <= start && end <= to);
 }
+
+// `[start, end, fence]`: the fence is an inline span's backtick-run length, 0 for a fenced block.
+type CodeRange = readonly [number, number, number];
 
 // Fenced blocks and inline code spans, where `*` is text, never emphasis. Approximate on
 // purpose: in a range it misses, a span re-balances (or drops a partner) where `*` is text —
 // cosmetic, never a leak, since the token still replaces the whole term.
-function codeRanges(content: string): Array<[number, number]> {
-  const ranges: Array<[number, number]> = [];
+function codeRanges(content: string): CodeRange[] {
+  const ranges: CodeRange[] = [];
   for (const match of content.matchAll(/^ {0,3}(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?\n {0,3}\1[ \t]*(?=\n|$)|[\s\S]*$)/gm)) {
-    ranges.push([match.index, match.index + match[0].length]);
+    ranges.push([match.index, match.index + match[0].length, 0]);
   }
   // A backtick escaped by an odd backslash run (`\``) is prose, but the backticks after any
   // run of escapes still open a span, as in `` \``code` `` or `` \`\``code` ``. Inside the span
   // a backslash is literal, so the closer needs no such check.
   for (const match of content.matchAll(/(?<=(?:^|[^\\`])(?:\\[\\`])*)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g)) {
     if (!ranges.some(([start, end]) => start <= match.index && match.index < end)) {
-      ranges.push([match.index, match.index + match[0].length]);
+      ranges.push([match.index, match.index + match[0].length, match[1].length]);
     }
   }
   return ranges;

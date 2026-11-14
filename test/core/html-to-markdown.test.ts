@@ -144,6 +144,14 @@ describe('htmlToMarkdown', () => {
     expect(md('<p>foo_<strong>bar</strong></p>')).toBe('foo_**bar**');
   });
 
+  it('keeps a word gap that sits inside an emphasis element, outside its delimiters', () => {
+    // `** 철수**` is not emphasis, and dropping the space glued two words into one.
+    expect(md('<p><em>김</em><strong> 철수</strong>님</p>')).toBe('*김* **철수**님');
+    expect(md('<p><strong>김 </strong><em>철수</em>님</p>')).toBe('**김** *철수*님');
+    expect(md('<p>a <strong> b </strong> c</p>')).toBe('a **b** c');
+    expect(md('<p><em> x</em></p>')).toBe('*x*');
+  });
+
   it('does not over-escape real HTML formatting', () => {
     // Serializer-generated markers (##, **, `, - ) must stay unescaped.
     expect(md('<h1>Title</h1>')).toBe('# Title');

@@ -286,6 +286,11 @@ describe('createShareCopy', () => {
     ['<p>Hi <em>김</em> 철수</p>', 'Hi *[REDACTED]*'],
     ['<p>Hi `<em>John</em> Smith`</p>', 'Hi \\`*[REDACTED]*\\`'],
     ['<p><em>김</em> 철수님</p>', '[REDACTED]님'],
+    // An emphasis element holding the word gap: the serializer keeps the space outside it.
+    ['<p><em>김</em><strong> 철수</strong>님</p>', '*[REDACTED]**님'],
+    // A code span's edge inside the term.
+    ['<p><code>*김</code> 철수*님</p>', '`*`[REDACTED]\\*님'],
+    ['<p><em>김</em> <code>철수</code>님</p>', '*[REDACTED]님'],
   ])('matches a multi-word term across the emphasis the serializer emits in %s', (html, expected) => {
     // Content is serializer output: run the real converter rather than hand-writing `*`.
     const container = new Window().document.createElement('div');
@@ -397,6 +402,35 @@ describe('createShareCopy', () => {
     [String.raw`\\` + '`*John* Smith`', ['John Smith'], String.raw`\\` + '`[REDACTED]`'],
   ])('keeps emphasis balanced when a masked term spans its delimiters in %j', (content, manualTerms, expected) => {
     expect(share(content, { manualTerms })).toBe(expected);
+  });
+
+  it.each([
+    // The backlog's two leaks: the term crossed a code span's edge and was never matched.
+    ['`*김` 철수*님', '`*`[REDACTED]*님'],
+    ['*김* `철수`님', '*[REDACTED]님'],
+    // A code span the term fills is swallowed whole, fences and all.
+    ['`김` 철수', '[REDACTED]'],
+    ['`김` `철수` x', '[REDACTED] x'],
+    // Code left on the far side of the token is closed or reopened against it.
+    ['`a 김` 철수 x', '`a `[REDACTED] x'],
+    ['김 `철수 b` x', '[REDACTED]` b` x'],
+    ['x `a 김` `철수 b` y', 'x `a `[REDACTED]` b` y'],
+    ['``a 김`` 철수', '``a ``[REDACTED]'],
+    // Backticks on the far side of the gap's `*`.
+    ['*`김`* 철수', '*[REDACTED]'],
+    ['김 *`철수`*님', '[REDACTED]*님'],
+    // A term wholly inside one code span is untouched by the fence handling.
+    ['`a 김 철수 b`', '`a [REDACTED] b`'],
+  ])('masks a term across a code span boundary in %j and keeps the fences balanced', (content, expected) => {
+    expect(share(content, { manualTerms: ['김 철수'] })).toBe(expected);
+  });
+
+  it('stays fast on a long backtick run after the first word of a term', () => {
+    // Two backtick runs that could meet made this ~3 s (quadratic); one run is linear.
+    const content = `김${'`'.repeat(80_000)}x`;
+    const started = performance.now();
+    expect(share(content, { manualTerms: ['김 철수'] })).toBe(content);
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('counts a span that re-emits emphasis delimiters once', () => {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [done] Keep CJK-drawable symbols in CJK PDFs, add jōyō/Tongyong level-1 hanzi, and mask terms across code-span edges (2026-11-14)
 - [done] Force minimatch to 11.x via npm overrides to clear GHSA-g3hv-75wg-m249 (2026-11-14)
 - [done] Draw kana and common hanzi in PDF from a bundled Noto Sans CJK subset, and drop stray share-copy emphasis around masked terms (2026-11-01)
 - [done] Drop a masked term's unpaired emphasis partner beside a letter, and skip escaped backticks as code-span openers (2026-11-01)

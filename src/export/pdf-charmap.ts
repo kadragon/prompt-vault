@@ -20,6 +20,11 @@
 // and is copied out — as `°C`: the alternative is a tofu box, which is neither
 // readable nor copy-pasteable.
 //
+// A document that routes any text to the CJK face (src/export/pdf.ts) loads that face
+// anyway, so there the exporter keeps every character the CJK face draws (`※`, `①`, `℃`)
+// instead of substituting it; a document that never needs the face still substitutes,
+// so a Korean chat with one `※` never pays for loading it.
+//
 // What this does NOT cover: characters the font lacks that have no NFKC form the font
 // can draw — emoji, kana, most dingbats. Those still export as tofu boxes, and only a
 // wider font can fix them (see backlog.md).
@@ -70,12 +75,13 @@ const FALLBACK_PATTERN = new RegExp(
 
 /**
  * Replace every character the embedded font cannot draw with a covered equivalent.
- * A string containing none of them is returned unchanged.
+ * A string containing none of them is returned unchanged. A character `keep` accepts is
+ * left alone — the exporter passes the CJK face's coverage once that face is loaded anyway.
  */
-export function substituteUnsupportedChars(text: string): string {
+export function substituteUnsupportedChars(text: string, keep?: (char: string) => boolean): string {
   // `?? char` is a belt-and-braces degrade: if the pattern and the table ever
   // disagreed, the miss would otherwise write the literal string "undefined" into the
   // PDF. Leaving the character alone puts back a tofu box, which is the bug this
   // module fixes rather than a new, worse one.
-  return text.replace(FALLBACK_PATTERN, (char) => PDF_CHAR_FALLBACKS[char] ?? char);
+  return text.replace(FALLBACK_PATTERN, (char) => (keep?.(char) ? char : (PDF_CHAR_FALLBACKS[char] ?? char)));
 }
