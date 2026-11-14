@@ -150,6 +150,7 @@ describe('htmlToMarkdown', () => {
     expect(md('<p><strong>김 </strong><em>철수</em>님</p>')).toBe('**김** *철수*님');
     expect(md('<p>a <strong> b </strong> c</p>')).toBe('a **b** c');
     expect(md('<p><em> x</em></p>')).toBe('*x*');
+    expect(md('<p>김<strong> </strong>철수</p>')).toBe('김 철수');
   });
 
   it('does not over-escape real HTML formatting', () => {

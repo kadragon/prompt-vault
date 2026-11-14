@@ -474,7 +474,8 @@ function lastVisibleChar(nodes: Node[], from: number, skip?: Set<Element>): stri
 function emphasis(el: Element, delimiter: string, inTable: boolean): string {
   const raw = serializeInline(el, undefined, inTable);
   const body = raw.trim();
-  if (!body) return '';
+  // A body of whitespace alone (`김<strong> </strong>철수`) is still the word gap.
+  if (!body) return raw === '' ? '' : ' ';
   const before = /^\s/.test(raw) ? ' ' : '';
   const after = /\s$/.test(raw) ? ' ' : '';
   return `${before}${delimiter}${body}${delimiter}${after}`;
