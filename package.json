@@ -28,5 +28,8 @@
   },
   "dependencies": {
     "pdfmake": "^0.3.14"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }
