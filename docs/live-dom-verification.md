@@ -116,7 +116,7 @@ logged-in session is a resource the user supplied by hand; it is not repeatable 
 session is scoped once, up front, not discovered one measurement at a time. List, in the first
 message of the session:
 
-- every open `[VERIFY]` item in `tasks.md` and every measurement-blocked item in `backlog.md`,
+- every open `[VERIFY]` item in `tasks.md` and every GitHub queue issue waiting for measurement,
   named individually;
 - every number in the *Re-measure these numbers* table above that this session's provider relies on;
 - every selector changed in that provider's `selectors.ts` since its last recorded stamp.

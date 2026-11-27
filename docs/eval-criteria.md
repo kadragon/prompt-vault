@@ -99,6 +99,6 @@ status: active
 2. Read this file for standards.
 3. Exercise the feature for real (load-unpacked + a live export), not by reading code alone.
 4. List specific pass/fail evidence per criterion **before** assigning a score.
-5. Below threshold → findings become `backlog.md`/`tasks.md` items → fix → re-evaluate.
+5. Below threshold → record findings in `tasks.md` for the active sprint or file GitHub queue issues → fix → re-evaluate.
 
 Be skeptical by default: hunt for what's broken (missing messages, a stray network call), not what works.

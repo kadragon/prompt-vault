@@ -49,9 +49,9 @@ only to create local downloads.
 **Check every quality claim against the repo's own caveats before it ships.** Listing copy and
 screenshot captions are product claims, and the code records where it cannot keep them: adapter
 doc comments (`src/adapters/gemini/index.ts` on the residual silent-truncation hazard) and open
-`backlog.md` items. This cycle produced both failure modes in one pass — a "nothing silently
+GitHub queue issues. This cycle produced both failure modes in one pass — a "nothing silently
 truncated" bullet the loaders explicitly disclaim, and a fidelity screenshot displaying two
-filed rendering defects. Grep the backlog and the adapter comments for the subject of any
+filed rendering defects. Search the issues and the adapter comments for the subject of any
 absolute claim; prefer "fails loud" over "never fails".
 
 ## Privacy and permission declarations
