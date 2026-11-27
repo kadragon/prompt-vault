@@ -9,7 +9,7 @@ Expand a short request into a design doc before building anything non-trivial.
 1. Write `docs/design/{slug}.md`: user stories, high-level tech design (adapter/export shape,
    PDF approach, build tooling), phased feature list. No granular code.
 2. Review with the user. Do not proceed until approved.
-3. Generate `backlog.md` items from the approved spec, in dependency order.
+3. File GitHub queue issues from the approved spec, in dependency order.
 
 Skip for trivial features.
 
@@ -41,29 +41,23 @@ user-visible UI, spawn `product-evaluator` against `docs/eval-criteria.md`.
 **Step 6: Version bump & handoff** — bump `manifest.json` version + `package.json` if present. Leave
 uncommitted for the review cycle.
 
-**`backlog.md` item format:**
-
-```markdown
-## Feature Name
-> Goal: what and why.
-> Done-when: concrete acceptance criteria (agreed BEFORE coding).
-
-- [ ] Simplest case
-- [ ] Next case builds on previous
-```
+**GitHub queue issues:** Label each issue `task-queue` and state the goal and concrete acceptance
+criteria agreed before coding. Use GitHub issue dependencies for work that needs another issue to
+land, and the `deferred` label with a reason for work waiting on evidence or access.
 
 The active-sprint `tasks.md` schema: a `# Title`, `status: active`, and **Scope /
 Acceptance criteria / Out of scope / Lint/test command** sections (one Sprint Contract at a time).
+Keep each `*(blocked by: ...)*` or `*(deferred: ...)*` marker on its own checkbox line in `tasks.md`.
 
 ## `draft` — Documentation
 
 Update `docs/`. Ground every claim in current code. Never touch production code. If a doc reveals a
-missing constraint, add a `backlog.md` item.
+missing constraint, file a GitHub queue issue.
 
 ## `constrain` — Structural Enforcement
 
-Write the lint rule / structural test first, run it, and if current code violates it, add remediation
-to `backlog.md` rather than fixing inline. Update `docs/architecture.md`.
+Write the lint rule / structural test first and run it. If current code violates it, file a GitHub
+queue issue for remediation. Update `docs/architecture.md`.
 
 ## `explore` — Research
 
@@ -73,7 +67,7 @@ commit. Flows into `plan` or `code` if approved.
 ## Permitted side-effects
 
 - During `code`: add a `[doc]`/`[constraint]` note to `tasks.md`; update docs after implementing.
-- During `draft`: add a `backlog.md` item when a doc reveals missing behavior.
+- During `draft`: file a GitHub queue issue when a doc reveals missing behavior.
 - Not permitted: writing production code during `draft`.
 
 ## Context anxiety
